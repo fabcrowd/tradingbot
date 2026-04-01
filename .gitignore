@@ -1,0 +1,7 @@
+.env
+__pycache__/
+*.pyc
+data/trades.jsonl
+data/state.json
+.cursor/
+tasks/

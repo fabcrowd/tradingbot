@@ -1,0 +1,133 @@
+[server]
+host = "0.0.0.0"
+port = 8080
+log_level = "INFO"
+
+[bot]
+mode = "live"
+default_cycle_ms = 500
+# XRP/USDT primary — good liquidity, wider natural spread
+enabled_pairs = ["XRP_USDT"]
+adaptive_tuning = false
+adaptive_interval_sec = 90
+adaptive_min_sample_sells = 10
+adaptive_lookback_sells = 30
+adaptive_target_win_pct = 48
+adaptive_win_band_pct = 8
+adaptive_spread_step_bps = 2
+# Dynamic range for half-spread: learner stays within these bounds.
+# Friend: "below 50 bps total not profitable at 20bps fee" = min 25 half. Floor=20 gives learner room.
+# Friend: "dynamic range 40-200 would work as first run" = ceiling 200 total / 100 half.
+# TEL/USD 0% fee: wider range is fine since every fill is pure profit
+adaptive_spread_floor_bps = 10
+adaptive_spread_ceiling_bps = 120
+learner_enabled = true
+learner_interval_sec = 60
+learner_min_samples = 5
+learner_max_daily_adjustments = 50
+# Recent sell legs: if average P&L < 0, learner widens spread (learn from losing trades).
+learner_loss_lookback_sells = 5
+learner_widen_on_avg_loss = true
+# Per-trade profit: spread >= fee+margin so each round-trip can win after fees.
+# TEL/USD has 0% fee — disable per-trade floor so tight spreads aren't clamped up
+per_trade_profitability = false
+min_quote_half_spread_bps = 2
+# Hard stop: halt quotes when cumulative P&L <= this.
+min_total_pnl_usd = -15.0
+# Risk management auto-stops — uncomment and set to enable
+# daily_profit_target_usd = 50.0
+# daily_loss_limit_usd = 15.0
+# max_drawdown_pct = 20.0
+# Threat detector config — drives spread widening on velocity (VPIN toxicity).
+threat_imbalance_threshold = 0.5
+threat_spread_blowout_ratio = 2.0
+threat_velocity_bps = 15.0
+threat_critical_velocity_bps = 50.0
+threat_spread_multiplier = 1.5
+# Stablecoin depeg: halt + liquidate if mid deviates >50bps from peg_price.
+depeg_threshold_bps = 50
+
+# spread_bps = HALF-width from microprice (one side). Total width = 2 * spread_bps.
+# Profitability: total_width (2*spread_bps) must exceed total_fees (2*fee_bps).
+#
+# FEE TIERS (auto-detected from 30-day volume):
+#   $0+      → 20 bps maker   (min profitable half-spread: 24 bps)
+#   $50K+    → 16 bps maker   (min: 20 bps)
+#   $100K+   → 12 bps maker   (min: 16 bps)
+#   $250K+   →  8 bps maker   (min: 12 bps — switch to USDC/USDT here)
+#   $500K+   →  4 bps maker   (min:  8 bps — USDC high fill rate)
+#   $1M+     →  2 bps maker   (min:  6 bps — friend's USDC territory)
+#   $10M+    →  0 bps maker   (min:  4 bps — razor-thin)
+#
+# fee_bps below is the starting fallback. Once volume is tracked, the bot
+# auto-resolves the correct fee from the Kraken tier schedule.
+# Set fee_override = true to lock a pair to its fee_bps (e.g. USDG/USD at 0).
+
+# --- PRIMARY PAIR: TEL/USD (0% Kraken maker fee, friend's strategy) ---
+# 4 bps half = 8 bps total spread. 0% fee means every fill is pure profit.
+# Orders sit near best bid → high fill rate, like friend's 2000 trades/hour.
+
+[pairs.TEL_USD]
+symbol = "TEL/USD"
+# Friend's settings: 60 bps half = 120 bps total. 0% fee = pure profit.
+spread_bps = 60
+bootstrap_half_spread_bps = 30
+bootstrap_until_sell_trades = 10
+order_size = 10000.0
+max_inventory = 50000.0
+cycle_ms = 6000
+fee_bps = 0
+fee_override = true
+spread_floor_bps = 10
+
+# --- SECONDARY PAIR: XRP/USDT ---
+
+[pairs.XRP_USDT]
+symbol = "XRP/USDT"
+# 40 bps half = 80 bps total. Friend: "80 is the sweet spot at 20bps fee tier"
+spread_bps = 40
+# Bootstrap: tight quotes until 20 sells, then learner takes over
+bootstrap_half_spread_bps = 8
+bootstrap_until_sell_trades = 20
+order_size = 15.0
+max_inventory = 200.0
+fee_bps = 20
+spread_floor_bps = 20
+
+# --- SECONDARY PAIRS (enable from dashboard when ready) ---
+
+[pairs.USDC_USDT]
+symbol = "USDC/USDT"
+# Enable when 30d volume > $250K (fee drops to 8 bps, min spread viable at 12 bps)
+spread_bps = 24
+order_size = 10.0
+max_inventory = 500.0
+fee_bps = 20
+spread_floor_bps = 20
+peg_price = 1.0
+
+[pairs.USDG_USD]
+symbol = "USDG/USD"
+spread_bps = 4
+order_size = 50.0
+max_inventory = 500.0
+fee_bps = 0
+fee_override = true
+spread_floor_bps = 2
+peg_price = 1.0
+
+[pairs.BTC_USDT]
+symbol = "BTC/USDT"
+spread_bps = 40
+order_size = 0.0005
+max_inventory = 0.004
+fee_bps = 20
+spread_floor_bps = 20
+
+[pairs.ETH_USDT]
+symbol = "ETH/USDT"
+spread_bps = 40
+order_size = 0.005
+max_inventory = 0.04
+fee_bps = 20
+spread_floor_bps = 20

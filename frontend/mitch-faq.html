@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>MITCH TRADING BOT — FAQ</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=IBM+Plex+Mono:wght@300;400;600&family=Space+Mono:wght@400;700&display=swap');
+
+  :root {
+    --bg: #020b06;
+    --bg2: #04130a;
+    --bg3: #071a0f;
+    --green: #00ff6a;
+    --green-dark: #004d1f;
+    --red: #ff2d55;
+    --red-dark: #4d0015;
+    --amber: #ffaa00;
+    --cyan: #00e5ff;
+    --white: #d4f0e0;
+    --dim: #3a6b4a;
+    --border: rgba(0,255,106,0.15);
+    --grid: rgba(0,255,106,0.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--white);
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    line-height: 1.8;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,255,106,0.012) 2px, rgba(0,255,106,0.012) 4px);
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 680px; margin: 0 auto; padding: 0 16px 60px; }
+
+  .hero {
+    padding: 40px 0 32px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 40px;
+  }
+
+  .hero-tag {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    letter-spacing: 4px;
+    color: var(--dim);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+  }
+
+  .hero-title {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(20px, 6vw, 32px);
+    font-weight: 900;
+    color: var(--green);
+    letter-spacing: 3px;
+    text-shadow: 0 0 40px rgba(0,255,106,0.3);
+    line-height: 1.2;
+    margin-bottom: 8px;
+  }
+
+  .hero-sub {
+    font-size: 11px;
+    color: var(--dim);
+    letter-spacing: 2px;
+  }
+
+  .nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 40px;
+  }
+
+  .nav-pill {
+    font-family: 'Orbitron', monospace;
+    font-size: 7px;
+    letter-spacing: 2px;
+    padding: 5px 12px;
+    border: 1px solid var(--dim);
+    color: var(--dim);
+    text-decoration: none;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  .nav-pill:hover {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-dark);
+  }
+
+  .faq-item {
+    margin-bottom: 32px;
+    border-left: 2px solid var(--green-dark);
+    padding-left: 20px;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: slideUp 0.4s ease forwards;
+  }
+
+  .faq-item:nth-child(1) { animation-delay: 0.05s; }
+  .faq-item:nth-child(2) { animation-delay: 0.12s; }
+  .faq-item:nth-child(3) { animation-delay: 0.19s; }
+  .faq-item:nth-child(4) { animation-delay: 0.26s; }
+  .faq-item:nth-child(5) { animation-delay: 0.33s; }
+
+  @keyframes slideUp {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .faq-number {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    color: var(--green);
+    letter-spacing: 3px;
+    margin-bottom: 6px;
+    opacity: 0.6;
+  }
+
+  .faq-q {
+    font-family: 'Orbitron', monospace;
+    font-size: clamp(13px, 3.5vw, 16px);
+    font-weight: 700;
+    color: var(--white);
+    letter-spacing: 1px;
+    line-height: 1.4;
+    margin-bottom: 16px;
+  }
+
+  .faq-body {
+    color: #8bbf9a;
+    font-size: 12px;
+    line-height: 1.9;
+  }
+
+  .faq-body p { margin-bottom: 12px; }
+  .faq-body p:last-child { margin-bottom: 0; }
+
+  .callout {
+    margin: 16px 0;
+    padding: 14px 16px;
+    font-size: 11px;
+    line-height: 1.8;
+    border-left: 3px solid;
+  }
+
+  .callout-green {
+    background: rgba(0,255,106,0.05);
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .callout-amber {
+    background: rgba(255,170,0,0.06);
+    border-color: var(--amber);
+    color: var(--amber);
+  }
+
+  .callout-red {
+    background: rgba(255,45,85,0.06);
+    border-color: var(--red);
+    color: var(--red);
+  }
+
+  .callout-cyan {
+    background: rgba(0,229,255,0.05);
+    border-color: var(--cyan);
+    color: var(--cyan);
+  }
+
+  .callout-label {
+    font-family: 'Orbitron', monospace;
+    font-size: 7px;
+    letter-spacing: 3px;
+    opacity: 0.7;
+    margin-bottom: 6px;
+  }
+
+  .metric-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 16px 0;
+    font-size: 11px;
+  }
+
+  .metric-table tr {
+    border-bottom: 1px solid var(--grid);
+  }
+
+  .metric-table td {
+    padding: 8px 0;
+    vertical-align: top;
+  }
+
+  .metric-table td:first-child {
+    color: var(--dim);
+    width: 40%;
+    letter-spacing: 1px;
+    font-size: 10px;
+  }
+
+  .metric-table td:last-child {
+    color: var(--white);
+  }
+
+  .scenario {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 14px;
+    margin: 16px 0;
+    font-size: 11px;
+  }
+
+  .scenario-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 8px;
+    letter-spacing: 3px;
+    color: var(--cyan);
+    margin-bottom: 10px;
+  }
+
+  .scenario-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--grid);
+    color: #8bbf9a;
+  }
+
+  .scenario-row:last-child { border-bottom: none; }
+  .scenario-row span:last-child { color: var(--white); }
+
+  .risk-item {
+    display: flex;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--grid);
+    font-size: 11px;
+    align-items: flex-start;
+  }
+
+  .risk-item:last-child { border-bottom: none; }
+
+  .risk-icon {
+    font-size: 14px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .risk-title {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 1px;
+    color: var(--red);
+    margin-bottom: 4px;
+  }
+
+  .risk-desc { color: #8bbf9a; line-height: 1.7; }
+
+  .settings-grid {
+    display: grid;
+    gap: 10px;
+    margin: 16px 0;
+  }
+
+  .setting-card {
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    padding: 12px 14px;
+  }
+
+  .setting-name {
+    font-family: 'Orbitron', monospace;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--green);
+    margin-bottom: 4px;
+  }
+
+  .setting-default {
+    font-size: 9px;
+    color: var(--dim);
+    margin-bottom: 6px;
+    letter-spacing: 1px;
+  }
+
+  .setting-desc {
+    font-size: 11px;
+    color: #8bbf9a;
+    line-height: 1.7;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 40px 0;
+  }
+
+  .footer {
+    text-align: center;
+    padding: 24px 0;
+    font-size: 9px;
+    color: var(--dim);
+    letter-spacing: 2px;
+    border-top: 1px solid var(--border);
+  }
+
+  .footer span { color: var(--green); }
+
+  em {
+    font-style: normal;
+    color: var(--white);
+    font-weight: 600;
+  }
+
+  strong {
+    font-weight: 600;
+    color: var(--green);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="hero">
+    <div class="hero-tag">Documentation · v1.0</div>
+    <div class="hero-title">MITCH TRADING BOT</div>
+    <div class="hero-sub">KRAKEN PRO · SPREAD ENGINE · FAQ</div>
+  </div>
+
+  <nav class="nav">
+    <a class="nav-pill" href="#how">HOW IT WORKS</a>
+    <a class="nav-pill" href="#settings">SETTINGS</a>
+    <a class="nav-pill" href="#profit">PROFIT SCALING</a>
+    <a class="nav-pill" href="#safety">IS IT SAFE?</a>
+    <a class="nav-pill" href="#risk">HOW I CAN LOSE</a>
+  </nav>
+
+  <div class="faq-item" id="how">
+    <div class="faq-number">01 //</div>
+    <div class="faq-q">How does it work?</div>
+    <div class="faq-body">
+      <p>The bot acts like a market maker — the same role played by banks and professional trading desks on every exchange in the world. Instead of predicting whether XRP goes up or down, it profits from the <em>gap between buyers and sellers</em>.</p>
+
+      <div class="callout callout-cyan">
+        <div class="callout-label">THE CORE MECHANIC</div>
+        Every asset on Kraken has two prices at any moment: the <em>bid</em> (what buyers will pay) and the <em>ask</em> (what sellers want). The gap between them is called the spread. The bot plants one order on each side of that gap, collects the difference when both fill, then does it again.
+      </div>
+
+      <p>Here's a simplified example with XRP at $2.3450:</p>
+
+      <div class="scenario">
+        <div class="scenario-title">EXAMPLE CYCLE — XRP/USDT</div>
+        <div class="scenario-row"><span>Mid price</span><span>$2.3450</span></div>
+        <div class="scenario-row"><span>Bot places BUY at</span><span>$2.3441</span></div>
+        <div class="scenario-row"><span>Bot places SELL at</span><span>$2.3459</span></div>
+        <div class="scenario-row"><span>Both orders fill</span><span>✓</span></div>
+        <div class="scenario-row"><span>Spread captured</span><span style="color:var(--green)">+$0.0018 per XRP</span></div>
+        <div class="scenario-row"><span>On 30 XRP order size</span><span style="color:var(--green)">+$0.054 per cycle</span></div>
+      </div>
+
+      <p>That looks tiny. But run that cycle every 3 seconds across hundreds of fills per day and it compounds. The bot never sleeps, never gets emotional, and never chases a trade.</p>
+
+      <div class="callout callout-green">
+        <div class="callout-label">KEY INSIGHT</div>
+        The bot doesn't care if XRP goes up or down. It profits from <em>activity</em> — the constant back-and-forth movement of price that happens every second of every day.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="faq-item" id="settings">
+    <div class="faq-number">02 //</div>
+    <div class="faq-q">What settings can I change?</div>
+    <div class="faq-body">
+      <p>There are five core settings. Each one changes how aggressively or conservatively the bot operates.</p>
+
+      <div class="settings-grid">
+        <div class="setting-card">
+          <div class="setting-name">SPREAD BPS</div>
+          <div class="setting-default">Default: 8 bps · Range: 1–200</div>
+          <div class="setting-desc">How wide you set the gap between your buy and sell orders. 1 basis point = 0.01% of price. <em>Tighter spread</em> = more fills, smaller profit per fill. <em>Wider spread</em> = fewer fills, more profit per fill. Start at 8–12 until you understand the market rhythm.</div>
+        </div>
+
+        <div class="setting-card">
+          <div class="setting-name">ORDER SIZE</div>
+          <div class="setting-default">Default: 30 XRP · Adjust to your balance</div>
+          <div class="setting-desc">How many units of crypto each order is for. Bigger size = bigger profit per cycle, but also bigger exposure if the market moves against you. A safe rule: order size should be no more than 5–10% of your total balance value.</div>
+        </div>
+
+        <div class="setting-card">
+          <div class="setting-name">MAX INVENTORY</div>
+          <div class="setting-default">Default: 300 XRP</div>
+          <div class="setting-desc">The maximum amount of crypto the bot is allowed to accumulate. This is your safety valve — it stops the bot buying more if the market is only moving one direction. If inventory hits the limit, the bot pauses buying until it can sell some off.</div>
+        </div>
+      </div>
+
+      <div class="callout callout-amber">
+        <div class="callout-label">CONFIG IN THIS REPO</div>
+        Dashboard copy above is the <em>idea</em>. In <strong>config.toml</strong>, per pair: <em>spread_bps</em> is the <strong>half</strong>-spread per side (total quoted width ≈ 2×). Use <em>order_size</em>, <em>max_inventory</em>, and fee-aware fields from <strong>fee_schedule</strong> / <strong>spread_floor_bps</strong> so quotes stay profitable after Kraken maker fees.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="faq-item" id="profit">
+    <div class="faq-number">03 //</div>
+    <div class="faq-q">How does profit scale?</div>
+    <div class="faq-body">
+      <p>Market-making P&amp;L is roughly: <em>(edge per round-trip × fill rate)</em> minus fees, adverse selection, and inventory risk. More frequent two-sided fills with a spread that clears fees is what compounds—not “being right” about direction.</p>
+      <div class="callout callout-cyan">
+        <div class="callout-label">LEVER IN THIS CODEBASE</div>
+        The learner can adjust half-spread within configured floors/ceilings; fee tiers improve as 30-day volume grows. When testing changes, compare <strong>net P&amp;L</strong> and <strong>inventory stability</strong>, not raw fill count alone.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="faq-item" id="safety">
+    <div class="faq-number">04 //</div>
+    <div class="faq-q">Is it safe?</div>
+    <div class="faq-body">
+      <p>No automated trading system is “safe” in the sense of guaranteed returns. You can reduce operational risk with <em>paper mode</em>, low order size, strict max inventory, and loss limits—then prove behavior on data before scaling size.</p>
+      <div class="callout callout-green">
+        <div class="callout-label">PRACTICAL CHECKLIST</div>
+        Start small, watch <strong>data/trades_paper.jsonl</strong> (or live equivalent), keep API keys scoped, and never rely on a single lucky session as proof.
+      </div>
+    </div>
+  </div>
+
+  <hr class="divider">
+
+  <div class="faq-item" id="risk">
+    <div class="faq-number">05 //</div>
+    <div class="faq-q">How can I lose?</div>
+    <div class="faq-body">
+      <div class="risk-item">
+        <div class="risk-icon">↯</div>
+        <div>
+          <div class="risk-title">TREND / INVENTORY</div>
+          <div class="risk-desc">One-way markets stack inventory against you. Max inventory and skew controls exist to cap that, but they do not remove directional risk.</div>
+        </div>
+      </div>
+      <div class="risk-item">
+        <div class="risk-icon">%</div>
+        <div>
+          <div class="risk-title">FEES &amp; SPREAD TOO TIGHT</div>
+          <div class="risk-desc">If quoted spread does not cover fees and adverse selection, you can lose on every round-trip even with “lots of fills.”</div>
+        </div>
+      </div>
+      <div class="risk-item">
+        <div class="risk-icon">⚡</div>
+        <div>
+          <div class="risk-title">TECH &amp; EXCHANGE</div>
+          <div class="risk-desc">Disconnects, partial fills, latency, and bugs can all create unintended exposure. Monitor logs and P&amp;L stops if configured.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    MITCH · <span>Kraken Pro</span> · Spread engine
+  </div>
+
+</div>
+</body>
+</html>
