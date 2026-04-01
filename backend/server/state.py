@@ -35,6 +35,8 @@ class PairState:
 
     # Per-pair realized volatility (set by ThreatDetector).
     realized_vol: float = 0.0
+    # Timestamp of last book update (for staleness detection).
+    last_book_update_ts: float = 0.0
 
     @property
     def mid_price(self) -> float:
@@ -71,6 +73,8 @@ class ActiveOrder:
     qty: float
     placed_at: float = field(default_factory=time.time)
     kraken_order_id: str = ""
+    filled_qty: float = 0.0
+    cancel_retry: bool = False
 
 
 @dataclass
@@ -130,7 +134,9 @@ class BotState:
         self.session_start_pnl: float = 0.0  # P&L at session start (for daily calc)
         self.session_start_ts: float = 0.0   # timestamp when session started
         self.risk_halted: bool = False        # True when auto-stop triggered
+        self.risk_halt_reason: str = ""
         self.last_order_reject_ts: float = 0.0  # timestamp of last order rejection (for backoff)
+        self.last_fill_ts: dict[str, float] = {}  # pair_key -> timestamp of most recent fill
 
     @property
     def win_rate(self) -> float:
@@ -174,6 +180,7 @@ class BotState:
                 "side": o.side,
                 "price": o.price,
                 "qty": o.qty,
+                "filled_qty": o.filled_qty,
             }
             for o in self.active_orders.values()
         ]
@@ -206,10 +213,12 @@ class BotState:
             "active_pair_key": self.active_pair_key,
             "last_cancel_reason": self.last_cancel_reason,
             "learner_info": self.learner_info,
+            "last_fill_ts": {k: round(v, 1) for k, v in self.last_fill_ts.items()},
             "volume_30d": round(self.volume_30d, 2),
             # Risk / projections
             "session_start_pnl": round(self.session_start_pnl, 6),
             "session_start_ts": self.session_start_ts,
             "peak_pnl": round(self.peak_pnl, 6),
             "risk_halted": self.risk_halted,
+            "risk_halt_reason": self.risk_halt_reason,
         }

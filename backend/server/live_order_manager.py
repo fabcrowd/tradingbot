@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from .config import AppConfig
     from .inventory import InventoryManager
     from .pnl import PnLTracker
+    from .session_logger import SessionLogger
     from .state import BotState
 
 LOG = logging.getLogger(__name__)
@@ -30,12 +31,14 @@ class LiveOrderManager(SpotWSClient):
         config: AppConfig,
         inventory: InventoryManager,
         pnl: PnLTracker,
+        session_logger: "SessionLogger | None" = None,
     ) -> None:
         super().__init__(key=config.api_key, secret=config.api_secret)
         self._state = state
         self._config = config
         self._inventory = inventory
         self._pnl = pnl
+        self._session_logger = session_logger
         self._pending_acks: dict[int, asyncio.Future] = {}
         self._req_counter = 0
         self._symbol_to_key: dict[str, str] = {
@@ -90,6 +93,11 @@ class LiveOrderManager(SpotWSClient):
         if qty <= 0 or price <= 0:
             return
 
+        cl_ord_id = data.get("cl_ord_id", "")
+        order = self._state.active_orders.get(cl_ord_id)
+        if order is not None:
+            order.filled_qty += qty
+
         fees = data.get("fees", [])
         if isinstance(fees, list) and fees:
             fee_paid = sum(float(f.get("qty", 0)) for f in fees if isinstance(f, dict))
@@ -122,10 +130,29 @@ class LiveOrderManager(SpotWSClient):
                 gross_spread=gross,
             )
 
+        self._state.last_fill_ts[pair_key] = time.time()
+
         LOG.info(
             "FILL %s %s %.6f @ %.8f | fee=%.6f pnl=%.6f",
             side, symbol, qty, price, fee_paid, pnl_log,
         )
+
+        if self._session_logger is not None:
+            pc = self._config.pairs.get(pair_key)
+            ps = self._state.pairs.get(pair_key)
+            market_spread_bps = 0.0
+            if ps is not None and ps.mid_price > 0:
+                market_spread_bps = (ps.best_ask - ps.best_bid) / ps.mid_price * 10_000
+            self._session_logger.log_fill(
+                pair=pair_key,
+                side=side,
+                price=price,
+                qty=qty,
+                fee=fee_paid,
+                pnl=pnl_log,
+                spread_bps=pc.spread_bps if pc else 0,
+                market_spread_bps=market_spread_bps,
+            )
 
     def _handle_order_response(self, message: dict) -> None:
         req_id = message.get("req_id")
@@ -144,6 +171,51 @@ class LiveOrderManager(SpotWSClient):
         await self.start()
         await self.subscribe(params={"channel": "executions"})
         LOG.info("Live order manager initialized, subscribed to executions")
+        await self._reconcile_open_orders()
+
+    async def _reconcile_open_orders(self) -> None:
+        """Reconcile local state with Kraken: prune ghosts AND cancel orphans."""
+        if not self._config.api_key:
+            return
+        try:
+            from kraken.spot import Trade, User
+
+            user = User(key=self._config.api_key, secret=self._config.api_secret)
+            open_orders = user.get_open_orders()
+            kraken_cl_ids: set[str] = set()
+            for _oid, info in open_orders.get("open", {}).items():
+                cl = info.get("cl_ord_id", "")
+                if cl:
+                    kraken_cl_ids.add(cl)
+
+            local_ids = set(self._state.active_orders.keys())
+
+            pruned = 0
+            for cl_ord_id in list(local_ids):
+                if cl_ord_id not in kraken_cl_ids:
+                    self._state.active_orders.pop(cl_ord_id, None)
+                    pruned += 1
+
+            orphans = kraken_cl_ids - local_ids
+            cancelled_orphans = 0
+            if orphans:
+                LOG.warning(
+                    "Found %d orphaned orders on Kraken (not tracked locally), cancelling all",
+                    len(orphans),
+                )
+                trade = Trade(key=self._config.api_key, secret=self._config.api_secret)
+                result = trade.cancel_all_orders()
+                cancelled_orphans = result.get("count", 0)
+                self._state.active_orders.clear()
+
+            LOG.info(
+                "Order reconciliation: pruned %d ghosts, cancelled %d orphans, "
+                "%d on Kraken, %d local remain",
+                pruned, cancelled_orphans, len(kraken_cl_ids),
+                len(self._state.active_orders),
+            )
+        except Exception:
+            LOG.warning("Order reconciliation failed — continuing without", exc_info=True)
 
     async def place_order(
         self, pair_key: str, symbol: str, side: str, price: float, qty: float,
@@ -221,8 +293,13 @@ class LiveOrderManager(SpotWSClient):
             self._state.active_orders.pop(cl_ord_id, None)
             return True
         except (asyncio.TimeoutError, RuntimeError) as e:
-            LOG.warning("Cancel failed for %s: %s", cl_ord_id, e)
-            self._state.active_orders.pop(cl_ord_id, None)
+            LOG.warning(
+                "Cancel failed for %s: %s — keeping in active_orders "
+                "(WS executions channel will reconcile)",
+                cl_ord_id[:16], e,
+            )
+            if order is not None:
+                order.cancel_retry = True
             return False
 
     async def place_aggressive_sell(

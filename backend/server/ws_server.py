@@ -236,6 +236,7 @@ class DashboardServer:
                 "order_size": pc.order_size,
                 "max_inventory": pc.max_inventory,
                 "fee_bps": eff_fee,
+                "fee_schedule": pc.fee_schedule,
                 "cycle_ms": pc.cycle_ms or self._config.bot.default_cycle_ms,
                 "spread_floor_bps": pc.spread_floor_bps,
                 "bootstrap_half_spread_bps": pc.bootstrap_half_spread_bps,
@@ -260,7 +261,7 @@ class DashboardServer:
             "daily_profit_target_usd": b.daily_profit_target_usd,
             "daily_loss_limit_usd": b.daily_loss_limit_usd,
             "max_drawdown_pct": b.max_drawdown_pct,
-            "fee_tier": current_tier_info(vol_30d),
+            "fee_tier": current_tier_info(vol_30d, "spot_crypto"),
         }
 
     async def _broadcast(self, msg: dict) -> None:
@@ -291,6 +292,7 @@ class DashboardServer:
         await runner.setup()
         site = web.TCPSite(
             runner, self._config.server.host, self._config.server.port,
+            reuse_address=True,
         )
         await site.start()
         LOG.info(

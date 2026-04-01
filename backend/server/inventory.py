@@ -15,11 +15,18 @@ LOG = logging.getLogger(__name__)
 
 SYMBOL_BASE_MAP = {
     "TEL/USD": ("TEL", "ZUSD"),   # Kraken: TEL base, USD quote (ZUSD internal name)
-    "XRP/USDT": ("XRP", "USDT"),
-    "BTC/USDT": ("XXBT", "USDT"),
+    "XRP/USDT": ("XXRP", "USDT"),
+    "XRP/USD": ("XXRP", "ZUSD"),
+    "SOL/USD": ("SOL", "ZUSD"),
+    "XBT/USDT": ("XXBT", "USDT"),
     "ETH/USDT": ("XETH", "USDT"),
     "USDC/USDT": ("USDC", "USDT"),
     "USDG/USD": ("USDG", "ZUSD"),
+    "USDG/USDT": ("USDG", "USDT"),
+    "USDG/USDC": ("USDG", "USDC"),
+    "USDE/USD": ("USDE", "ZUSD"),
+    "USDE/USDT": ("USDE", "USDT"),
+    "USDE/USDC": ("USDE", "USDC"),
 }
 
 

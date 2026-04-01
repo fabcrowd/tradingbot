@@ -8,6 +8,8 @@ from collections.abc import Awaitable, Callable
 
 from typing import TYPE_CHECKING
 
+from .config import PROFITABILITY_MARGIN_BPS
+
 if TYPE_CHECKING:
     from .config import AppConfig
     from .state import BotState, TradeRecord
@@ -100,13 +102,20 @@ class AdaptiveSpreadTuner:
             if n < min_sells:
                 continue
             win_pct = 100.0 * wins / n
-            pair_floor = pc.spread_floor_bps if pc.spread_floor_bps is not None else floor_global
+            min_q = max(1, int(getattr(bot, "min_quote_half_spread_bps", 2)))
+            survival_pair = pc.spread_floor_bps if pc.spread_floor_bps is not None else min_q
+            survival_floor = max(min_q, survival_pair, floor_global)
             if getattr(bot, "per_trade_profitability", True):
                 fee_bps = self._config.effective_fee_bps(pair_key, self._state.volume_30d)
-                min_spread = max(fee_bps + 4, pair_floor, floor_global)
+                pair_sells = sum(1 for f in fills if f.side == "sell" and f.pair_key == pair_key)
+                if pair_sells < 5:
+                    min_spread = survival_floor
+                elif pair_sells < 10:
+                    min_spread = max(fee_bps + 1, survival_floor)
+                else:
+                    min_spread = max(fee_bps + PROFITABILITY_MARGIN_BPS, survival_floor)
             else:
-                min_q = max(1, int(getattr(bot, "min_quote_half_spread_bps", 2)))
-                min_spread = max(min_q, pair_floor, floor_global)
+                min_spread = survival_floor
             cur = pc.spread_bps
             new_spread = cur
 

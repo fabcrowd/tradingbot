@@ -15,6 +15,7 @@ from .live_order_manager import LiveOrderManager
 from .order_manager import OrderManager
 from .pnl import PnLTracker
 from .runtime import BotRuntime
+from .session_logger import SessionLogger
 from .spread_engine import SpreadEngine
 from .state import BotState
 from .strategy_learner import StrategyLearner
@@ -25,6 +26,7 @@ from .ws_server import DashboardServer
 async def run() -> None:
     adaptive_tuner: AdaptiveSpreadTuner | None = None
     learner: StrategyLearner | None = None
+    session_log: SessionLogger | None = None
     config = load_config()
 
     logging.basicConfig(
@@ -50,13 +52,15 @@ async def run() -> None:
     elif config.pairs:
         state.active_pair_key = next(iter(config.pairs))
 
+    session_log = SessionLogger(state, config)
+
     pnl = PnLTracker(state, mode=config.mode)
     inventory = InventoryManager(state, config)
     paper_mgr = OrderManager(state, config)
 
     live_mgr: LiveOrderManager | None = None
     if config.mode == "live" and config.api_key:
-        live_mgr = LiveOrderManager(state, config, inventory, pnl)
+        live_mgr = LiveOrderManager(state, config, inventory, pnl, session_logger=session_log)
         await live_mgr.initialize()
         inventory.sync_from_kraken()
 
@@ -69,7 +73,7 @@ async def run() -> None:
         live_mgr=live_mgr,
     )
 
-    engine = SpreadEngine(state, config, paper_mgr, inventory, pnl)
+    engine = SpreadEngine(state, config, paper_mgr, inventory, pnl, session_logger=session_log)
     if live_mgr:
         engine.set_live_order_mgr(live_mgr)
 
@@ -88,7 +92,7 @@ async def run() -> None:
         state, config, engine, dashboard.broadcast_config,
     )
     adaptive_tuner.start()
-    learner = StrategyLearner(state, config, engine)
+    learner = StrategyLearner(state, config, engine, session_logger=session_log)
     learner.start()
     runtime.learner = learner
 
@@ -99,8 +103,27 @@ async def run() -> None:
     runtime.book_client = book_client
 
     await asyncio.sleep(3)
+
+    if config.mode == "live":
+        for key in config.pairs:
+            inventory.seed_cost_basis_from_mid(key)
+        log.info("Re-seeded cost basis from live book mid prices")
+
     log.info("Starting spread engine...")
     await engine.start()
+
+    session_log.log_session_start()
+    state.session_start_ts = __import__("time").time()
+
+    async def _snapshot_loop() -> None:
+        while True:
+            await asyncio.sleep(300)  # every 5 minutes
+            try:
+                session_log.log_snapshot()
+            except Exception:
+                pass
+
+    snapshot_task = asyncio.create_task(_snapshot_loop(), name="session_snapshot")
 
     shutdown_event = asyncio.Event()
 
@@ -123,6 +146,7 @@ async def run() -> None:
         pass
     finally:
         log.info("Shutting down...")
+        snapshot_task.cancel()
         if adaptive_tuner is not None:
             await adaptive_tuner.stop()
         if learner is not None:
@@ -139,6 +163,8 @@ async def run() -> None:
                 log.debug("Book client close failed", exc_info=True)
         await dashboard.stop()
         await runner.cleanup()
+        if session_log is not None:
+            session_log.close()
         log.info("Goodbye.")
 
 

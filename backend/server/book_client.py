@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import TYPE_CHECKING, Any
 
 from kraken.spot import SpotOrderBookClient
@@ -63,6 +64,8 @@ class OrderBook(SpotOrderBookClient):
                 OrderBookLevel(price=float(p), volume=float(v[0]))
                 for p, v in asks[: self.depth]
             ]
+
+        ps.last_book_update_ts = time.time()
 
         if self._threat_detector is not None:
             self._threat_detector.update(key, ps)

@@ -19,15 +19,18 @@ if TYPE_CHECKING:
     from .inventory import InventoryManager
     from .order_manager import OrderManager
     from .pnl import PnLTracker
+    from .session_logger import SessionLogger
     from .state import ActiveOrder, BotState, PairState
 
 LOG = logging.getLogger(__name__)
 
 DRIFT_CANCEL_MULT = 1.5
 NEAR_FILL_BPS = 3
-STALE_ORDER_SEC = 90
+NEAR_FILL_MAX_AGE_SEC = 300
+STALE_ORDER_SEC = 600
+BOOK_STALE_SEC = 120.0
 INVENTORY_SKEW_SCALE = 0.4
-VOL_WIDEN_THRESHOLD = 0.0005
+VOL_WIDEN_THRESHOLD = 0.0003
 VOL_WIDEN_SCALE = 0.3
 # VPIN / velocity: widen spread when price is moving fast (friend: toxicity detection)
 VELOCITY_WIDEN_FLOOR_BPS = 10.0   # only widen above this velocity
@@ -37,8 +40,15 @@ _PRICE_DECIMALS: dict[str, int] = {
     "TEL/USD": 6,   # sub-cent asset — needs 6 decimal places
     "USDC/USDT": 4,
     "USDG/USD": 4,
+    "USDG/USDT": 4,
+    "USDG/USDC": 4,
+    "USDE/USD": 4,
+    "USDE/USDT": 4,
+    "USDE/USDC": 4,
     "XRP/USDT": 4,
-    "BTC/USDT": 1,
+    "XRP/USD": 4,
+    "SOL/USD": 2,
+    "XBT/USDT": 1,
     "ETH/USDT": 2,
 }
 
@@ -51,15 +61,19 @@ class SpreadEngine:
         order_mgr: OrderManager,
         inventory: InventoryManager,
         pnl: PnLTracker,
+        session_logger: "SessionLogger | None" = None,
     ) -> None:
         self._state = state
         self._config = config
         self._paper_mgr = order_mgr
         self._inventory = inventory
         self._pnl = pnl
+        self._session_logger = session_logger
         self._task: asyncio.Task | None = None
         self._last_tick: dict[str, float] = {}
         self._bootstrap_was_active: dict[str, bool] = {}
+        self._momentum_sell_ts: dict[str, list[float]] = {}
+        self._momentum_active: dict[str, bool] = {}
 
     def set_live_order_mgr(self, mgr: OrderManager) -> None:
         """Hot-swap to the live order manager."""
@@ -88,13 +102,67 @@ class SpreadEngine:
             return max(int(pc.bootstrap_half_spread_bps), 1), True
         return pc.spread_bps, False
 
+    async def _trigger_risk_halt(self, reason: str, log_level: str = "warning") -> None:
+        if self._state.risk_halted:
+            return
+        self._state.risk_halted = True
+        self._state.risk_halt_reason = reason
+        mgr = self._active_order_mgr()
+        for key in self._config.pair_keys_for_trading():
+            await mgr.cancel_all(key)
+            self._state.last_cancel_reason[key] = reason
+        if self._session_logger is not None and hasattr(self._session_logger, "log_risk_halt"):
+            self._session_logger.log_risk_halt(reason=reason)
+        if log_level == "info":
+            LOG.info("Risk halt triggered: %s", reason)
+        else:
+            LOG.warning("Risk halt triggered: %s", reason)
+
+    def _apply_momentum_hold(self, pair_key: str) -> bool:
+        cfg = self._config.bot
+        required_sells = max(1, int(getattr(cfg, "momentum_hold_sells", 2)))
+        window_sec = max(1.0, float(getattr(cfg, "momentum_hold_sec", 60.0)))
+        now = time.time()
+
+        sells = self._momentum_sell_ts.setdefault(pair_key, [])
+        sells.extend(
+            f.timestamp
+            for f in self._state.recent_fills
+            if f.pair_key == pair_key and f.side == "sell" and f.timestamp not in sells
+        )
+        cutoff = now - window_sec
+        sells[:] = [ts for ts in sells if ts >= cutoff]
+        is_active = len(sells) >= required_sells
+        was_active = self._momentum_active.get(pair_key, False)
+
+        if is_active != was_active:
+            self._momentum_active[pair_key] = is_active
+            if self._session_logger is not None and hasattr(self._session_logger, "log_momentum"):
+                self._session_logger.log_momentum(
+                    pair=pair_key,
+                    active=is_active,
+                    sells_in_window=len(sells),
+                    window_sec=window_sec,
+                )
+            LOG.info(
+                "Momentum hold %s for %s (%d sells in %.0fs)",
+                "ON" if is_active else "OFF",
+                pair_key,
+                len(sells),
+                window_sec,
+            )
+        return is_active
+
     async def start(self) -> None:
         self._state.running = True
         self._state.risk_halted = False
+        self._state.risk_halt_reason = ""
         if self._state.session_start_ts == 0.0:
             self._state.session_start_ts = time.time()
             self._state.session_start_pnl = self._state.total_pnl
         self._last_tick.clear()
+        self._momentum_sell_ts.clear()
+        self._momentum_active.clear()
         self._task = asyncio.create_task(self._run_loop())
         LOG.info("Spread engine started")
 
@@ -131,6 +199,9 @@ class SpreadEngine:
             await asyncio.sleep(0.05)
 
     async def _tick(self, pair_key: str) -> None:
+        if self._state.risk_halted:
+            return
+
         pc = self._config.pairs[pair_key]
         ps = self._state.pairs[pair_key]
         bot = self._config.bot
@@ -138,6 +209,15 @@ class SpreadEngine:
         ref = ps.microprice
         if ref == 0:
             return
+
+        if ps.last_book_update_ts > 0:
+            book_age = time.time() - ps.last_book_update_ts
+            if book_age > BOOK_STALE_SEC:
+                LOG.warning(
+                    "STALE BOOK %s: last update %.1fs ago — skipping tick",
+                    pair_key, book_age,
+                )
+                return
 
         from .state import CancelReason
 
@@ -165,13 +245,12 @@ class SpreadEngine:
         # Cumulative P&L floor
         min_pnl = getattr(bot, "min_total_pnl_usd", None)
         if min_pnl is not None and pnl <= min_pnl:
-            mgr = self._active_order_mgr()
-            await mgr.cancel_all(pair_key)
-            self._state.last_cancel_reason[pair_key] = CancelReason.SURVIVAL_PNL.value
-            self._state.risk_halted = True
-            LOG.warning(
-                "Survival floor: total P&L $%.4f <= $%.2f — cancel quotes on %s",
-                pnl, min_pnl, pair_key,
+            await self._trigger_risk_halt(
+                reason=(
+                    f"{CancelReason.SURVIVAL_PNL.value}: "
+                    f"total_pnl={pnl:.4f} threshold={min_pnl:.2f}"
+                ),
+                log_level="warning",
             )
             return
 
@@ -179,21 +258,19 @@ class SpreadEngine:
         daily_target = getattr(bot, "daily_profit_target_usd", None)
         daily_pnl = pnl - self._state.session_start_pnl
         if daily_target is not None and daily_pnl >= daily_target:
-            mgr = self._active_order_mgr()
-            await mgr.cancel_all(pair_key)
-            self._state.last_cancel_reason[pair_key] = "daily profit target reached"
-            self._state.risk_halted = True
-            LOG.info("Daily profit target $%.2f reached (session P&L $%.4f) — halting", daily_target, daily_pnl)
+            await self._trigger_risk_halt(
+                reason=f"daily profit target reached: session_pnl={daily_pnl:.4f} target={daily_target:.2f}",
+                log_level="info",
+            )
             return
 
         # Daily loss limit
         daily_loss_limit = getattr(bot, "daily_loss_limit_usd", None)
         if daily_loss_limit is not None and daily_pnl <= -abs(daily_loss_limit):
-            mgr = self._active_order_mgr()
-            await mgr.cancel_all(pair_key)
-            self._state.last_cancel_reason[pair_key] = "daily loss limit reached"
-            self._state.risk_halted = True
-            LOG.warning("Daily loss limit $%.2f reached (session P&L $%.4f) — halting", daily_loss_limit, daily_pnl)
+            await self._trigger_risk_halt(
+                reason=f"daily loss limit reached: session_pnl={daily_pnl:.4f} limit={daily_loss_limit:.2f}",
+                log_level="warning",
+            )
             return
 
         # Max drawdown from peak
@@ -201,30 +278,14 @@ class SpreadEngine:
         if max_dd is not None and self._state.peak_pnl > 0:
             drawdown_pct = (self._state.peak_pnl - pnl) / self._state.peak_pnl * 100
             if drawdown_pct >= max_dd:
-                mgr = self._active_order_mgr()
-                await mgr.cancel_all(pair_key)
-                self._state.last_cancel_reason[pair_key] = f"max drawdown {drawdown_pct:.1f}% from peak"
-                self._state.risk_halted = True
-                LOG.warning("Max drawdown %.1f%% from peak $%.4f — halting", drawdown_pct, self._state.peak_pnl)
+                await self._trigger_risk_halt(
+                    reason=(
+                        f"max drawdown {drawdown_pct:.1f}% from peak "
+                        f"(peak={self._state.peak_pnl:.4f}, total_pnl={pnl:.4f}, limit={max_dd:.1f}%)"
+                    ),
+                    log_level="warning",
+                )
                 return
-
-        # --- HALF-SPREAD FLOOR ---
-        fee_bps = self._config.effective_fee_bps(pair_key, self._state.volume_30d)
-        if getattr(bot, "per_trade_profitability", True):
-            profit_floor_bps = fee_bps + PROFITABILITY_MARGIN_BPS
-            pair_floor = (
-                pc.spread_floor_bps
-                if pc.spread_floor_bps is not None
-                else profit_floor_bps
-            )
-            floor_bps = max(profit_floor_bps, pair_floor)
-        else:
-            min_q = max(1, int(getattr(bot, "min_quote_half_spread_bps", 2)))
-            gfloor = max(min_q, int(bot.adaptive_spread_floor_bps))
-            pair_floor = (
-                pc.spread_floor_bps if pc.spread_floor_bps is not None else min_q
-            )
-            floor_bps = max(gfloor, pair_floor)
 
         # --- BASE SPREAD (bootstrap or config; learner adjusts spread_bps) ---
         base_spread_bps, in_bootstrap = self._base_half_spread_bps(pair_key, pc)
@@ -236,20 +297,47 @@ class SpreadEngine:
             )
         self._bootstrap_was_active[pair_key] = in_bootstrap
 
+        # --- HALF-SPREAD FLOOR (graduated ramp) ---
+        fee_bps = self._config.effective_fee_bps(pair_key, self._state.volume_30d)
+        min_q = max(1, int(getattr(bot, "min_quote_half_spread_bps", 2)))
+        survival_pair_floor = pc.spread_floor_bps if pc.spread_floor_bps is not None else min_q
+        survival_floor = max(min_q, int(bot.adaptive_spread_floor_bps), survival_pair_floor)
+
+        if getattr(bot, "per_trade_profitability", True):
+            sells = self._pair_sell_count(self._state, pair_key)
+            if sells < 5:
+                floor_bps = survival_floor
+            elif sells < 10:
+                margin = min(1, PROFITABILITY_MARGIN_BPS)
+                floor_bps = max(fee_bps + margin, survival_floor)
+            else:
+                margin = PROFITABILITY_MARGIN_BPS
+                floor_bps = max(fee_bps + margin, survival_floor)
+        else:
+            floor_bps = survival_floor
+
         effective_spread_bps = max(floor_bps, base_spread_bps)
 
         # Vol guard: widen when realized vol is abnormally high
+        dynamic_widen_bps = 0
         sigma = ps.realized_vol if ps.realized_vol > 0 else 0.0
         if sigma > VOL_WIDEN_THRESHOLD:
-            effective_spread_bps += int(sigma * 10_000 * VOL_WIDEN_SCALE)
+            vol_add = int(sigma * 10_000 * VOL_WIDEN_SCALE)
+            effective_spread_bps += vol_add
+            dynamic_widen_bps += vol_add
 
-        # VPIN / velocity toxicity guard: widen when price moving fast (friend's requirement)
+        # VPIN / velocity toxicity guard: widen when price moving fast
         velocity = ps.mid_velocity_bps if ps.mid_velocity_bps > 0 else 0.0
         if velocity > VELOCITY_WIDEN_FLOOR_BPS:
             vel_add = int((velocity - VELOCITY_WIDEN_FLOOR_BPS) * VELOCITY_WIDEN_SCALE)
             effective_spread_bps += vel_add
-            if vel_add > 0:
-                LOG.debug("VPIN widen %s: velocity=%.1fbps +%dbps", pair_key, velocity, vel_add)
+            dynamic_widen_bps += vel_add
+
+        if dynamic_widen_bps > 0:
+            LOG.info(
+                "Dynamic widen %s: +%dbps (vol=%.5f vel=%.1fbps)",
+                pair_key, dynamic_widen_bps, sigma, velocity,
+            )
 
         # Clamp to ceiling
         effective_spread_bps = min(effective_spread_bps, bot.adaptive_spread_ceiling_bps)
@@ -265,6 +353,15 @@ class SpreadEngine:
 
         reservation = ref + skew
 
+        # Peg-reversion bias for stable/pegged pairs:
+        # quote more aggressively toward the peg side to improve reversion fills.
+        if peg is not None and peg > 0:
+            peg_dev_bps = abs(ref - peg) / peg * 10_000
+            if peg_dev_bps > 1:
+                bias_strength = min(0.5, peg_dev_bps / 50.0)
+                bias = half_spread * bias_strength
+                reservation += bias if ref < peg else -bias
+
         buy_price = reservation - half_spread
         sell_price = reservation + half_spread
 
@@ -273,6 +370,7 @@ class SpreadEngine:
         sell_price = round(sell_price, tick)
 
         self._state.current_spread_bps = effective_spread_bps  # type: ignore[attr-defined]
+        suppress_buy = self._apply_momentum_hold(pair_key)
 
         LOG.debug(
             "TICK %s: micro=%.6f buy=%.6f sell=%.6f spread=%dbps%s",
@@ -281,11 +379,11 @@ class SpreadEngine:
         )
 
         if self._state.mode == "paper":
-            await self._paper_tick(pair_key, buy_price, sell_price)
+            await self._paper_tick(pair_key, buy_price, sell_price, suppress_buy)
         else:
             await self._smart_live_tick(
                 pair_key, buy_price, sell_price,
-                half_spread, effective_spread_bps,
+                half_spread, effective_spread_bps, suppress_buy,
             )
 
     def _paper_fill_check(
@@ -315,7 +413,7 @@ class SpreadEngine:
         return False
 
     async def _paper_tick(
-        self, pair_key: str, buy_price: float, sell_price: float,
+        self, pair_key: str, buy_price: float, sell_price: float, suppress_buy: bool = False,
     ) -> None:
         """Paper mode: virtual limits with realistic fill simulation."""
         pc = self._config.pairs[pair_key]
@@ -339,6 +437,11 @@ class SpreadEngine:
 
         fee_bps = self._config.effective_fee_bps(pair_key, self._state.volume_30d)
 
+        market_spread_bps = (
+            (ps.best_ask - ps.best_bid) / ps.mid_price * 10_000
+            if ps.mid_price > 0 else 0.0
+        )
+
         if filled_buy:
             fee = filled_buy.price * filled_buy.qty * (fee_bps / 10_000)
             self._inventory.record_buy(pair_key, filled_buy.qty, filled_buy.price, fee)
@@ -351,6 +454,15 @@ class SpreadEngine:
                 fee=fee,
                 pnl_delta=0.0,
             )
+            self._state.last_fill_ts[pair_key] = time.time()
+            if self._session_logger is not None:
+                self._session_logger.log_fill(
+                    pair=pair_key, side="buy",
+                    price=filled_buy.price, qty=filled_buy.qty,
+                    fee=fee, pnl=0.0,
+                    spread_bps=pc.spread_bps,
+                    market_spread_bps=market_spread_bps,
+                )
 
         if filled_sell:
             fee = filled_sell.price * filled_sell.qty * (fee_bps / 10_000)
@@ -370,6 +482,15 @@ class SpreadEngine:
                 pnl_delta=net,
                 gross_spread=gross,
             )
+            self._state.last_fill_ts[pair_key] = time.time()
+            if self._session_logger is not None:
+                self._session_logger.log_fill(
+                    pair=pair_key, side="sell",
+                    price=filled_sell.price, qty=filled_sell.qty,
+                    fee=fee, pnl=net,
+                    spread_bps=pc.spread_bps,
+                    market_spread_bps=market_spread_bps,
+                )
 
         cur_spread_bps = getattr(self._state, "current_spread_bps", pc.spread_bps)
         half_spread = ps.mid_price * (cur_spread_bps / 10_000)
@@ -396,7 +517,7 @@ class SpreadEngine:
             for o in self._state.active_orders.values()
         )
 
-        if not has_buy and self._inventory.can_buy(pair_key):
+        if not suppress_buy and not has_buy and self._inventory.can_buy(pair_key):
             await self._paper_mgr.place_order(
                 pair_key, pc.symbol, "buy", buy_price, pc.order_size,
             )
@@ -431,7 +552,7 @@ class SpreadEngine:
             if distance_bps <= NEAR_FILL_BPS:
                 near_fill = True
 
-        if near_fill:
+        if near_fill and age <= NEAR_FILL_MAX_AGE_SEC:
             return None
 
         if age > STALE_ORDER_SEC:
@@ -449,6 +570,7 @@ class SpreadEngine:
         sell_price: float,
         half_spread: float,
         effective_spread_bps: int,
+        suppress_buy: bool = False,
     ) -> None:
         """Live mode with smart cancellation — only cancel orders that need it."""
         # Backoff: if a recent order was rejected, skip for 5 seconds to avoid spam
@@ -490,7 +612,7 @@ class SpreadEngine:
         elif not to_cancel:
             self._state.last_cancel_reason.pop(pair_key, None)
 
-        if existing_buy is None and self._inventory.can_buy(pair_key):
+        if not suppress_buy and existing_buy is None and self._inventory.can_buy(pair_key):
             await mgr.place_order(
                 pair_key, pc.symbol, "buy", buy_price, pc.order_size,
             )
@@ -679,9 +801,17 @@ _PAIR_SMART_DEFAULTS: dict[str, dict] = {
         "bootstrap_until_sell_trades": 10,
     },
     "XRP_USDT": {
-        "spread_bps": 40,
-        "order_size": 15.0,
-        "max_inventory": 200.0,
+        "spread_bps": 8,
+        "order_size": 30.0,
+        "max_inventory": 300.0,
+        "cycle_ms": 500,
+        "bootstrap_half_spread_bps": 8,
+        "bootstrap_until_sell_trades": 20,
+    },
+    "XRP_USD": {
+        "spread_bps": 8,
+        "order_size": 30.0,
+        "max_inventory": 300.0,
         "cycle_ms": 500,
         "bootstrap_half_spread_bps": 8,
         "bootstrap_until_sell_trades": 20,
@@ -693,12 +823,42 @@ _PAIR_SMART_DEFAULTS: dict[str, dict] = {
         "cycle_ms": 500,
     },
     "USDG_USD": {
-        "spread_bps": 4,
+        "spread_bps": 3,
         "order_size": 50.0,
         "max_inventory": 500.0,
         "cycle_ms": 500,
     },
-    "BTC_USDT": {
+    "USDG_USDT": {
+        "spread_bps": 4,
+        "order_size": 30.0,
+        "max_inventory": 200.0,
+        "cycle_ms": 500,
+    },
+    "USDG_USDC": {
+        "spread_bps": 3,
+        "order_size": 30.0,
+        "max_inventory": 200.0,
+        "cycle_ms": 500,
+    },
+    "USDE_USD": {
+        "spread_bps": 3,
+        "order_size": 40.0,
+        "max_inventory": 400.0,
+        "cycle_ms": 500,
+    },
+    "USDE_USDT": {
+        "spread_bps": 4,
+        "order_size": 40.0,
+        "max_inventory": 400.0,
+        "cycle_ms": 500,
+    },
+    "USDE_USDC": {
+        "spread_bps": 4,
+        "order_size": 30.0,
+        "max_inventory": 300.0,
+        "cycle_ms": 500,
+    },
+    "BTC_USDT": {  # Kraken symbol is XBT/USDT
         "spread_bps": 40,
         "order_size": 0.0005,
         "max_inventory": 0.004,
@@ -709,5 +869,13 @@ _PAIR_SMART_DEFAULTS: dict[str, dict] = {
         "order_size": 0.005,
         "max_inventory": 0.04,
         "cycle_ms": 500,
+    },
+    "SOL_USD": {
+        "spread_bps": 36,
+        "order_size": 0.2,
+        "max_inventory": 2.0,
+        "cycle_ms": 500,
+        "bootstrap_half_spread_bps": 24,
+        "bootstrap_until_sell_trades": 10,
     },
 }

@@ -15,7 +15,7 @@ else:
     import tomli as tomllib
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-PROFITABILITY_MARGIN_BPS = 4
+PROFITABILITY_MARGIN_BPS = 2
 
 
 @dataclass
@@ -26,6 +26,7 @@ class PairConfig:
     max_inventory: float = 300.0
     fee_bps: int = 25  # static fallback; overridden at runtime by volume tier
     fee_override: bool = False  # True = ignore volume tier, use fee_bps as-is
+    fee_schedule: str = "spot_crypto"
     cycle_ms: int | None = None  # falls back to global default
     spread_floor_bps: int | None = None  # per-pair floor overrides global
     peg_price: float | None = None  # for stablecoin depeg detection (e.g. 1.0)
@@ -72,6 +73,14 @@ class BotConfig:
     # If recent sells avg negative P&L, bias toward widening (learn from losing trades).
     learner_loss_lookback_sells: int = 5
     learner_widen_on_avg_loss: bool = True
+    learner_lookback_max_age_sec: float = 3600.0  # ignore fills older than this for P&L
+    # No-fill decay: tighten spread when idle to attract fills.
+    decay_start_sec: float = 90.0      # seconds of no fills before decay starts
+    decay_interval_sec: float = 60.0   # tighten 1 step every N seconds after that
+    decay_step_bps: int = 1            # bps per decay step (half the learner step)
+    pain_floor_decay_hours: float = 4.0  # pain floor lowers 1 bps every N hours
+    momentum_hold_sells: int = 2
+    momentum_hold_sec: float = 60.0
     depeg_threshold_bps: int = 50
     # When True (default): half-spread is clamped to fee_bps + margin — every round-trip
     # can be net-positive after fees. When False ("survival" / volume-building): floor is
@@ -126,7 +135,7 @@ class AppConfig:
             return maker_fee_bps(volume_30d)
         if pc.fee_override:
             return pc.fee_bps
-        return maker_fee_bps(volume_30d)
+        return maker_fee_bps(volume_30d, pc.fee_schedule)
 
     def pair_keys_for_trading(self) -> list[str]:
         """Pair keys that receive engine ticks (orders)."""
@@ -197,6 +206,13 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         learner_max_daily_adjustments=int(bot_raw.get("learner_max_daily_adjustments", 12)),
         learner_loss_lookback_sells=int(bot_raw.get("learner_loss_lookback_sells", 5)),
         learner_widen_on_avg_loss=bool(bot_raw.get("learner_widen_on_avg_loss", True)),
+        learner_lookback_max_age_sec=float(bot_raw.get("learner_lookback_max_age_sec", 3600.0)),
+        decay_start_sec=float(bot_raw.get("decay_start_sec", 90.0)),
+        decay_interval_sec=float(bot_raw.get("decay_interval_sec", 60.0)),
+        decay_step_bps=int(bot_raw.get("decay_step_bps", 1)),
+        pain_floor_decay_hours=float(bot_raw.get("pain_floor_decay_hours", 4.0)),
+        momentum_hold_sells=int(bot_raw.get("momentum_hold_sells", 2)),
+        momentum_hold_sec=float(bot_raw.get("momentum_hold_sec", 60.0)),
         depeg_threshold_bps=int(bot_raw.get("depeg_threshold_bps", 50)),
         per_trade_profitability=bool(bot_raw.get("per_trade_profitability", True)),
         min_quote_half_spread_bps=int(bot_raw.get("min_quote_half_spread_bps", 2)),
@@ -206,15 +222,20 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         max_drawdown_pct=bot_raw.get("max_drawdown_pct"),
     )
 
+    from .fee_schedule import infer_fee_schedule
+
     pairs: dict[str, PairConfig] = {}
     for key, val in raw.get("pairs", {}).items():
+        symbol = val["symbol"]
+        fee_schedule = val.get("fee_schedule", infer_fee_schedule(symbol))
         pairs[key] = PairConfig(
-            symbol=val["symbol"],
+            symbol=symbol,
             spread_bps=val.get("spread_bps", 8),
             order_size=val.get("order_size", 30.0),
             max_inventory=val.get("max_inventory", 300.0),
             fee_bps=val.get("fee_bps", 25),
             fee_override=bool(val.get("fee_override", False)),
+            fee_schedule=fee_schedule,
             cycle_ms=val.get("cycle_ms"),
             spread_floor_bps=val.get("spread_floor_bps"),
             peg_price=val.get("peg_price"),
