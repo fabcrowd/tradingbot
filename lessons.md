@@ -106,6 +106,34 @@ and post-mortem fixes. If this conflicts with older sections below, prefer this 
   - suppress bad re-entry after momentum exits,
   - enforce portfolio-level stops with clear halt reason.
 
+### 13) Live no-fill diagnostic (validated runtime state)
+
+Observed during active live session (`session_20260401_105104.jsonl` + runtime logs):
+
+- Bot health was normal:
+  - WS connections/auth succeeded,
+  - engine running,
+  - recurring order placement on enabled pairs,
+  - stale-cancel and re-quote loop functioning,
+  - no risk-halt trigger, no crash/traceback.
+- Fills were still zero over extended runtime windows.
+
+Interpretation:
+
+- This pattern indicates **quote competitiveness** (or low touch-through frequency),
+  not a dead engine.
+- TEL often quoted wider than prevailing actionable market conditions.
+- USDG remained active but did not get crossed within observed windows.
+
+Operational guidance:
+
+- If health is good but fills remain zero, tune for fill acquisition first:
+  - tighten spread incrementally on affected pair(s),
+  - optionally shorten stale window for faster repricing,
+  - reassess after a fixed observation window.
+- Keep risk controls portfolio-level while tuning; do not remove halt guards.
+- Treat unsupported subscription warnings as cleanup tasks (noise), not immediate root cause.
+
 ---
 
 ## 1. Dynamic Spread Widening (Volatility Guard)
