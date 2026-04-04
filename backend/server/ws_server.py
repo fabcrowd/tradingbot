@@ -491,6 +491,14 @@ class DashboardServer:
             await self._broadcast({"type": "snapshot", "data": self._state.snapshot()})
             await self._broadcast({"type": "config", "data": self._config_snapshot()})
 
+        elif action == "restart_process":
+            import sys, os
+            LOG.info("Restart process requested via dashboard — re-execing now")
+            await self._broadcast({"type": "alert", "severity": "info",
+                                   "title": "Restarting", "message": "Process restarting, config will reload from disk..."})
+            await asyncio.sleep(0.5)
+            os.execv(sys.executable, [sys.executable] + sys.argv)
+
         elif action == "reseed_barriers":
             pair_key = msg.get("pair_key", "")
             if not pair_key or pair_key not in self._config.pairs:
