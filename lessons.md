@@ -1321,7 +1321,7 @@ brief cooldown, then re-place at current market levels.
 
 **Files:** `live_order_manager.py`, `state.py`, `spread_engine.py`, `config.py`, `config.toml`
 
-### 55) Underwater cost basis permanently locks sells — need a manual reseed path
+### 55) Underwater cost basis permanently locks sells — auto-reseed on START
 
 **Problem:** After accumulating 8,754 DRIFT at an average cost of ~$0.0433, the market
 dropped to ~$0.038. The fill barrier (`fill_barriers.json`) stored the buy at $0.04492.
@@ -1382,7 +1382,28 @@ It had entered a silent accumulation trap with no automated exit.
   `spread_bps` for DRIFT_USD: 50 → 25 (50 bps total, inside the natural market spread).
   `order_size` / `sell_order_size`: 200 → 225 (225/3 levels = 75 each = Kraken minimum).
 
-**Operator workflow to unblock a stuck position:**
+**Auto-reseed on START (added after initial fix):**
+
+The manual workflow above was a first step, but the real answer is the bot should detect and
+fix this itself. `barrier_auto_reseed_pct` (default `5.0`) enables this: at the top of the
+START handler, after `load_barriers()` runs, the engine checks every pair:
+
+```
+if min_profitable_sell_price(pair) > mid_price × (1 + barrier_auto_reseed_pct / 100):
+    reseed_barriers_at_mid(pair)
+    learner.reset_pair(pair)
+```
+
+For DRIFT with `min_sell=$0.0451` and `mid=$0.038`: threshold is `$0.038 × 1.05 = $0.0399`.
+Since `0.0451 > 0.0399`, the reseed fires automatically — no operator action needed. The
+dashboard shows a green "Barriers Reseeded" toast on completion.
+
+Configure `barrier_auto_reseed_pct` in `config.toml`:
+- `5.0` (default): reseed if sell floor is >5% above market — handles overnight dips
+- `10.0`: more tolerant of temporary drawdowns before accepting the loss
+- `0`: disable auto-reseed entirely (manual-only via `reseed_barriers` action)
+
+**Manual override still available (for mid-session use):**
 ```
 Option A (hot, no restart):
   Send: { "action": "reseed_barriers", "pair_key": "DRIFT_USD" }
@@ -1390,13 +1411,17 @@ Option A (hot, no restart):
 
 Option B (clean restart):
   Dashboard → Full Reset (shift-click) → START
-  Barriers saved as empty → load_barriers() seeds from current mid on START.
+  Barriers saved as empty → load_barriers() seeds from current mid → auto-reseed check
+  is a no-op (no barriers loaded means no underwater check needed).
 ```
 
 **Key lessons:**
 - The fill barrier system protects against realizing losses on individual fills. It does NOT
-  protect against a regime where the entire position is permanently underwater. A manual
-  operator escape hatch is required for this case.
+  protect against a regime where the entire position is permanently underwater. An automated
+  detection-and-reset path is required — not just an operator escape hatch.
+- Auto-reseed fires at START time when the book is live and `mid_price` is populated. If
+  the book hasn't connected yet (mid=0), the check is skipped and the stale barrier persists
+  until the next START. This is rare but worth knowing.
 - Triple barrier protection only applies to NEW fills. Pre-existing inventory has no
   stop-loss unless explicitly backfilled. `reseed_barriers_at_mid()` fixes this by creating
   a fresh barrier with current-price stop/tp on the entire position.

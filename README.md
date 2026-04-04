@@ -251,6 +251,7 @@ Optional `[bot]` settings in `config.toml`:
 - `btd_enabled`, `btd_sma_short/long`, `btd_levels`, `btd_step_bps`: Buy-the-Dip on SMA downtrend
 - `abort_on_withdraw_permission`: Abort if API key has withdrawal access
 - `fill_cooldown_sec`: Seconds to pause same-side quoting after a fill (default 5.0)
+- `barrier_auto_reseed_pct`: Auto-reseed cost basis at START if sell floor exceeds market by this % (default 5.0, set 0 to disable)
 - `mev_detection_enabled`, `mev_bot_widen_scale`, etc.: Bot detection and counter-strategy
 - `mev_bot_score_threshold`, `mev_detector_window_sec`: Tune detection sensitivity per book depth
 - `min_order_qty` (per pair): Exchange minimum order volume — levels auto-reduce to fit
@@ -262,18 +263,25 @@ entry price, quantity, and (if `triple_barrier_enabled`) stop/tp/time-limit exit
 `min_profitable_sell_price()` uses the cheapest barrier to floor sell prices above breakeven.
 
 **When the position goes underwater** (market drops below all barriers), sells are suppressed.
-To reset the cost basis to current market price and unlock two-sided trading:
+The bot auto-detects this at START and reseeds to current market mid automatically.
 
+**Auto-reseed:** At every START, after loading barriers from disk, the engine checks whether
+`min_profitable_sell_price > mid × (1 + barrier_auto_reseed_pct / 100)`. If so, it calls
+`reseed_barriers_at_mid()` automatically — no operator action required. Tune the threshold
+in `config.toml` (`barrier_auto_reseed_pct`, default `5.0`). Set to `0` to disable.
+
+**Manual override** (use mid-session without restart):
 ```
-Option A — live, no restart:
-  Send via browser console:
-  new WebSocket(`ws://${location.host}/ws`).onopen = function() {
-    this.send(JSON.stringify({ action: "reseed_barriers", pair_key: "DRIFT_USD" }));
-  }
+Send via browser console:
+new WebSocket(`ws://${location.host}/ws`).onopen = function() {
+  this.send(JSON.stringify({ action: "reseed_barriers", pair_key: "DRIFT_USD" }));
+}
+```
 
-Option B — on next restart:
-  Dashboard → Full Reset (shift-click) → START
-  Barriers are wiped, reseeded from current mid on START.
+**Full reset path** (cleanest, clears all state):
+```
+Dashboard → Full Reset (shift-click) → START
+Barriers wiped → load_barriers() seeds from current mid → auto-reseed check is a no-op.
 ```
 
 On `load_barriers()` at startup, if the barrier file is empty or missing, the bootstrap

@@ -30,6 +30,7 @@ pain_floor_decay_hours = 1
 momentum_hold_sells = 4
 momentum_hold_sec = 30
 fill_cooldown_sec = 5.0
+barrier_auto_reseed_pct = 5.0    # auto-reseed cost basis on START if sell floor >5% above market
 per_trade_profitability = true
 min_quote_half_spread_bps = 1
 min_total_pnl_usd = -10.0

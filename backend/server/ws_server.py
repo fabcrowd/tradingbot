@@ -169,6 +169,29 @@ class DashboardServer:
                     for key in self._config.pairs:
                         self._runtime.inventory.seed_cost_basis_from_mid(key)
                     LOG.info("Cost basis loaded (persisted or mid-seeded)")
+                    # Auto-reseed any pair whose sell floor is >N% above current market mid.
+                    # Detects underwater barriers on startup so the operator doesn't have to.
+                    auto_pct = self._config.bot.barrier_auto_reseed_pct
+                    if auto_pct > 0:
+                        inv = self._runtime.inventory
+                        for key in self._config.pairs:
+                            ps = self._state.pairs.get(key)
+                            if ps is None or not ps.pending_barriers:
+                                continue
+                            if ps.mid_price <= 0:
+                                continue
+                            min_sell = inv.min_profitable_sell_price(key)
+                            threshold = ps.mid_price * (1.0 + auto_pct / 100.0)
+                            if min_sell > threshold:
+                                LOG.warning(
+                                    "Auto-reseeding %s: sell_floor=%.5f > mid=%.5f + %.0f%% "
+                                    "— position underwater, resetting cost basis to current market",
+                                    key, min_sell, ps.mid_price, auto_pct,
+                                )
+                                inv.reseed_barriers_at_mid(key)
+                                learner = self._runtime.learner
+                                if learner is not None:
+                                    learner.reset_pair(key)
                 await self._engine.start()
                 sl = self._runtime.session_logger
                 if sl is not None:
