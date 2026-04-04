@@ -1660,3 +1660,51 @@ Stablecoin pairs with 0% maker fees are the correct starting point: math works, 
 directional exposure, fills are predictable.
 
 **Files:** `config.toml`
+
+### 59) per_trade_profitability adds a 2 bps margin even on 0% fee pairs — pushes sell one tick too high
+
+**Problem:** USDG/USDC was placing sell orders at 1.0002 instead of 1.0001. The market ask
+was 1.0001 so the sell never filled. Bot ran overnight with zero fills despite correct
+order placement logic.
+
+**Root cause:** `PROFITABILITY_MARGIN_BPS = 2` is a hard-coded constant in `config.py`.
+`per_trade_profitability = true` floors the effective spread at `fee_bps + PROFITABILITY_MARGIN_BPS`.
+For USDG/USDC with `fee_bps = 0`: floor = `0 + 2 = 2 bps` half-spread. At mid = 1.0000,
+sell = 1.0000 + 0.0002 = 1.0002 — one tick above the market ask. Never fills.
+
+The margin is designed as a buffer above fees. On a 0% fee pair, the margin itself becomes
+the floor — there's no fee to buffer above, so the bot quotes unnecessarily wide.
+
+**Fix:** `per_trade_profitability = false` in `config.toml`. The `spread_floor_bps = 1`
+already enforces the minimum. With 0% fees, every fill at any spread > 0 is profitable.
+
+**Warning:** If re-enabling pairs with non-zero fees (XRP, DRIFT, TEL), turn
+`per_trade_profitability` back on — it protects against quoting below fee breakeven.
+Consider making it a per-pair setting rather than a global flag if running mixed fee pairs.
+
+**Files:** `config.toml`
+
+### 60) Stop/Start from dashboard does not reload config.toml — full process restart required
+
+**Problem:** After changing `per_trade_profitability = false` in `config.toml`, pressing
+STOP then START from the dashboard had no effect — sell orders still landed at 1.0002.
+
+**Root cause:** `load_config()` is called once in `main.py` at process startup. The
+dashboard START button calls `engine.start()` — it does not re-read `config.toml`.
+The in-memory `AppConfig` object is never refreshed by stop/start cycles.
+
+**Fix:** Added a **RESTART PROCESS** button to the dashboard (red-tinted, next to SOFT RESTART).
+Sends `{ action: "restart_process" }` via WebSocket. Backend handler:
+```python
+os.execv(sys.executable, [sys.executable] + sys.argv)
+```
+Replaces the running process in-place with a fresh copy, reloading all config from disk.
+Broadcasts a "Restarting..." alert before exec so the operator sees feedback.
+
+**Workflow for any config.toml change:**
+1. Edit `config.toml`
+2. Dashboard → RESTART PROCESS (confirm dialog)
+3. Bot restarts, picks up new config, reconnects to Kraken WS
+4. Press START
+
+**Files:** `frontend-new/src/App.tsx`, `backend/server/ws_server.py`
