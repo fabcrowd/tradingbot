@@ -1571,3 +1571,92 @@ nothing but cancel churn. The 1.5× drift multiplier guards against stale prices
 need to fire when the rounded price hasn't moved.
 
 **Files:** `spread_engine.py`
+
+### 58) Pair selection is the most important decision — fee economics must work before anything else
+
+**Context:** The bot was running on DRIFT/USD and consistently losing money despite multiple
+spread, learner, and barrier fixes. Root cause was not the bot — it was the pair choice.
+
+**Why DRIFT was wrong:**
+
+DRIFT is a speculative token in a downtrend. Market making on a directional asset creates
+**adverse selection**: informed sellers hit your bids because they know the price is falling,
+while nobody fills your asks. The bot accumulates inventory at worsening prices. No spread
+tuning fixes this — it's structural. Additional problems with DRIFT specifically:
+
+- Thin book ($20–$50 at top). Our own order often *is* the market. Any fill is against
+  someone who specifically chose to trade with us — almost always a bad sign.
+- 23 bps maker rebate sounds attractive but doesn't compensate for inventory losses on a
+  falling asset.
+- After accumulating 8,754 units at ~$0.043 average, market dropped to ~$0.038.
+  Sell suppression kicked in. Bot was stuck in a one-sided accumulation loop with no exit.
+
+**The correct pair selection criteria for this strategy:**
+
+1. **Both sides pegged to $1** (stablecoin vs stablecoin). No directional inventory risk.
+   A fill on either side just swaps one dollar token for another.
+2. **0% maker fee** (or maker rebate). Spread floor is 0 — any spread > 0 is profit.
+3. **Enough volume for regular fills.** Target >$200K daily volume minimum.
+4. **Natural spread ≥ 1 bps.** If the market spread is 0, there's no room to quote.
+
+**Pairs evaluated (April 2026):**
+
+| Pair | Daily Vol | Maker Fee | Verdict |
+|------|-----------|-----------|---------|
+| USDE/USDC | ~$8K | 0% | Too thin — maybe a few fills/day |
+| USDE/USDT | ~$46K | 0% | Too thin for reliable income |
+| USDG/USDT | ~$510K | 0% | Good — but check current volume |
+| **USDG/USDC** | **~$600K** | **0%** | **Selected — best volume + 0% fees** |
+| DRIFT/USD | ~$426K | -23 bps rebate | Directional — adverse selection |
+| TEL/USD | ~$30K | -23 bps rebate | Directional — same problem |
+| XRP/USDT | ~$1.6M | 25 bps | Fee floor too high — needs wide spread |
+
+**USDG/USDC setup:**
+
+```toml
+[pairs.USDG_USDC]
+symbol = "USDG/USDC"
+spread_bps = 1
+order_size = 10.0
+max_inventory = 0          # stablecoin — no inventory accumulation
+fee_bps = 0
+fee_schedule = "usdg"
+spread_floor_bps = 1
+```
+
+Funded with ~$300 USDG + ~$300 USDC. Equal split on both sides so the bot can quote
+continuously on both the buy and sell. `max_inventory = 0` means no cap enforcement —
+the bot will always quote both sides regardless of which token it currently holds more of.
+
+**What to watch on first run:**
+
+1. **Balance sync** — logs should show both USDG and USDC balances > 0 after Kraken sync
+2. **Book connects** — `best_bid` and `best_ask` should populate within a few seconds of START
+3. **Orders placed** — both a buy AND sell order should appear within the first 3s cycle.
+   If only one side appears, check `can_buy`/`can_sell` logs for a balance or inventory issue.
+4. **Spread width** — at 1 bps half, orders land at mid ± ~$0.0001. Confirm they're at or
+   near top of book. If the natural spread is 0 (bid == ask), the bot can't quote profitably
+   and will sit idle — check the live book depth.
+5. **Fill rate** — at $600K daily volume and $10 order size, expect fills throughout the day.
+   If 30+ minutes pass with no fills, the spread is too wide or orders are not at top of book.
+6. **No sell suppression** — stablecoin pair has no fill barriers. `min_profitable_sell_price`
+   returns 0.0 when `pending_barriers` is empty, meaning sells are never suppressed.
+   If you see `suppress_sell` in logs on this pair, something is wrong.
+7. **Learner behavior** — at 1 bps floor and 0% fee, the learner has almost no room to
+   tighten. It will mostly sit at the floor. That's correct — 1 bps is already optimal.
+   Watch that it doesn't decay below 1 bps (should be blocked by `spread_floor_bps = 1`).
+
+**How to check live market spread before starting:**
+```
+https://api.kraken.com/0/public/Ticker?pair=USDGUSDC
+```
+`b[0]` = best bid, `a[0]` = best ask. If `ask - bid < 0.0001` the natural spread is
+sub-tick and there's no room. If it's 0.0001–0.0003, the bot can sit inside it.
+
+**Key lesson:** Don't run market making on directional assets unless you have a deliberate
+inventory hedge or a strong reason to believe the trend is neutral. The fee rebate on DRIFT
+looked attractive but was irrelevant — inventory losses swamped the rebate income by 10×.
+Stablecoin pairs with 0% maker fees are the correct starting point: math works, no
+directional exposure, fills are predictable.
+
+**Files:** `config.toml`

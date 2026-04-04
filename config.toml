@@ -6,7 +6,7 @@ log_level = "INFO"
 [bot]
 mode = "live"
 default_cycle_ms = 3000
-enabled_pairs = ["DRIFT_USD"]
+enabled_pairs = ["USDG_USDC"]
 adaptive_tuning = false
 adaptive_interval_sec = 90
 adaptive_min_sample_sells = 10
@@ -193,6 +193,17 @@ min_order_qty = 75.0
 fee_bps = 23
 fee_schedule = "maker_rebate"
 inventory_skew_scale = 0.6
+
+# --- USDG/USDC: 0% maker. ~600K daily vol. Stablecoin pair — no inventory risk.
+# Any spread > 0 is pure profit. Quote at 1 bps half = 2 bps total width.
+[pairs.USDG_USDC]
+symbol = "USDG/USDC"
+spread_bps = 1
+order_size = 10.0
+max_inventory = 0
+fee_bps = 0
+fee_schedule = "usdg"
+spread_floor_bps = 1
 
 # --- Additional pairs (disabled — enable from dashboard when ready) ---
 
