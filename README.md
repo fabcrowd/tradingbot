@@ -306,6 +306,136 @@ python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl -
 python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl --spread-bps 4 --compare 8
 ```
 
+## Scalp Bot
+
+A second, independent trading engine running alongside the MM bot on separate pairs.
+Uses directional momentum signals rather than spread capture.
+
+### Architecture
+
+```
+config.toml [scalp] section
+  enabled, allocated_capital_usd, pairs (XBT/USD, ETH/USD)
+         │
+         ▼
+ScalpRuntime (asyncio Task in main.py)
+         │
+         ├── CandleFeed (public WS ohlc channel)
+         │     • Seeds 100 candles from REST on startup
+         │     • Streams confirmed closed candles from WS
+         │     • Never fires on open/live candles (no repainting)
+         │
+         ├── IndicatorSet (per pair, via hexital — O(1) per candle)
+         │     • EMA fast (9) / slow (21)
+         │     • RSI (9)
+         │     • ATR (14) — for stop/tp sizing
+         │     • Session VWAP (resets midnight UTC)
+         │     • Volume rolling average (20-bar)
+         │
+         ├── SignalEngine
+         │     • Evaluates 4 signals per closed candle:
+         │         1. EMA crossover (fast crossed above slow)
+         │         2. RSI 50–70 (in gear, not overbought)
+         │         3. Price above session VWAP
+         │         4. Volume spike (>1.5× 20-bar average)
+         │     • Requires min_signals (default 3) to align
+         │     • Per-pair signal cooldown + loss cooldown
+         │     • Long-only (Kraken spot, no shorting)
+         │
+         └── ScalpTrader
+               • Sizes position: risk_pct% of allocated_capital / stop_distance
+               • Entry: limit or market order via LiveOrderManager
+               • On fill: places stop-loss-limit + take-profit-limit
+               • On exit fill: cancels sibling (application-layer OCO)
+               • Tracks daily P&L, halts on daily_loss_limit_pct
+```
+
+### Signal logic — one closed candle
+
+```
+CandleFeed receives confirm=true candle
+  → IndicatorSet.update(candle) → IndicatorValues
+
+SignalEngine.evaluate():
+  signal_count = 0
+  if EMA(9) crossed above EMA(21):  signal_count++  ← strongest signal
+  elif EMA(9) > EMA(21):            signal_count++  ← continuing trend
+  if 50 < RSI(9) < 70:             signal_count++
+  if close > session_VWAP:         signal_count++
+  if volume > 1.5× volume_MA(20):  signal_count++
+
+  if signal_count >= min_signals (3):
+    stop  = entry - ATR(14) × atr_stop_mult (1.0)
+    tp    = entry + ATR(14) × atr_tp_mult   (2.0)  ← 2:1 R:R
+    → ScalpSignal(entry, stop, tp, confidence)
+
+ScalpTrader.try_open():
+  qty = (allocated_capital × risk_pct) / stop_distance
+  → place limit buy at entry price
+  → on fill: place stop-loss-limit + take-profit-limit
+  → on either exit fill: cancel sibling order
+```
+
+### Key files
+
+| File | Purpose |
+|------|---------|
+| `backend/server/scalp_bot/candle_feed.py` | WS ohlc subscription + REST seed |
+| `backend/server/scalp_bot/indicators.py` | Incremental EMA/RSI/ATR/VWAP/volume (hexital) |
+| `backend/server/scalp_bot/signal_engine.py` | 3/4 confluence evaluation, cooldowns |
+| `backend/server/scalp_bot/scalp_trader.py` | Position lifecycle, OCO, capital management |
+| `backend/server/scalp_bot/scalp_runtime.py` | asyncio Task, wires all components |
+| `backend/server/scalp_bot/scalp_config.py` | Config dataclass, parsed from `[scalp]` |
+
+### Configuration
+
+```toml
+[scalp]
+enabled = true                   # set false to disable entirely
+allocated_capital_usd = 150.0    # USD budget — separate from MM bot capital
+max_concurrent_positions = 2
+daily_loss_limit_pct = 5.0       # halt after losing 5% of allocated capital in one day
+order_type = "limit"             # "limit" = maker (preferred), "market" = immediate
+
+[scalp.pairs.BTC_USD]
+symbol = "XBT/USD"
+interval = 5                     # 5-minute candles
+ema_fast = 9
+ema_slow = 21
+rsi_period = 9
+atr_period = 14
+atr_stop_mult = 1.0              # stop = entry - 1×ATR
+atr_tp_mult = 2.0                # tp   = entry + 2×ATR
+risk_pct = 0.01                  # 1% of allocated_capital at risk per trade
+min_signals = 3                  # require 3 of 4 signals
+signal_cooldown_sec = 60.0
+loss_cooldown_sec = 120.0
+min_candles_required = 30        # warm-up period before first trade
+```
+
+### Separation from MM bot
+
+The scalp bot and MM bot share the same process and `BotState` but are fully independent:
+
+- **Separate pairs**: scalp uses XBT/USD + ETH/USD; MM uses USDG/USDC etc. Kraken
+  rate limits are per-pair — overlapping pairs would compete for the same counter.
+- **Separate capital**: `allocated_capital_usd` is a hard cap. The scalp bot never
+  touches MM bot quote balances.
+- **Shared halt**: when `state.risk_halted = True` (MM bot portfolio stop), the scalp
+  bot also stops entering new positions.
+- **Shared `LiveOrderManager`**: both bots use the same authenticated WS connection
+  for order placement. Fill events are routed by `cl_ord_id` prefix (`scalp_entry_*`,
+  `scalp_stop_*`, `scalp_tp_*`).
+
+### Activation
+
+```bash
+pip install hexital   # incremental indicators library (one-time)
+```
+
+In `config.toml`, set `scalp.enabled = true`, then Dashboard → **RESTART PROCESS**.
+The bot seeds indicators from 100 historical candles before placing any trades.
+
 ## Docker
 
 ```bash

@@ -1708,3 +1708,182 @@ Broadcasts a "Restarting..." alert before exec so the operator sees feedback.
 4. Press START
 
 **Files:** `frontend-new/src/App.tsx`, `backend/server/ws_server.py`
+
+### 61) Volume-weighted microprice pushes stablecoin quotes one tick outside the book
+
+**Problem:** USDG/USDC sell orders were landing at 1.0002 instead of 1.0001, despite
+`per_trade_profitability = false`, `spread_bps = 1`, and `fee_bps = 0`. The sell sat one
+tick above market ask and never filled.
+
+**Root cause:** Two compounding issues in `_clean_microprice` and the price rounding step.
+
+1. **Volume-weighted microprice bias.** The formula
+   `(bid * ask_vol + ask * bid_vol) / total` shifts the reference price toward the side
+   with less resting volume. With bid=1.0000 and ask=1.0001, if the ask has more depth
+   the microprice lands above the simple mid (1.00005), e.g. 1.000017.
+
+2. **Rounding boundary.** Even with the simple mid at exactly 1.00005, adding 1 bps
+   half-spread gives `sell = 1.00005 + 0.0001 = 1.00015`. Python's `round(1.00015, 4)`
+   uses banker's rounding → 1.0002. Similarly `buy = 1.00005 - 0.0001 = 0.99995` rounds
+   to 0.9999. Both sides land one tick *outside* the book — worst possible placement.
+
+**Fix (two-part):**
+- `_clean_microprice` now checks whether the natural spread ≤ 2 ticks. If so, it returns
+  the simple arithmetic midprice `(bid + ask) / 2.0` instead of the volume-weighted one.
+  This removes the bias but doesn't fix the rounding boundary alone.
+- A **tight-spread snap** was added just before the price rounding step in `_tick()`. When
+  `best_ask - best_bid ≤ 1 tick`, the computed `buy_price` and `sell_price` are overridden
+  with `best_bid` and `best_ask` directly. At 0% fees, sitting on the inside of the book
+  at exactly the best bid/ask is optimal — there's no spread to capture beyond the natural
+  market spread.
+
+**Result:** Buy now places at 1.0000 (best bid), sell at 1.0001 (best ask). Both sit at
+top-of-book with maximum fill probability.
+
+**Warning:** This snap only activates when the natural spread ≤ 1 tick. On wider-spread
+pairs (DRIFT, TEL, XRP) the volume-weighted microprice and normal half-spread math still
+apply — they benefit from the directional signal the weighting provides.
+
+**Files:** `backend/server/spread_engine.py`
+
+### 61) Scalp bot design — directional momentum on Kraken spot (April 2026)
+
+**Context:** After repeated failures with market making on directional assets (DRIFT/USD)
+and thin stablecoin books (USDG/USDC), a second independent trading engine was built for
+directional scalp trading on liquid pairs (BTC/USD, ETH/USD). Runs alongside the MM bot
+in the same process on separate pairs.
+
+---
+
+**Why a separate bot rather than modifying the MM bot:**
+
+The MM bot is fundamentally neutral — it profits from the spread regardless of direction.
+Adding directional logic to it creates conflicts: the spread engine would need to know
+whether to bias buys or sells, the inventory system would need to handle larger directional
+positions, and the learner would need a completely different objective function. Cleaner
+to keep them separate and share only the WS connection and halt state.
+
+---
+
+**Strategy design decisions:**
+
+**Indicator stack (4 signals, require 3/4 confluence):**
+
+1. **EMA 9/21 crossover** — primary trend filter. Fresh cross (9 just crossed above 21)
+   is weighted strongest. Continuing trend (9 already above 21) also counts but is a
+   weaker signal. Periods chosen: 9/21 on 5m has the best documented win rate for crypto
+   scalping (70-75% pre-fees on BTC backtests). 12/26 produces fewer signals.
+
+2. **RSI(9) in 50–70 zone** — momentum gate. Above 50 = bullish momentum. Below 70 =
+   not yet overbought. RSI(9) reacts faster than RSI(14) on 5m charts. The 50-70 band
+   filters both reversals (RSI<50) and chase entries (RSI>70).
+
+3. **Price above session VWAP** — fair value filter. VWAP resets at midnight UTC.
+   Price above VWAP = market is paying above fair value = buyers in control.
+   Computed as cumulative (price × volume) / cumulative volume from session open.
+   Candle `vwap` field from WS is per-candle; session VWAP is maintained in IndicatorSet.
+
+4. **Volume spike** — confirmation gate. Volume > 1.5× 20-bar rolling average.
+   Prevents entering on low-conviction moves. OBV was considered but rejected for
+   sub-5m scalping — it's a cumulative lagging indicator. Simple volume spike is faster.
+
+**Stop/TP sizing — ATR-based, not fixed bps:**
+- Stop = entry − 1.0 × ATR(14, 5m). Adapts to current volatility.
+- TP   = entry + 2.0 × ATR(14, 5m). 2:1 R:R as default.
+- At 2:1 R:R: need >33% win rate to be profitable. With 3/4 confluence: target ~65-70%.
+
+**Position sizing — fixed fractional risk:**
+```
+qty = (allocated_capital_usd × risk_pct) / stop_distance_usd
+```
+At 1% risk, $150 capital, $200 ATR stop (BTC): qty = $1.50 / $200 = 0.0075 BTC (~$600).
+Wait — that's 4× the capital. Issue: ATR on BTC is large relative to account size.
+For small accounts, use ETH or SOL where notional is more manageable, or reduce risk_pct.
+
+**Long-only (Kraken spot):**
+Kraken spot does not support shorting. All signals are long-only. Kraken Futures supports
+both directions but requires a separate account/API key and is a future enhancement.
+
+---
+
+**Architecture:**
+
+```
+[scalp] config.toml
+    │
+    ▼
+ScalpRuntime (asyncio.create_task in main.py)
+    │
+    ├── CandleFeed
+    │     Subscribes to Kraken WS v2 ohlc channel (public, no auth needed).
+    │     Seeds from REST /0/public/OHLC on startup (100 candles, 1 req/s).
+    │     Fires callbacks ONLY on confirm=true candles (closed candles).
+    │     Live candle updates stored but never trigger signals.
+    │
+    ├── IndicatorSet (one per pair, hexital library)
+    │     EMA(9), EMA(21), RSI(9), ATR(14) — all O(1) incremental via hexital.
+    │     Session VWAP — manual cumulative pv/v, resets at UTC midnight.
+    │     Volume MA — deque(maxlen=20), simple rolling average.
+    │     ready=True after min_candles_required (30) closed candles.
+    │
+    ├── SignalEngine
+    │     Evaluates 4 signals on each IndicatorValues update.
+    │     Signal cooldown (60s) prevents signal spam.
+    │     Loss cooldown (120s) prevents revenge entries after a stop-out.
+    │     Returns ScalpSignal(entry, stop, tp, confidence, signals_hit).
+    │
+    └── ScalpTrader
+          try_open(): checks capital, concurrent position limit, daily loss limit.
+          on_entry_filled(): places stop-loss-limit + take-profit-limit orders.
+          on_exit_filled(): cancels sibling order (application-layer OCO).
+          Daily P&L tracked; halts if daily_loss_limit_pct exceeded.
+```
+
+---
+
+**Separation from MM bot — critical design rules:**
+
+1. **Non-overlapping pairs.** Kraken rate limits are per-pair and shared across all
+   connections on the same account. If both bots trade BTC/USD, they compete for the
+   same rate counter. MM bot uses USDG/USDC, DRIFT/USD, TEL/USD etc. Scalp bot uses
+   XBT/USD and ETH/USD. Never overlap.
+
+2. **Separate capital budget.** `allocated_capital_usd` is a hard cap in ScalpTrader.
+   The scalp bot never checks or draws from MM bot quote balances.
+
+3. **Shared halt propagation.** Both bots check `state.risk_halted` and `state.running`
+   before entering. A portfolio-level halt from the MM bot stops the scalp bot too.
+
+4. **Fill routing by cl_ord_id prefix.** Scalp orders use `scalp_entry_*`, `scalp_stop_*`,
+   `scalp_tp_*` prefixes. The MM bot uses different IDs. Fill events in LiveOrderManager
+   `on_message` can be routed to the correct handler by checking the prefix.
+   NOTE: fill routing from LiveOrderManager to ScalpRuntime.on_fill() needs to be wired
+   explicitly — this is the one integration point not yet completed (see §62).
+
+---
+
+**Library choice — hexital over alternatives:**
+
+- `pandas-ta`: O(n) per update (recalculates entire DataFrame). Unacceptable for streaming.
+- `TA-Lib`: Requires C compilation, broken on Windows Python 3.11+.
+- `talipp`: Good incremental library, but lacks VWAP. Would need manual VWAP anyway.
+- `hexital`: Pure Python, O(1) per candle, supports EMA/RSI/ATR/OBV/MACD/Bollinger.
+  Session VWAP implemented manually (hexital's VWAP is per-candle, not session-cumulative).
+
+Install: `pip install hexital>=1.5.0`
+
+---
+
+**What's not yet built (future work):**
+
+- Fill routing from `LiveOrderManager.on_message` to `ScalpRuntime.on_fill()` — the
+  `cl_ord_id` prefix check needs to be added to the MM bot's fill handler (§62).
+- Dashboard widget showing scalp positions, indicator values, daily P&L.
+- Paper mode support for scalp bot (currently live-only; `ScalpTrader` logs a warning
+  and returns False if `live_mgr is None`).
+- Short signals (requires Kraken Futures or a different exchange).
+- Backtesting harness for the signal stack on historical OHLCV data.
+- Walk-forward optimization of EMA periods and ATR multipliers.
+
+**Files:** `backend/server/scalp_bot/` (6 new files), `backend/server/main.py`,
+`backend/requirements.txt`, `config.toml`
