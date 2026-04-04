@@ -31,8 +31,16 @@ def _learner_file(mode: str) -> Path:
     return DATA_DIR / f"learner_state_{mode}.json"
 
 
+REGIMES = ("clean", "competitive", "toxic")
+
+
 class StrategyLearner:
-    """Optimizes spread_bps per pair by hill-climbing on profit rate."""
+    """Optimizes spread_bps per pair by hill-climbing on profit rate.
+
+    When MEV detection is enabled, maintains per-regime EMA tracks and pain
+    floors so the learner can discover different optimal spreads for clean
+    vs. bot-heavy market conditions.
+    """
 
     def __init__(
         self,
@@ -59,6 +67,16 @@ class StrategyLearner:
         self._pain_floor_last_decay_ts: dict[str, float] = {}
         self._last_decay_ts: dict[str, float] = {}
         self._prev_fill_count: dict[str, int] = {}
+        self._consecutive_loss_evals: dict[str, int] = {}
+        # Regime-aware state (keyed by f"{pair_key}:{regime}")
+        self._regime_ema: dict[str, float] = {}
+        self._regime_direction: dict[str, int] = {}
+        self._regime_prev_rate: dict[str, float] = {}
+        self._regime_pain_floor: dict[str, dict[str, int]] = {}
+        self._regime_spread_bps: dict[str, dict[str, int]] = {}
+        self._current_regime: dict[str, str] = {}
+        self._regime_dwell_since: dict[str, float] = {}
+        self._REGIME_MIN_DWELL_SEC = 30.0
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         self._load_state()
 
@@ -77,6 +95,14 @@ class StrategyLearner:
         self._pain_floor_last_decay_ts.clear()
         self._last_decay_ts.clear()
         self._prev_fill_count.clear()
+        self._consecutive_loss_evals.clear()
+        self._regime_ema.clear()
+        self._regime_direction.clear()
+        self._regime_prev_rate.clear()
+        self._regime_pain_floor.clear()
+        self._regime_spread_bps.clear()
+        self._current_regime.clear()
+        self._regime_dwell_since.clear()
         self._load_state()
         LOG.info("Learner switched to %s mode", new_mode)
 
@@ -97,6 +123,8 @@ class StrategyLearner:
         bot = self._config.bot
         if not getattr(bot, "learner_enabled", False):
             return
+        if getattr(bot, "optimizer_enabled", False):
+            return
         interval = float(getattr(bot, "learner_interval_sec", 120.0))
         while True:
             try:
@@ -116,7 +144,7 @@ class StrategyLearner:
         if pc is None:
             return 20
         bot = self._config.bot
-        global_floor = max(4, int(getattr(bot, "adaptive_spread_floor_bps", 4)))
+        global_floor = max(1, int(getattr(bot, "adaptive_spread_floor_bps", 2)))
         min_q = max(1, int(getattr(bot, "min_quote_half_spread_bps", 2)))
         survival_pair = pc.spread_floor_bps if pc.spread_floor_bps is not None else min_q
         survival_floor = max(min_q, survival_pair, global_floor)
@@ -138,23 +166,54 @@ class StrategyLearner:
         bot = self._config.bot
         return max(30, int(getattr(bot, "adaptive_spread_ceiling_bps", 100)))
 
-    def _effective_floor(self, pair_key: str) -> int:
-        """Config floor raised by pain floor — decay never goes below this."""
+    def _effective_floor(self, pair_key: str, regime: str | None = None) -> int:
+        """Config floor raised by pain floor — decay never goes below this.
+
+        When regime is provided and MEV detection is on, uses the
+        regime-specific pain floor if available.
+        """
         config_floor = self._pair_floor(pair_key)
         pain = self._pain_floor.get(pair_key, 0)
+        if regime and pair_key in self._regime_pain_floor:
+            regime_pain = self._regime_pain_floor[pair_key].get(regime, 0)
+            pain = max(pain, regime_pain)
         return max(config_floor, pain)
 
     def _decay_pain_floor(self, pair_key: str, now: float) -> None:
-        """Slowly lower the pain floor over time so the bot can re-explore."""
+        """Slowly lower the pain floor over time so the bot can re-explore.
+
+        Safety valve: if the pain floor has been pushed all the way to the
+        ceiling, the learner is trapped — it can never tighten.  In that case,
+        reset pain to the midpoint between config floor and ceiling so the
+        learner can start exploring again immediately.
+        """
         bot = self._config.bot
-        hours = max(0.5, float(getattr(bot, "pain_floor_decay_hours", 4.0)))
+        hours = max(0.5, float(getattr(bot, "pain_floor_decay_hours", 1.0)))
         decay_sec = hours * 3600
         pain = self._pain_floor.get(pair_key, 0)
         if pain <= 0:
             return
+
+        ceiling = self._ceiling()
+        config_floor = self._pair_floor(pair_key)
+
+        if pain >= ceiling:
+            midpoint = (config_floor + ceiling) // 2
+            LOG.warning(
+                "Learner %s: pain floor (%d) hit ceiling (%d) — "
+                "trapped, resetting to midpoint %d",
+                pair_key, pain, ceiling, midpoint,
+            )
+            self._pain_floor[pair_key] = midpoint
+            if self._session_logger is not None:
+                self._session_logger.log_pain_floor(pair_key, pain, midpoint, "ceiling_reset")
+            self._save_state(pair_key, self._config.pairs[pair_key].spread_bps,
+                             self._ema_rate.get(pair_key, 0.0))
+            self._pain_floor_last_decay_ts[pair_key] = now
+            return
+
         last_decay = self._pain_floor_last_decay_ts.get(pair_key, now)
         if now - last_decay >= decay_sec:
-            config_floor = self._pair_floor(pair_key)
             new_pain = max(config_floor, pain - 1)
             if new_pain != pain:
                 LOG.info(
@@ -315,6 +374,39 @@ class StrategyLearner:
             ema = EMA_ALPHA * rate + (1.0 - EMA_ALPHA) * prev_ema
             self._ema_rate[pair_key] = ema
 
+            # --- Regime detection from bot_threat signal ---
+            regime = "clean"
+            mev_enabled = getattr(bot, "mev_detection_enabled", False)
+            ps = self._state.pairs.get(pair_key)
+            if mev_enabled and ps is not None and ps.bot_threat is not None:
+                regime = ps.bot_threat.regime or "clean"
+            prev_regime = self._current_regime.get(pair_key, "clean")
+            regime_changed = regime != prev_regime
+            dwell_since = self._regime_dwell_since.get(pair_key, now)
+            if regime_changed and (now - dwell_since) >= self._REGIME_MIN_DWELL_SEC:
+                if mev_enabled:
+                    self._regime_spread_bps.setdefault(pair_key, {})[prev_regime] = pc.spread_bps
+                self._current_regime[pair_key] = regime
+                self._regime_dwell_since[pair_key] = now
+                if mev_enabled and regime in self._regime_spread_bps.get(pair_key, {}):
+                    saved_spread = self._regime_spread_bps[pair_key][regime]
+                    if saved_spread != pc.spread_bps:
+                        self._engine.update_pair_config(pair_key, spread_bps=saved_spread)
+                        LOG.info(
+                            "Learner %s: regime %s -> %s, restored spread %d",
+                            pair_key, prev_regime, regime, saved_spread,
+                        )
+                if self._session_logger is not None and hasattr(self._session_logger, "log_regime_change"):
+                    self._session_logger.log_regime_change(
+                        pair=pair_key, old_regime=prev_regime, new_regime=regime,
+                        spread_bps=pc.spread_bps,
+                    )
+
+            rkey = f"{pair_key}:{regime}"
+            prev_regime_ema = self._regime_ema.get(rkey, rate)
+            regime_ema = EMA_ALPHA * rate + (1.0 - EMA_ALPHA) * prev_regime_ema
+            self._regime_ema[rkey] = regime_ema
+
             # Recent sell P&L for loss detection (time-capped)
             lookback = max(2, int(getattr(bot, "learner_loss_lookback_sells", 5)))
             recent_pnls: list[float] = []
@@ -340,6 +432,19 @@ class StrategyLearner:
             prev_ema_val = self._prev_rate.get(pair_key, 0.0)
             direction = self._direction.get(pair_key, -1)
 
+            # Track consecutive loss evaluations; after 3 in a row use a larger jump
+            if loss_widen:
+                self._consecutive_loss_evals[pair_key] = (
+                    self._consecutive_loss_evals.get(pair_key, 0) + 1
+                )
+            else:
+                self._consecutive_loss_evals[pair_key] = 0
+
+            # Aggressive widen: 5× step (min 10 bps) after 3 consecutive loss evals
+            effective_step_bps = step_bps
+            if loss_widen and self._consecutive_loss_evals.get(pair_key, 0) >= 3:
+                effective_step_bps = max(step_bps * 5, 10)
+
             if loss_widen:
                 direction = 1
             elif ema >= prev_ema_val:
@@ -350,10 +455,10 @@ class StrategyLearner:
             self._prev_rate[pair_key] = ema
             self._direction[pair_key] = direction
 
-            floor = self._effective_floor(pair_key)
+            floor = self._effective_floor(pair_key, regime if mev_enabled else None)
             ceiling = self._ceiling()
             cur = pc.spread_bps
-            new_spread = cur + direction * step_bps
+            new_spread = cur + direction * effective_step_bps
             new_spread = max(floor, min(ceiling, new_spread))
 
             if new_spread == cur:
@@ -362,7 +467,7 @@ class StrategyLearner:
                     continue
                 direction = -direction
                 self._direction[pair_key] = direction
-                new_spread = cur + direction * step_bps
+                new_spread = cur + direction * effective_step_bps
                 new_spread = max(floor, min(ceiling, new_spread))
 
             if new_spread == cur:
@@ -371,18 +476,27 @@ class StrategyLearner:
             self._engine.update_pair_config(pair_key, spread_bps=new_spread)
             self._adjust_count_today += 1
 
-            # --- Pain floor: remember losing spreads ---
+            # --- Pain floor: remember losing spreads (capped at ceiling - 10) ---
             if loss_widen:
                 self._cooldown[pair_key] = True
                 old_pain = self._pain_floor.get(pair_key, 0)
-                new_pain = max(old_pain, cur)
+                pain_cap = max(ceiling - 10, floor)
+                new_pain = min(max(old_pain, cur), pain_cap)
                 if new_pain != old_pain:
                     self._pain_floor[pair_key] = new_pain
                     LOG.info("Learner %s: pain floor raised %d -> %d", pair_key, old_pain, new_pain)
                     if self._session_logger is not None:
                         self._session_logger.log_pain_floor(pair_key, old_pain, new_pain, "loss_widen")
+                # Also update regime-specific pain floor
+                if mev_enabled:
+                    rpf = self._regime_pain_floor.setdefault(pair_key, {})
+                    old_rpain = rpf.get(regime, 0)
+                    new_rpain = max(old_rpain, cur)
+                    if new_rpain != old_rpain:
+                        rpf[regime] = new_rpain
+                        LOG.info("Learner %s: regime '%s' pain floor %d -> %d",
+                                 pair_key, regime, old_rpain, new_rpain)
             elif not loss_widen and avg_sell_pnl > 0 and direction < 0:
-                # Profitable at this level — cautiously lower pain floor
                 pain = self._pain_floor.get(pair_key, 0)
                 if pain > 0 and cur <= pain + 2:
                     new_pain = max(self._pair_floor(pair_key), pain - 1)
@@ -391,6 +505,14 @@ class StrategyLearner:
                         LOG.info("Learner %s: pain floor lowered %d -> %d (profitable)", pair_key, pain, new_pain)
                         if self._session_logger is not None:
                             self._session_logger.log_pain_floor(pair_key, pain, new_pain, "profitable_fill")
+                # Also lower regime pain floor
+                if mev_enabled:
+                    rpf = self._regime_pain_floor.get(pair_key, {})
+                    rpain = rpf.get(regime, 0)
+                    if rpain > 0 and cur <= rpain + 2:
+                        new_rpain = max(self._pair_floor(pair_key), rpain - 1)
+                        if new_rpain != rpain:
+                            rpf[regime] = new_rpain
 
             arrow = "↓" if new_spread < cur else "↑"
             lw = " loss_learn" if loss_widen else ""
@@ -416,6 +538,7 @@ class StrategyLearner:
                     fills_interval=new_fills,
                 )
             self._save_state(pair_key, new_spread, ema)
+            regime_pain = self._regime_pain_floor.get(pair_key, {}).get(regime, 0) if mev_enabled else 0
             self._state.learner_info[pair_key] = {
                 "spread_bps": new_spread,
                 "rate_per_min": round(ema, 4),
@@ -425,9 +548,14 @@ class StrategyLearner:
                 "fills_this_interval": new_fills,
                 "pain_floor": pain,
                 "decay_active": False,
+                "regime": regime,
+                "regime_ema": round(regime_ema, 4) if mev_enabled else None,
+                "regime_pain_floor": regime_pain if mev_enabled else None,
             }
 
     def _save_state(self, pair_key: str, spread: int, rate: float) -> None:
+        """Persist learner state.  Pain floor and regime pain floors survive
+        across sessions; spread/direction/rate are diagnostic."""
         state: dict = {}
         if self._learner_file.exists():
             try:
@@ -440,6 +568,9 @@ class StrategyLearner:
             "direction": self._direction.get(pair_key, -1),
             "pain_floor": self._pain_floor.get(pair_key, 0),
             "pain_floor_decay_ts": self._pain_floor_last_decay_ts.get(pair_key, 0.0),
+            "regime_pain_floors": self._regime_pain_floor.get(pair_key, {}),
+            "regime_spreads": self._regime_spread_bps.get(pair_key, {}),
+            "current_regime": self._current_regime.get(pair_key, "clean"),
             "updated": time.time(),
         }
         try:
@@ -447,38 +578,96 @@ class StrategyLearner:
         except Exception:
             LOG.debug("Failed to write learner state", exc_info=True)
 
-    def _load_state(self) -> None:
-        if not self._learner_file.exists():
+    def reset_pair(self, pair_key: str) -> None:
+        """Clear pain floor and EMA state so the learner re-explores from the config floor.
+
+        Called on full P&L reset or explicit reseed_barriers dashboard action.
+        """
+        if pair_key not in self._config.pairs:
             return
-        ceiling = self._ceiling()
+        old_pain = self._pain_floor.get(pair_key, 0)
+        self._pain_floor.pop(pair_key, None)
+        self._regime_pain_floor.pop(pair_key, None)
+        self._ema_rate.pop(pair_key, None)
+        self._prev_rate.pop(pair_key, None)
+        self._direction[pair_key] = 0
+        self._pain_floor_last_decay_ts.pop(pair_key, None)
+        self._last_decay_ts.pop(pair_key, None)
+        self._cooldown.pop(pair_key, None)
+        self._consecutive_loss_evals.pop(pair_key, None)
+        pc = self._config.pairs[pair_key]
+        self._save_state(pair_key, pc.spread_bps, 0.0)
+        LOG.info(
+            "Learner %s: reset (old pain_floor=%d, spread back to config %d bps)",
+            pair_key, old_pain, pc.spread_bps,
+        )
+        if self._session_logger is not None:
+            self._session_logger.log_learner(
+                pair=pair_key, action="reset",
+                spread_old=old_pain, spread_new=pc.spread_bps,
+                reason="manual reset",
+                pain_floor=0, idle_sec=0,
+                ema_rate=0.0,
+            )
+
+    def _load_state(self) -> None:
+        """Restore pain_floor and regime state from disk.  spread_bps always
+        starts from config.toml so config changes take effect immediately on
+        restart.  Direction and EMA rate are session-transient."""
+        if not self._learner_file.exists():
+            for pair_key in self._config.pair_keys_for_trading():
+                pc = self._config.pairs.get(pair_key)
+                if pc:
+                    LOG.info("Learner %s: starting at config spread_bps=%d (no saved state)",
+                             pair_key, pc.spread_bps)
+            return
         try:
             state = json.loads(self._learner_file.read_text(encoding="utf-8"))
-            for pair_key, info in state.items():
-                pc = self._config.pairs.get(pair_key)
-                if pc is None:
-                    continue
-                saved_spread = info.get("spread_bps")
-                if isinstance(saved_spread, int) and saved_spread > 0:
-                    floor = self._pair_floor(pair_key)
-                    clamped = max(floor, min(ceiling, saved_spread))
-                    pc.spread_bps = clamped
-                    LOG.info(
-                        "Learner loaded %s: spread_bps=%d%s",
-                        pair_key, clamped,
-                        f" (clamped from {saved_spread})" if clamped != saved_spread else "",
-                    )
-                saved_dir = info.get("direction")
-                if isinstance(saved_dir, int) and saved_dir in (-1, 1):
-                    self._direction[pair_key] = saved_dir
-                saved_rate = info.get("rate_per_min")
-                if isinstance(saved_rate, (int, float)):
-                    self._prev_rate[pair_key] = float(saved_rate)
-                saved_pain = info.get("pain_floor")
-                if isinstance(saved_pain, int) and saved_pain > 0:
-                    self._pain_floor[pair_key] = saved_pain
-                    LOG.info("Learner loaded %s: pain_floor=%d", pair_key, saved_pain)
-                saved_pain_ts = info.get("pain_floor_decay_ts")
-                if isinstance(saved_pain_ts, (int, float)) and saved_pain_ts > 0:
-                    self._pain_floor_last_decay_ts[pair_key] = float(saved_pain_ts)
         except Exception:
             LOG.debug("Failed to load learner state", exc_info=True)
+            return
+
+        for pair_key in self._config.pair_keys_for_trading():
+            pc = self._config.pairs.get(pair_key)
+            if pc is None:
+                continue
+            info = state.get(pair_key, {})
+
+            saved_pain = info.get("pain_floor")
+            if isinstance(saved_pain, int) and saved_pain > 0:
+                ceiling = self._ceiling()
+                pain_cap = max(ceiling - 10, self._pair_floor(pair_key))
+                self._pain_floor[pair_key] = min(saved_pain, pain_cap)
+            saved_pain_ts = info.get("pain_floor_decay_ts")
+            if isinstance(saved_pain_ts, (int, float)) and saved_pain_ts > 0:
+                self._pain_floor_last_decay_ts[pair_key] = float(saved_pain_ts)
+
+            regime_pf = info.get("regime_pain_floors")
+            if isinstance(regime_pf, dict):
+                cleaned = {}
+                for r, v in regime_pf.items():
+                    if r in REGIMES and isinstance(v, (int, float)) and v > 0:
+                        cleaned[r] = int(v)
+                if cleaned:
+                    self._regime_pain_floor[pair_key] = cleaned
+
+            regime_spreads = info.get("regime_spreads")
+            if isinstance(regime_spreads, dict):
+                cleaned_rs = {}
+                for r, v in regime_spreads.items():
+                    if r in REGIMES and isinstance(v, (int, float)) and v > 0:
+                        cleaned_rs[r] = int(v)
+                if cleaned_rs:
+                    self._regime_spread_bps[pair_key] = cleaned_rs
+
+            saved_regime = info.get("current_regime", "clean")
+            if saved_regime in REGIMES:
+                self._current_regime[pair_key] = saved_regime
+
+            pain = self._pain_floor.get(pair_key, 0)
+            rpf = self._regime_pain_floor.get(pair_key, {})
+            LOG.info(
+                "Learner %s: starting at config spread_bps=%d, pain_floor=%d, "
+                "regime_pain=%s",
+                pair_key, pc.spread_bps, pain, rpf or "none",
+            )

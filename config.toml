@@ -6,7 +6,7 @@ log_level = "INFO"
 [bot]
 mode = "live"
 default_cycle_ms = 3000
-enabled_pairs = ["USDG_USDT", "TEL_USD"]
+enabled_pairs = ["DRIFT_USD"]
 adaptive_tuning = false
 adaptive_interval_sec = 90
 adaptive_min_sample_sells = 10
@@ -14,11 +14,11 @@ adaptive_lookback_sells = 30
 adaptive_target_win_pct = 48
 adaptive_win_band_pct = 8
 adaptive_spread_step_bps = 2
-adaptive_spread_floor_bps = 2
+adaptive_spread_floor_bps = 25
 adaptive_spread_ceiling_bps = 120
 learner_enabled = true
-learner_interval_sec = 60
-learner_min_samples = 5
+learner_interval_sec = 30
+learner_min_samples = 2
 learner_max_daily_adjustments = 50
 learner_loss_lookback_sells = 5
 learner_widen_on_avg_loss = true
@@ -26,15 +26,79 @@ learner_lookback_max_age_sec = 3600
 decay_start_sec = 90
 decay_interval_sec = 60
 decay_step_bps = 1
-pain_floor_decay_hours = 4
-momentum_hold_sells = 2
-momentum_hold_sec = 60
-per_trade_profitability = false
-min_quote_half_spread_bps = 2
-min_total_pnl_usd = -15.0
+pain_floor_decay_hours = 1
+momentum_hold_sells = 4
+momentum_hold_sec = 30
+fill_cooldown_sec = 5.0
+per_trade_profitability = true
+min_quote_half_spread_bps = 1
+min_total_pnl_usd = -10.0
 daily_profit_target_usd = 20.0
-daily_loss_limit_usd = 15.0
+daily_loss_limit_usd = 10.0
 max_drawdown_pct = 20.0
+rate_limit_order_per_sec = 10
+rate_limit_burst = 20
+threat_quoting_pause = true
+abort_on_withdraw_permission = false
+trailing_stop_enabled = false
+trailing_stop_pct = 50
+take_profit_usd = 10.0
+oco_enabled = false
+oco_stop_bps = 30
+oco_tp_bps = 30
+twap_enabled = false
+twap_slice_count = 5
+twap_duration_sec = 30
+btd_enabled = false
+btd_sma_short = 20
+btd_sma_long = 60
+btd_levels = 3
+btd_step_bps = 20
+btd_size_multiplier = 1.5
+optimizer_enabled = false
+optimizer_interval_sec = 900
+optimizer_train_hours = 4
+optimizer_holdout_pct = 0.25
+optimizer_max_delta_spread_bps = 6
+optimizer_max_delta_size_pct = 50
+optimizer_min_fills = 20
+optimizer_objective = "total_dollar_wins"
+
+# --- Hummingbot-inspired strategies ---
+ping_pong_enabled = true
+hanging_orders_enabled = true
+hanging_orders_cancel_pct = 1.0
+triple_barrier_enabled = true
+tb_stop_pct = 2.0
+tb_tp_pct = 1.5
+tb_max_hold_sec = 3600
+
+# --- Consecutive loss protection ---
+consecutive_loss_halt_count = 3
+consecutive_loss_pause_sec = 300
+
+# --- Time-based quoting (disabled until bot is stable) ---
+time_quoting_enabled = false
+time_peak_start_utc = 13
+time_peak_end_utc = 21
+time_normal_multiplier = 1.15
+time_offpeak_multiplier = 1.35
+time_offpeak_size_pct = 50.0
+
+# --- Market observation warmup ---
+warmup_sec = 30
+warmup_buy_percentile = 25
+
+# --- MEV / Bot Detection ---
+mev_detection_enabled = true
+mev_bot_widen_scale = 0.15         # max 15% wider when heavy bot competition (stay competitive)
+mev_arb_widen_scale = 0.25         # max 25% wider when arb bots active (Phase 2)
+mev_clean_tighten_scale = 0.10     # up to 10% tighter when market is clean (reward for intelligence)
+mev_bot_score_threshold = 0.65     # raised from 0.5 — oscillating scores of 0.3-0.6 were flipping every tick
+mev_detector_window_sec = 120.0    # widened from 60s for smoother signals on thin books
+mev_eigenphi_enabled = false       # Phase 2: on-chain MEV data
+mev_mempool_feed_enabled = false   # Phase 2: mempool monitoring
+
 threat_imbalance_threshold = 0.5
 threat_spread_blowout_ratio = 2.0
 threat_velocity_bps = 15.0
@@ -51,11 +115,14 @@ depeg_threshold_bps = 50
 
 # --- USDG/USDT: 0% maker, 0.01% taker. $510K daily vol, 5bps spread, 9bps range.
 # Inventory: 156 USDG + 217 USDT (shared w/ XRP). Best spread pair.
+# --- USDG/USDT: 0% maker, 0.01% taker. Market spread ~1 bps. Massive resting liquidity.
+# half-spread=1 bps → total ~2 bps. At 0% maker fee any spread > 0 is profit.
+# Must quote at or near top-of-book to get filled in this thick book.
 [pairs.USDG_USDT]
 symbol = "USDG/USDT"
-spread_bps = 2
-order_size = 30.0
-max_inventory = 200.0
+spread_bps = 1
+order_size = 10.0
+max_inventory = 0
 fee_bps = 0
 fee_schedule = "usdg"
 spread_floor_bps = 1
@@ -73,35 +140,60 @@ spread_floor_bps = 8
 
 # --- TEL/USD: maker_rebate 23bps. $30K daily vol, 4.8bps spread.
 # Inventory: 450K TEL + ~$0 USD. Sell-only initially; USD grows from sells.
+# --- TEL/USD: maker_rebate (negative fees = we get paid to provide liquidity).
+# Market spread ~53 bps. Quote at 30 bps half = 60 bps total.
+# At -2 to -23 bps maker fee, even narrow spreads are profitable.
 [pairs.TEL_USD]
 symbol = "TEL/USD"
 spread_bps = 30
-order_size = 50000.0
-max_inventory = 500000.0
+order_size = 2500.0
+max_inventory = 50000.0
 cycle_ms = 3000
 fee_bps = 23
 fee_schedule = "maker_rebate"
-spread_floor_bps = 10
+spread_floor_bps = 25
 
-# --- Additional pairs (disabled — enable from dashboard when ready) ---
-
+# --- USDe pairs: 0% maker, 0% taker (Kraken promo). Thin books = easy queue.
+# USDE/USDT: 3 bps market spread, ~$6K ask / $2K bid at top. Any fill is pure profit.
 [pairs.USDE_USDT]
 symbol = "USDE/USDT"
-spread_bps = 3
-order_size = 20.0
-max_inventory = 50.0
+spread_bps = 2
+order_size = 15.0
+max_inventory = 0
 fee_bps = 0
 fee_schedule = "usde_promo"
-spread_floor_bps = 2
+spread_floor_bps = 1
 
+# USDE/USDC: 2 bps market spread, thinnest book (~$1K-$2K top). Easiest fills.
 [pairs.USDE_USDC]
 symbol = "USDE/USDC"
-spread_bps = 3
-order_size = 20.0
-max_inventory = 50.0
+spread_bps = 2
+order_size = 15.0
+max_inventory = 0
 fee_bps = 0
 fee_schedule = "usde_promo"
-spread_floor_bps = 2
+spread_floor_bps = 1
+
+# --- DRIFT/USD: maker_rebate 23bps maker. ~260 bps market spread, ~$426K daily vol.
+# Thin book ($20-$50 at top) — our $7 order sits in the queue.
+# At 50 bps half-spread: total width ~100 bps, net margin ~54 bps per round-trip after fees.
+# Was 100 bps — see lessons.md #50 (pain floor trap).
+[pairs.DRIFT_USD]
+symbol = "DRIFT/USD"
+spread_bps = 25            # was 50; market natural spread 28-57 bps — 100 bps total was too wide
+spread_floor_bps = 25      # was 50; matches profitability floor (23 bps fee + 2 bps margin)
+order_size = 225.0         # was 200; 225/3 levels = 75/level = Kraken minimum exactly
+sell_order_size = 225.0    # was 200; match order_size
+max_inventory = 10000
+sell_floor_base = 5000.0
+order_levels = 3
+level_step_bps = 40
+min_order_qty = 75.0
+fee_bps = 23
+fee_schedule = "maker_rebate"
+inventory_skew_scale = 0.6
+
+# --- Additional pairs (disabled — enable from dashboard when ready) ---
 
 [pairs.XRP_USD]
 symbol = "XRP/USD"
