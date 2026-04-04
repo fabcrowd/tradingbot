@@ -1534,3 +1534,40 @@ This looks alarming in the logs but has near-zero spread impact because:
 
 **Decision:** Leave the classifier as-is. The phantom liquidity floor (lesson 55) reduces the worst
 log noise. The remaining oscillation is cosmetic and not worth adding EMA smoothing complexity.
+
+### 57) Cancel-replace churn when drift exists pre-rounding but maps to identical tick price
+
+**Problem:** On DRIFT/USD, the bot was canceling and replacing the same order every 3 seconds
+with no fills and no price change. The logs showed `cancel reason: price_drift` repeatedly, but
+the replacement order landed at `0.0339` — identical to the order just cancelled. The bot was
+burning cancel/add API calls in a tight loop with zero benefit.
+
+**Root cause:** `_should_cancel()` computes `drift = abs(order.price - target_price)` in raw
+float space. A tiny microprice shift (e.g. 0.033896 → 0.033902) can produce `drift > half_spread
+× 1.5` even though both values round to `0.0339` at DRIFT's 4-decimal tick size. The replace
+order is placed at `round(target_price, 4) = 0.0339` — the same price already resting on the
+book. Net effect: one cancel + one redundant add, every cycle.
+
+**Fix applied:**
+
+Added a tick-rounding guard inside the `drift > drift_threshold` branch in `_should_cancel()`:
+
+```python
+if drift > drift_threshold:
+    pc = self._config.pairs.get(order.pair_key)
+    if pc is not None:
+        tick = _PRICE_DECIMALS.get(pc.symbol, 8)
+        if round(order.price, tick) == round(target_price, tick):
+            return None   # pre-rounding drift maps to same exchange price — no-op
+    return CancelReason.PRICE_DRIFT.value
+```
+
+The check adds one dict lookup and one round() per cancel evaluation — negligible overhead.
+Works for all pairs automatically via `_PRICE_DECIMALS`.
+
+**Lesson:** Always round to exchange tick precision before deciding whether a reprice is
+meaningful. Float-precision drift below one tick is invisible to the exchange and produces
+nothing but cancel churn. The 1.5× drift multiplier guards against stale prices — it doesn't
+need to fire when the rounded price hasn't moved.
+
+**Files:** `spread_engine.py`
