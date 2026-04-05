@@ -436,6 +436,26 @@ pip install hexital   # incremental indicators library (one-time)
 In `config.toml`, set `scalp.enabled = true`, then Dashboard → **RESTART PROCESS**.
 The bot seeds indicators from 100 historical candles before placing any trades.
 
+### Walk-forward optimization (WFO) and LOOKBACK progress
+
+When `wfo_enabled` is true, the scalp runtime runs `ScalpWalkForwardOptimizer`: periodic rolling train/holdout grid search over stored bars, writing a **champion** parameter set for live trading.
+
+**Config (`[scalp]` in `config.toml`):**
+
+| Key | Role |
+|-----|------|
+| `wfo_enabled` | Master switch for the WFO task and UI block |
+| `wfo_interval_sec` | Seconds between scheduled passes (default 3600); loop sleeps first, then runs |
+| `wfo_train_days` / `wfo_holdout_days` | Rolling window sizes (defaults 14 / 7) |
+| `wfo_min_trades` | Minimum trades for candidate strategies |
+| `wfo_objective` | Scoring objective (e.g. `expectancy_sqrt_n`) |
+
+**Note:** Rolling **step** size for windows defaults to **7 days** in `WFOConfig` (`scalp_wfo.py`) and is not read from TOML unless extended.
+
+**Data readiness:** Before WFO can evaluate multiple rolling folds, each pair needs enough **persisted** OHLC history. The server computes `overall_progress_pct` as the **worst** pair’s readiness: calendar span must cover train+holdout, and there must be at least **two** rolling windows. Bars are loaded with a window of `train + holdout + 3×step + 1` days (same footprint as the optimizer). When a champion is already active, the dashboard **LOOKBACK** bar shows full progress (`ui_progress_pct` = 100%) even if you are still accumulating history for the next run.
+
+**Dashboard (`frontend-new`):** A **LOOKBACK** strip below the header shows progress, short status text, and countdown to the next scheduled WFO pass when `scalp.wfo` is present in snapshots. Restart the backend process after enabling WFO so the snapshot includes the new field.
+
 ## Docker
 
 ```bash

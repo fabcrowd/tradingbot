@@ -1887,3 +1887,49 @@ Install: `pip install hexital>=1.5.0`
 
 **Files:** `backend/server/scalp_bot/` (6 new files), `backend/server/main.py`,
 `backend/requirements.txt`, `config.toml`
+
+### 62) Scalp walk-forward (WFO) data readiness, scheduler, and LOOKBACK UI (April 2026)
+
+**Context:** The scalp bot can run a rolling walk-forward optimizer over stored OHLC bars. Operators needed a clear answer to “how long until WFO can actually pick a champion?” and a visible progress indicator tied to real bar history, not just “enabled in config.”
+
+**Backend — `wfo_data_readiness()` in `backend/server/scalp_bot/scalp_wfo.py`:**
+
+- Loads bars per pair with `last_n_days = train_days + holdout_days + step_days * 3 + 1` (the `+1` matches the bar-store load window used by optimization).
+- For each pair, computes calendar span of loaded bars and `rolling_windows(...)` count. Progress for that pair is `min(span_pct, win_pct)` where:
+  - `span_pct` caps at 100% when the loaded span covers at least `train_days + holdout_days`.
+  - `win_pct` is 100% only when there are at least **2** rolling windows; with 0 windows it stays 0%; with 1 window it is 50%.
+- **`overall_progress_pct`** is the **minimum** across pairs (worst pair drives the headline — all pairs must be ready).
+
+**`ScalpWalkForwardOptimizer.ui_snapshot()`** merges readiness with **`scheduler_status()`** (interval, `seconds_until_next`, last run timestamps from a sleep-then-`run_once()` loop). It adds:
+
+- `champion_active` — true when a champion strategy is already loaded for live use.
+- `data_progress_pct` — same as overall data readiness.
+- `ui_progress_pct` — **100%** when a champion is active; otherwise equals data progress (bar fills to full when trading is already strategy-backed).
+
+**Config (parsed in `scalp_config.py`; `[scalp]` in `config.toml`):**
+
+- `wfo_enabled`, `wfo_interval_sec` (default 3600), `wfo_train_days` (14), `wfo_holdout_days` (7), `wfo_min_trades`, `wfo_objective`.
+- **`step_days`** is defined on `WFOConfig` in `scalp_wfo.py` (default **7**) and is **not** currently wired from TOML — changing it requires code or an explicit config extension.
+
+**Runtime wiring:** `ScalpRuntime.snapshot()` includes `"wfo": ...` when scalp is enabled and `wfo_enabled` is true, passing `champion_active` from whether champion summary exists.
+
+**Frontend — `frontend-new/src/App.tsx` + `types.ts` + `app.css`:**
+
+- **`WfoLookbackStrip`** (label **LOOKBACK**) renders below the main header when `snapshot.scalp.wfo` is present: progress from `ui_progress_pct`, copy distinguishes champion vs “history ready” vs “X% to WFO-ready,” plus countdown to next scheduled pass.
+- Types: `WfoUi`, `WfoPairReadiness`, optional `wfo` on the scalp snapshot.
+
+**Operational notes:**
+
+- Default implied calendar load target is on the order of **14 + 7 + 21 + 1 = 43** days of stored bars before the slowest pair can reach full readiness (subject to `step_days` default).
+- First **periodic** WFO pass after the async loop starts occurs after roughly **`wfo_interval_sec`** (the loop sleeps first, then runs). A separate **warmup** path can trigger `run_once()` earlier when bar thresholds are met (`scalp_runtime.py`).
+- Snapshot schema changes require a **process restart** (or fresh backend) to pick up; the UI only shows the strip when the server sends `scalp.wfo`.
+
+**Files:** `backend/server/scalp_bot/scalp_wfo.py`, `backend/server/scalp_bot/scalp_runtime.py`, `frontend-new/src/App.tsx`, `frontend-new/src/lib/types.ts`, `frontend-new/src/styles/app.css`
+
+### 63) Scalp dashboard resilience: React error boundary
+
+**Problem:** Partial or unexpected snapshot shapes (or bugs in the scalp panel) could white-screen the whole dashboard.
+
+**Mitigation:** `frontend-new/src/App.tsx` defines a small **`ErrorBoundary`** (class component) that catches render errors in its subtree, logs `componentDidCatch` to the console, and shows a fallback UI instead of crashing the entire app. The scalp tab content is wrapped in this boundary so failures are contained to that region.
+
+**Lesson:** For data-heavy tabs driven by evolving WebSocket contracts, an error boundary is cheap insurance during rapid backend/frontend iteration.
