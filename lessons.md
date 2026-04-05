@@ -254,6 +254,24 @@ Implemented guardrails in ingest script:
 
 **Why:** Prevents drift across repeated Stitch exports and keeps frontend updates reproducible.
 
+### 27) 2026-04-05 — Optimized Strategy (`daviddtech_scalp`) wired end-to-end; next exchange target is Coinbase Advanced
+
+**What shipped (DaviddTech-style stack, UI label “Optimized Strategy”):**
+
+- **Vector layer:** `backend/server/scalp_bot/scalp_vec_backtest.py` — Tillson T3, HLC trend bands, Waddah Attar Explosion (histogram + BB), Wilder **ADX** on its own **`adx_period`** (separate from **`atr_period`** for stops), `detect_signals_daviddtech` → long/short masks, `simulate_trades_bidir` for backtest PnL, `daviddtech_live_bundle` for last-bar live/UI values, `evaluate_params` branch + `build_default_grid` entries. `ParamSet` defaults aligned with plan (e.g. T3 length 7, HLC 5 / 13 / 34, WAE 20 / 40, ADX period 14, threshold 20).
+- **Config:** `scalp_config.py` + `[scalp]` / pair sections in `config.toml` — optimized fields loaded per pair; pairs set to `strategy_mode = "daviddtech_scalp"` with 3× ATR stop/TP where specified; **`fee_bps_per_leg = 2.0`** documented as futures-style calibration for WFO/backtest (raise toward ~25 bps for Kraken spot maker if matching live fees).
+- **WFO / tuner / lookback:** `scalp_wfo.py` — `_params_from_config` maps **`auto` → `daviddtech_scalp`** for baseline; champion JSON includes optimized params. `strategy_lookback.py` and `param_tuner.py` list **`daviddtech_scalp`** first / tunables per mode; `apply_tuner_result` maps tuned fields back onto `ScalpPairConfig`.
+- **Live path:** `indicators.py` — rolling OHLC deque + `daviddtech_live_bundle` each close (works even if hexital path fails). `signal_engine.py` — **`auto`** and **`daviddtech_scalp`** use **`optimized_ready` / `optimized_long_setup`**; **Kraken spot stays long-only** (no live short execution). `scalp_runtime.py` — `active_modes` shows **`daviddtech_scalp`** when config mode is **`auto`**; indicator snapshot exposes t3/hlc/wae/adx/optimized flags; entry gating uses **`optimized_ready`** for that mode; champion hot-reload applies new optimized keys. `ws_server.py` — `set_scalp_strategy` allows **`daviddtech_scalp`**.
+- **Frontend:** `frontend-new` — `ScalpTab.tsx` fallback **`auto` → `daviddtech_scalp`**, **OPTIMIZED** badge, optimized indicator group + tooltip, backtest cell for `daviddtech_scalp`; `types.ts` + `app.css` mode styling.
+
+**Explicitly deferred (per plan):**
+
+- **Short positions on live** — `scalp_trader` / futures-style sell-to-open not implemented; vector backtest still scores shorts via `simulate_trades_bidir` until a Coinbase/futures order path exists.
+
+**Next todo (operator note):**
+
+- **Rewire execution and market data from Kraken to Coinbase Advanced Trade** — REST/WS clients, auth, symbols, fees, inventory, and order lifecycle should be abstracted or swapped so the same bot logic can target Coinbase; treat as a dedicated migration task (config flags, adapter layer, paper/sim first).
+
 ---
 
 ## 1. Dynamic Spread Widening (Volatility Guard)
@@ -1908,8 +1926,8 @@ Install: `pip install hexital>=1.5.0`
 
 **Config (parsed in `scalp_config.py`; `[scalp]` in `config.toml`):**
 
-- `wfo_enabled`, `wfo_interval_sec` (default 3600), `wfo_train_days` (14), `wfo_holdout_days` (7), `wfo_min_trades`, `wfo_objective`.
-- **`step_days`** is defined on `WFOConfig` in `scalp_wfo.py` (default **7**) and is **not** currently wired from TOML — changing it requires code or an explicit config extension.
+- `wfo_enabled`, `wfo_interval_sec`, `wfo_train_hours`, `wfo_holdout_hours`, `wfo_step_hours`, `wfo_min_trades`, `wfo_objective`.
+- **Updated in §64:** all window fields are now **hours-based**, not days. See lesson 64.
 
 **Runtime wiring:** `ScalpRuntime.snapshot()` includes `"wfo": ...` when scalp is enabled and `wfo_enabled` is true, passing `champion_active` from whether champion summary exists.
 
@@ -1920,8 +1938,8 @@ Install: `pip install hexital>=1.5.0`
 
 **Operational notes:**
 
-- Default implied calendar load target is on the order of **14 + 7 + 21 + 1 = 43** days of stored bars before the slowest pair can reach full readiness (subject to `step_days` default).
-- First **periodic** WFO pass after the async loop starts occurs after roughly **`wfo_interval_sec`** (the loop sleeps first, then runs). A separate **warmup** path can trigger `run_once()` earlier when bar thresholds are met (`scalp_runtime.py`).
+- **Updated in §64:** load target is now ~15 hours (not 43 days), backfilled from REST on startup.
+- First **periodic** WFO pass after the async loop starts occurs after roughly **`wfo_interval_sec`** (the loop sleeps first, then runs). A separate **warmup** path can trigger `run_once()` earlier when bar thresholds are met (`scalp_runtime.py`). With REST backfill, the first pass typically runs within seconds of boot.
 - Snapshot schema changes require a **process restart** (or fresh backend) to pick up; the UI only shows the strip when the server sends `scalp.wfo`.
 
 **Files:** `backend/server/scalp_bot/scalp_wfo.py`, `backend/server/scalp_bot/scalp_runtime.py`, `frontend-new/src/App.tsx`, `frontend-new/src/lib/types.ts`, `frontend-new/src/styles/app.css`
@@ -1933,3 +1951,268 @@ Install: `pip install hexital>=1.5.0`
 **Mitigation:** `frontend-new/src/App.tsx` defines a small **`ErrorBoundary`** (class component) that catches render errors in its subtree, logs `componentDidCatch` to the console, and shows a fallback UI instead of crashing the entire app. The scalp tab content is wrapped in this boundary so failures are contained to that region.
 
 **Lesson:** For data-heavy tabs driven by evolving WebSocket contracts, an error boundary is cheap insurance during rapid backend/frontend iteration.
+
+### 64) WFO windows must be hours, not days — and backfill from REST, don't wait for candles
+
+**Problem (window size):** The WFO was configured with `train_days=14`, `holdout_days=7`,
+`step_days=7`. On a 1-minute scalping chart where positions hold for 15 minutes max, a
+14-day training window is absurd — yesterday's microstructure is already a different regime.
+The bot was evaluating strategies against two weeks of stale market conditions rather than
+the recent hours that actually matter for a scalp trade.
+
+**Problem (data wait):** The bar store only populated from live WS candles (1 per minute)
+plus a 100–200 candle REST seed (~3 hours). With a 21-day window, the WFO couldn't run
+its first pass until 21 calendar days of candle accumulation. Kraken's REST API can return
+720 candles per request and paginates backwards — enough to fill the entire WFO window
+in seconds.
+
+**Fix — hours-based windows:**
+
+All WFO window durations converted from days to hours across the stack:
+
+- `WFOConfig`: `train_days` → `train_hours` (default 6.0), `holdout_days` → `holdout_hours`
+  (default 2.0), `step_days` → `step_hours` (default 2.0).
+- `rolling_windows()`: arithmetic changed from `* 86400.0` to `* 3600.0`.
+- `optimize_pair()`, `wfo_data_readiness()`: load window converted to hours.
+- `ScalpBotConfig` / `load_scalp_config()`: `wfo_train_days` → `wfo_train_hours`, etc.
+- `config.toml`: new `[scalp]` fields `wfo_train_hours`, `wfo_holdout_hours`, `wfo_step_hours`.
+- Frontend `WfoUi` type and `WfoLookbackStrip`: all `_days` fields → `_hours`.
+
+Default windows for 1m scalping: **6h train + 2h holdout + 2h steps**. Total data
+needed: 6 + 2 + 2×3 + 1 = 15 hours. At 1m interval that's ~900 candles — about 2 REST
+requests.
+
+**Fix — REST backfill on startup:**
+
+New `bar_store.backfill_from_rest(symbol, interval, hours_needed)`:
+- Paginates backwards through Kraken's `/0/public/OHLC` endpoint.
+- 720 candles per request, ~1.1s rate limit between requests.
+- Deduplicates via `append_candles()` (existing bar store logic).
+- Stops when the oldest fetched candle is older than `hours_needed` ago.
+- Hard cap of 50 pagination loops.
+
+Wired into `ScalpRuntime._run()` right before `self._wfo.start()`. On boot:
+1. REST seed (existing, for indicator buffers).
+2. `backfill_from_rest()` per pair — fills bar store with full WFO window.
+3. WFO starts — first pass can run immediately.
+
+**Operational effect:**
+- First WFO pass within seconds of startup, not weeks.
+- `wfo_interval_sec` lowered to 1800 (30 min) since windows are shorter.
+- `wfo_min_trades` lowered to 15 (more realistic for 2h holdout windows).
+- The strategy the WFO selects reflects the last 6–8 hours of price action,
+  not 3 weeks of potentially irrelevant history.
+
+**Key insight:** For intraday scalping, the lookback window should match the
+trading horizon. A 15-minute hold time needs hours of context, not weeks.
+Yesterday's data is noise for a 1-minute scalper — regime, volatility, and
+microstructure all shift faster than daily resolution can capture.
+
+**Files:** `backend/server/scalp_bot/scalp_wfo.py`, `backend/server/scalp_bot/scalp_config.py`,
+`backend/server/scalp_bot/scalp_runtime.py`, `backend/server/scalp_bot/bar_store.py`,
+`config.toml`, `frontend-new/src/App.tsx`, `frontend-new/src/lib/types.ts`
+
+---
+
+### Lesson: Overnight scalp bot post-mortem — 0% win rate, 42 trades, all EMA momentum
+
+**Date:** 2026-04-05
+
+**What happened:** Scalp bot ran overnight in sim mode. 42 trades (104 signals),
+**0 wins on the stop-exit path**, 8 TP hits but overwhelmed by 30 stop-outs and 4 time stops.
+Total PnL: ~-$1.07. 100% EMA momentum mode — WFO never produced a champion, never switched
+strategy. Both SOL_USD and XRP_USD lost money.
+
+**Root causes identified:**
+
+1. **Stop too tight (1.0× ATR).** On 1-minute candles, a 1× ATR stop is inside normal candle
+   noise. Nearly every entry gets stopped out by random wick before price can reach TP. The
+   overnight data showed avg loss ~$0.04-0.05 per trade — exactly 1× ATR.
+
+2. **R:R ratio only 1:1.5.** Even with perfect signal quality, you need >40% win rate at 1:1.5
+   to break even. The bot needed >67% WR at those ratios, which is unrealistic for a confluence
+   indicator strategy on 1m candles.
+
+3. **15-second signal cooldown = churn machine.** After getting stopped, the bot re-entered
+   within seconds. Stop at 23:17, new signal at 23:18, stop at 23:20 — three losses in 3 minutes
+   on the same sideways drift.
+
+4. **30-second loss cooldown = no recovery time.** The market microstructure doesn't change in 30s.
+   Re-entering the same conditions produces the same result.
+
+5. **`ema_trend` signal too lax.** EMA momentum required 2 of 4 confluence signals, and `ema_trend`
+   (fast > slow EMA) was true on nearly every candle in a mild uptrend. This meant entries fired
+   every cooldown cycle instead of waiting for actual cross events.
+
+6. **XRP ATR = 0.00070.** At $1.30, that's 0.054% — inside the bid-ask spread. Stop and TP were
+   both within noise. Every XRP trade was a coin flip biased toward the stop.
+
+7. **WFO never found a champion** because `wfo_min_trades=15` was too high for 6h windows in
+   overnight low-volatility conditions. The optimizer had nothing to select from.
+
+8. **No consecutive-loss circuit breaker.** The bot had no concept of "this isn't working, stop
+   trying." It would lose 5-6 times in a row on the same pair without pausing.
+
+**Fixes applied:**
+
+- **Stop widened:** SOL 1.0→1.8× ATR, XRP 1.0→2.0× ATR. Stops outside normal candle noise.
+- **TP widened:** SOL 1.5→3.0× ATR, XRP 1.5→3.5× ATR. R:R now ~1:1.67 (SOL) / 1:1.75 (XRP).
+- **Signal cooldown increased:** SOL 15s→120s, XRP 15s→300s. No more churn.
+- **Loss cooldown increased:** SOL 30s→300s (5 min), XRP 30s→600s (10 min).
+- **min_signals raised to 3** (both pairs). Require stronger confluence.
+- **EMA cross required.** `ema_trend` alone no longer qualifies — must see an actual cross event.
+- **XRP moved to 5-minute candles.** 1m ATR too small; 5m gives usable volatility.
+- **EMA periods widened:** fast 5→8, slow 13→21. Reduces whipsaw in sideways markets.
+- **RSI period 9→14.** Smoother, less noisy.
+- **max_concurrent_positions 2→1.** No capital fragmentation between two losing positions.
+- **daily_loss_limit 5→3%.** Tighter stop-loss on the day.
+- **wfo_min_trades 15→8.** Let WFO actually find champions in shorter windows.
+- **warmup_min_bars 30→60.** Full hour of priming instead of half.
+- **Consecutive-loss circuit breaker added:** `SignalEngine` tracks consecutive losses per pair.
+  After 3 losses in a row, that pair is paused for 15 minutes. Reset on any win.
+
+**Key insight:** On 1-minute crypto candles, the stop must be wider than the noise floor. A stop
+at 1× ATR on a 1m candle is almost guaranteed to be hit before TP, because intra-candle wicks
+routinely exceed 1× ATR. The fix isn't a tighter stop — it's a wider stop with a proportionally
+wider TP and much more selective entry conditions.
+
+**Files:** `config.toml`, `backend/server/scalp_bot/signal_engine.py`,
+`backend/server/scalp_bot/scalp_trader.py`, `tools/overnight_monitor.py`
+
+### Lesson: WFO never actually ran — the adaptive learner was dead the whole time
+
+**Date:** 2026-04-05
+
+**Symptoms:** Overnight the bot ran exclusively in `ema_momentum` mode. Zero `ScalpWFO: run_once`
+log lines. No champion file was ever written. The bot blindly used static config defaults for
+every trade, never switching to rsi_reversion, ema_scalp, or macd_scalp even though ema_momentum
+was losing 100% of trades.
+
+**Root causes:**
+
+1. **`_loop` did sleep-then-run.** The WFO async loop called `await asyncio.sleep(interval_sec)`
+   *before* `run_once()`. With `wfo_interval_sec=3600` (old default), the first WFO pass wouldn't
+   fire until 1 hour after startup. By then the bot had already churned dozens of losing trades.
+
+2. **`warmup_require_champion = false`.** The warmup system was designed to block trading until
+   the WFO found a champion, but this was set to False. Combined with REST seeding providing
+   100+ candles immediately, the warmup completed in seconds and trading began before the WFO
+   task even started its first sleep.
+
+3. **Hard gates too strict for real fees.** `min_profit_factor=1.2`, `min_win_rate=0.35`, and
+   `min_stability_ratio=1.0` meant that even valid strategies with 26 bps per-leg fees were
+   rejected. The optimizer had nothing to select from.
+
+4. **No initial WFO pass.** Even after backfilling enough bars for rolling windows, the WFO
+   didn't fire immediately — it created a task that slept first.
+
+**Fixes:**
+
+- **Run first WFO pass immediately** in `_loop` before entering the sleep loop. Also run it
+  synchronously in `_run()` before `_wfo.start()`, so a champion is available before any
+  trading begins.
+- **`warmup_require_champion = true`** — the bot must wait for the WFO to find a viable
+  strategy before placing any trades. `warmup_max_hours = 1.0` as a safety valve.
+- **Relaxed hard gates**: profit_factor 1.2→1.05, win_rate 0.35→0.30, max_drawdown 25→30%,
+  min_sharpe 0.5→0.3, stability_ratio 1.0→0.5. These still filter garbage but don't reject
+  every strategy under real-world fee drag.
+- **Added diagnostic logging** to `optimize_pair`: grid size breakdown by mode, per-window
+  pass/fail counts with specific gate failure reasons (too_few_trades, low_pf, low_wr, high_dd).
+  Now we can see exactly why strategies are rejected.
+
+**Key insight:** An adaptive learner that never runs is worse than a static strategy. The bot
+was supposed to test 4 modes against historical data and pick the best one — but due to
+sleep-before-run + require_champion=false, it defaulted to ema_momentum and stayed there all
+night. The whole point of WFO is: test each strategy's win rate on recent bars, then only trade
+the one that would have performed best. A strategy that goes 0-for-24 on backtested bars should
+never have been allowed to trade live.
+
+**Files:** `backend/server/scalp_bot/scalp_wfo.py`, `backend/server/scalp_bot/scalp_runtime.py`,
+`config.toml`
+
+---
+
+### Lesson: Fee vs ATR — 1-minute scalping is mathematically impossible at 25 bps
+
+**Date:** 2026-04-05
+
+**Problem:** Backtest showed 0% win rate across ALL strategies for both SOL/USD and XRP/USD. The
+backtest UI showed `—` dashes instead of data. Two separate bugs:
+
+1. **Missing constant**: `_STRATEGY_LOOKBACK_REFRESH_SEC` was referenced in
+   `scalp_runtime.py:_maybe_refresh_strategy_lookback()` but never defined. Every call raised
+   `NameError`, silently preventing the `strategy_lookback` data from ever being computed. The
+   exception propagated up and the push loop dropped the entire scalp snapshot.
+
+2. **Fee exceeds ATR-based targets**: On 1-minute SOL candles ($80), ATR ~$0.03. Round-trip fee
+   at 25 bps maker = $80 × 0.0025 × 2 = $0.40. Even at TP = 3× ATR ($0.09), the fee is 4.5×
+   the profit target. Every trade is a guaranteed loss. Same for XRP 5m: ATR ~$0.0009, fee
+   ~$0.0065, TP at 3.5× ATR = $0.00315 < fee. The backtest correctly showed 0% wins.
+
+**Root cause math:**
+| Asset  | TF  | ATR     | Fee RT  | Min TP mult to break even |
+|--------|-----|---------|---------|---------------------------|
+| SOL 1m | 1m  | $0.031  | $0.40   | 12.9× ATR                 |
+| SOL 5m | 5m  | $0.15   | $0.40   | 2.7× ATR                  |
+| XRP 5m | 5m  | $0.0009 | $0.0065 | 7.2× ATR                  |
+| XRP 15m| 15m | $0.003  | $0.0065 | 2.2× ATR                  |
+
+The percentage-based fee on a high-priced asset creates an outsized *absolute* cost relative to
+short-timeframe ATR. The fee model is correct (exchange fees are percentage-based), but the
+timeframes were too short for the fee tier.
+
+**Fixes:**
+- **SOL: 1m → 5m candles.** ATR grows ~5×, bringing break-even TP down to ~2.7× ATR.
+- **XRP: 5m → 15m candles.** ATR grows ~3×, bringing break-even TP down to ~2.2× ATR.
+- **WFO grid: TP range extended** from `[1.0, 1.5, 2.0]` to `[1.5, 2.0, 3.0, 4.0, 5.0]` so
+  fee-aware parameter combos can be discovered.
+- **WFO windows: 24h train / 8h holdout** (was 6h/2h) to accumulate enough 5m/15m bars.
+- **Defined `_STRATEGY_LOOKBACK_REFRESH_SEC = 60.0`** — the missing constant that caused silent
+  NameError on every snapshot.
+
+**Key insight:** Before configuring a scalp bot, compute `min_tp_mult = (price × fee_bps × 2) / ATR`.
+If it exceeds ~3× you need a longer timeframe. This is a hard constraint from market microstructure,
+not a tunable parameter. No strategy, no matter how sophisticated, can overcome fees that exceed
+the asset's volatility on that timeframe.
+
+**Files:** `backend/server/scalp_bot/scalp_runtime.py`, `backend/server/scalp_bot/scalp_vec_backtest.py`,
+`backend/server/scalp_bot/scalp_wfo.py`, `config.toml`
+
+---
+
+### 2026-04-05: Full Algorithm Debug — Lookback, WFO, Self-Tuner
+
+**Problem:** Algorithm debug revealed all three learning systems were hamstrung by the same root cause.
+
+**Root cause chain:**
+1. **SOL 5m candle ATR ($0.054) vs round-trip fee ($0.40) = 7.44x ratio** — even the best grid strategy
+   could only achieve PF=0.31 on 5m. Moved SOL from 5m → 15m (ATR ~$0.14, ratio drops to 2.8x).
+2. **WFO per-window hard gates (PF ≥ 1.05, WR ≥ 30%)** rejected everything individually.
+   Changed to: only gate on min_trades per window, defer quality judgment to aggregate scoring.
+3. **Aggregate filters (avg PF, avg WR, buy-and-hold comparison)** still killed candidates because
+   the market had regime shifts between windows — Window 0 produced Sharpe=86 and PF=4.7,
+   but Windows 2-4 (low-vol choppy) had Sharpe=-55 to -123 and PF=0. Average was always negative.
+4. **Self-tuner missing `atr_tp_mult` from rsi_reversion and ema_scalp modes** — couldn't optimize
+   the most impactful parameter for overcoming fee drag.
+
+**Fixes applied:**
+- SOL interval: 5m → 15m
+- WFO min_trades: 5 → 3 (15m candles produce ~3-4 trades per 24h window)
+- WFO per-window gating: removed PF/WR hard gates, only filter on min_trades + score quality
+- WFO aggregate: simplified to mean_sharpe > 0 + stability + max_drawdown (removed PF/WR/BH gates)
+- Tuner: added `atr_tp_mult` to all modes, expanded TP range to 10.0, reordered params to try
+  stop/TP/hold first (highest impact on fee-constrained strategies)
+
+**Key insight:** In a regime-shifting market, per-window hard gates are counterproductive. A strategy
+that's brilliant in trending conditions and mediocre in chop will fail every window check even though
+it's the best available choice. The WFO should use Sharpe as its primary signal (which naturally
+penalizes bad risk/reward) and only hard-gate on drawdown as a risk control.
+
+**Key insight:** The three systems serve complementary roles:
+- **Strategy Lookback** = observation layer (shows current state)
+- **Self-Tuner** = exploitation layer (local optimization, works even in hostile regimes)
+- **WFO Champion** = exploration layer (broad grid search, only activates when regime supports it)
+When WFO can't find a champion (hostile regime), the self-tuner is the correct fallback — it
+doesn't require cross-window consistency and makes incremental improvements.
+
+**Files:** `config.toml`, `scalp_wfo.py`, `param_tuner.py`
