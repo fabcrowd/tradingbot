@@ -1,8 +1,16 @@
 # Mitch Trading Bot
 
-Spread-based market-making bot for Kraken. Places limit orders on both sides of the bid-ask spread, captures the gap when both fill, repeats every few seconds. Portfolio-level risk controls, adaptive spread learning, and a real-time dashboard.
+**Active product:** **Scalp bot on Coinbase Derivatives Exchange (CDE)** — directional signals, walk-forward tuning, and execution via Coinbase (see `[scalp]` in `config.toml` and `coinbase_order_manager.py`).
 
-## Architecture
+**Shuttered (not in active use):** **Kraken spot market maker** — spread capture, inventory skew, adaptive spread learning. Trading capital has moved off Kraken; the MM stack remains in the repo for a future revival, but treat it as **inactive** unless you explicitly re-enable and fund Kraken.
+
+Real-time dashboard: `frontend-new/` (Vite + React) or built assets; backend HTTP/WebSocket from `[server]` in `config.toml` (default **8080**).
+
+---
+
+## Kraken spot market maker — architecture (shuttered)
+
+The following describes the **legacy / dormant** Kraken MM pipeline. It still runs in `main.py` when configured, but **operations and docs assume Coinbase CDE scalp is the primary system** until Kraken MM work resumes.
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -14,9 +22,9 @@ Spread-based market-making bot for Kraken. Places limit orders on both sides of 
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         main.py  (entry point)                      │
 │  1. load_config()                                                   │
-│  2. connect Kraken WS (auth + public)                               │
+│  2. connect coinbase (auth + public)                               │
 │  3. initialize LiveOrderManager → cancel orphans, reconcile         │
-│  4. sync Kraken balances → InventoryManager                         │
+│  4. sync coinbase balances → InventoryManager                         │
 │  5. load StrategyLearner state (pain_floor only)                    │
 │  6. start BookClient, ThreatDetector, SpreadEngine, Dashboard       │
 └──────┬──────────┬──────────┬──────────┬──────────┬─────────────────┘
@@ -75,9 +83,23 @@ LiveOrderManager sends add_order via Kraken WS v2
 
 ### Key files
 
+**Primary (Coinbase CDE scalp):**
+
 | File | Purpose |
 |------|---------|
-| `config.toml` | All tunable parameters: pairs, spreads, fees, risk limits |
+| `config.toml` | `[scalp]`, venue, pairs; also Kraken MM keys if MM revived |
+| `backend/server/scalp_bot/scalp_runtime.py` | Scalp coordinator (feed, WFO, snapshots) |
+| `backend/server/scalp_bot/scalp_config.py` | Parsed scalp configuration |
+| `backend/server/coinbase_order_manager.py` | Coinbase / CDE order execution |
+| `backend/server/scalp_bot/signal_engine.py` | Signal evaluation and modes |
+| `backend/server/scalp_bot/bar_store.py` | Historical bars / backfill |
+| `backend/server/ws_server.py` | Dashboard HTTP + WebSocket (scalp actions, snapshots) |
+
+**Kraken spot MM (shuttered — code retained):**
+
+| File | Purpose |
+|------|---------|
+| `config.toml` | `[bot]` / `[pairs.*]` when MM is used |
 | `backend/server/main.py` | Entry point, startup orchestration, shutdown |
 | `backend/server/spread_engine.py` | Core tick loop, spread calculation, order logic |
 | `backend/server/live_order_manager.py` | Kraken WS v2 order placement, cancellation, reconciliation |
@@ -92,7 +114,6 @@ LiveOrderManager sends add_order via Kraken WS v2
 | `backend/server/fee_schedule.py` | Kraken fee tier tables (spot, stablecoin, maker_rebate, USDG) |
 | `backend/server/pnl.py` | P&L tracking, JSONL persistence, 30-day volume |
 | `backend/server/session_logger.py` | JSONL session telemetry (fills, learner, halts, momentum) |
-| `backend/server/ws_server.py` | HTTP server + WebSocket push to dashboard |
 | `backend/server/rate_limiter.py` | Token-bucket rate limiter for Kraken API calls |
 | `lessons.md` | Postmortems, design decisions, operational lessons |
 | `AGENTS.md` | Quick-start guide for new agents inheriting the repo |
@@ -104,12 +125,17 @@ pip install -r backend/requirements.txt
 python -m backend.server.main
 ```
 
-Open `http://localhost:8080` for the dashboard. The engine starts paused — press **START** to begin trading.
+Open `http://localhost:8080` for the dashboard. The MM engine starts **paused** — press **START** if Kraken MM is enabled; **scalp** behavior depends on `[scalp]` and sim/live toggles in the UI.
 
 ## Configuration
 
-Edit `config.toml` for pair settings (spread, order size, max inventory, fees).
-Copy `.env.example` to `.env` and add your Kraken API keys for live trading.
+**Primary (Coinbase CDE scalp):** set `[scalp] venue = "coinbase_perps"` and CDE-style `product_id` symbols (e.g. `BIP-20DEC30-CDE`, `SLP-20DEC30-CDE`, `XPP-20DEC30-CDE` — match your account; **INTX** IDs such as `BTC-PERP-INTX` can **403** on CDE-only accounts). Add `COINBASE_API_KEY` and `COINBASE_API_SECRET` to `.env` (see `.env.example` for PEM formatting). Some docs still mention **INTX** for Coinbase International; prefer **CDE** product IDs when your account is CDE.
+
+**Optional — INTX portfolio UUID:** if open perps never appear in the app but Coinbase shows them, auto-discovery may be using the wrong Advanced Trade sub-portfolio. Set **`COINBASE_INTX_PORTFOLIO_UUID`** in `.env` (loaded into **`AppConfig.coinbase_intx_portfolio_uuid`**). See **`lessons.md` §30** for reconcile cadence, **`exchange_open_orders`**, and **buying power vs total equity**.
+
+**Kraken MM (only if reviving the shuttered bot):** edit `[bot]` / `[pairs.*]` for spreads, sizes, fees; copy `.env.example` to `.env` and add Kraken API keys for live Kraken trading.
+
+**Operational validation (recommended):** run the scalp bot in `sim_mode` on live Coinbase candles for 24h+ before enabling live orders; go live with minimal size and **1× leverage** on a single product first.
 
 ### Spread vs fees
 
@@ -165,10 +191,11 @@ on thin pairs where our order dominates the book.
 
 ## Modes
 
-- **Paper** (default): Real Kraken order book data, simulated fills. No API keys needed.
-- **Live**: Real orders on Kraken. Requires API keys in `.env`.
+- **Kraken MM — Paper** (default for MM path): Real Kraken order book data, simulated fills. No Kraken keys needed.
+- **Kraken MM — Live**: Real orders on Kraken. Requires Kraken keys in `.env`. **Shuttered in current operations** (no Kraken funds); only relevant if you revive MM.
+- **Scalp (Coinbase CDE):** sim vs live is controlled via dashboard / scalp settings and Coinbase credentials — this is the **active** trading path.
 
-Switch via `config.toml` (`mode = "live"`) or from the dashboard.
+Switch MM mode via `config.toml` (`mode = "live"`) or from the dashboard.
 
 ## Risk Management
 
@@ -291,6 +318,7 @@ tracked barriers and wallet balance are automatically reconciled with a blended-
 ## Persistence
 
 - Fills: `data/trades_{paper|live}.jsonl` — cumulative P&L replayed on restart
+- Scalp WFO: `data/scalp_champion.json` — **per-symbol** champion rows (see Scalp / WFO section above)
 - Sessions: `data/session_YYYYMMDD_HHMMSS.jsonl` — full event telemetry
 - Learner: `data/learner_state_{paper|live}.json` — pain_floor across sessions
 - Cost basis: `data/cost_basis.json` — per-pair blended cost basis
@@ -306,10 +334,9 @@ python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl -
 python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl --spread-bps 4 --compare 8
 ```
 
-## Scalp Bot
+## Scalp bot (Coinbase CDE) — primary trading system
 
-A second, independent trading engine running alongside the MM bot on separate pairs.
-Uses directional momentum signals rather than spread capture.
+The **main** automated strategy in current use: runs in the same process as the Kraken MM code but targets **Coinbase CDE** (or configured venue) with directional / multi-mode signals, WFO, and bar store — not Kraken spread capture. Keep **scalp pairs disjoint** from any enabled Kraken MM pairs if both were ever on, to avoid rate-limit contention (with MM shuttered, overlap is mainly a future footgun).
 
 ### Architecture
 
@@ -340,11 +367,11 @@ ScalpRuntime (asyncio Task in main.py)
          │         4. Volume spike (>1.5× 20-bar average)
          │     • Requires min_signals (default 3) to align
          │     • Per-pair signal cooldown + loss cooldown
-         │     • Long-only (Kraken spot, no shorting)
+         │     • Side / shorting rules depend on venue (spot vs CDE perps)
          │
          └── ScalpTrader
                • Sizes position: risk_pct% of allocated_capital / stop_distance
-               • Entry: limit or market order via LiveOrderManager
+               • Entry: limit or market via venue order path (Coinbase or Kraken)
                • On fill: places stop-loss-limit + take-profit-limit
                • On exit fill: cancels sibling (application-layer OCO)
                • Tracks daily P&L, halts on daily_loss_limit_pct
@@ -380,12 +407,21 @@ ScalpTrader.try_open():
 
 | File | Purpose |
 |------|---------|
-| `backend/server/scalp_bot/candle_feed.py` | WS ohlc subscription + REST seed |
+| `backend/server/scalp_bot/candle_feed.py` | WS ohlc subscription + REST seed; `register_tick_callback` for live regime / intra-bar hooks |
 | `backend/server/scalp_bot/indicators.py` | Incremental EMA/RSI/ATR/VWAP/volume (hexital) |
 | `backend/server/scalp_bot/signal_engine.py` | 3/4 confluence evaluation, cooldowns |
 | `backend/server/scalp_bot/scalp_trader.py` | Position lifecycle, OCO, capital management |
 | `backend/server/scalp_bot/scalp_runtime.py` | asyncio Task, wires all components |
 | `backend/server/scalp_bot/scalp_config.py` | Config dataclass, parsed from `[scalp]` |
+| `backend/server/scalp_bot/regime_risk.py` | Triggers for “WFO risk on” (volume / ATR-scaled move) |
+| `backend/server/scalp_bot/scalp_wfo.py` | WFO loop; optional dynamic sleep via `interval_sec_resolver` |
+
+### INTX sync, balances, and dashboard
+
+- **Reconciliation** (`coinbase_order_manager.reconcile_scalp_intx_positions`): pulls **`list_perps_positions`**, then **`get_perps_position`** for each configured `[scalp.pairs.*].symbol` missing from that list, merges into `ScalpTrader` (including manual opens). Runs on the **~30s** balance poll and about every **~12s** from the fill-poll loop.
+- **Open orders:** each reconcile pass also queries **`list_orders`** with **`OPEN`** for those product IDs. The scalp snapshot includes **`exchange_open_orders`** (Scalp tab). Unfilled entries are **orders**, not **positions** — they will not appear in perp position APIs until filled.
+- **Analytics tab (Coinbase perps):** **COINBASE_CAPITAL** shows futures **total equity**, **committed** (margin in positions + collateral in open orders), **available margin** / **buying power**, and **spot USDC+USD available**.
+- **Product IDs** in config must **exactly** match Coinbase. Otherwise legs show under **`intx_unmapped_positions`** on the Scalp tab and are not mapped to a pair key.
 
 ### Configuration
 
@@ -413,19 +449,14 @@ loss_cooldown_sec = 120.0
 min_candles_required = 30        # warm-up period before first trade
 ```
 
-### Separation from MM bot
+### Relationship to the Kraken MM bot (shuttered)
 
-The scalp bot and MM bot share the same process and `BotState` but are fully independent:
+The scalp bot and Kraken MM share the same process and `BotState` but are independent strategies:
 
-- **Separate pairs**: scalp uses XBT/USD + ETH/USD; MM uses USDG/USDC etc. Kraken
-  rate limits are per-pair — overlapping pairs would compete for the same counter.
-- **Separate capital**: `allocated_capital_usd` is a hard cap. The scalp bot never
-  touches MM bot quote balances.
-- **Shared halt**: when `state.risk_halted = True` (MM bot portfolio stop), the scalp
-  bot also stops entering new positions.
-- **Shared `LiveOrderManager`**: both bots use the same authenticated WS connection
-  for order placement. Fill events are routed by `cl_ord_id` prefix (`scalp_entry_*`,
-  `scalp_stop_*`, `scalp_tp_*`).
+- **Separate pairs / venues**: scalp uses `[scalp]` symbols (e.g. CDE product IDs); MM used Kraken spot pairs. Do not overlap symbols if both are enabled later.
+- **Separate capital**: `allocated_capital_usd` caps scalp; MM used Kraken balances when it was active.
+- **Shared halt**: when `state.risk_halted = True` (portfolio-level MM risk stop), scalp typically stops entering new positions — confirm current `scalp_runtime` behavior if you change halts.
+- **Order routing**: Kraken MM used `LiveOrderManager` + Kraken WS; Coinbase scalp uses `coinbase_order_manager` (and related paths). Fill routing uses `cl_ord_id` prefixes where applicable (`scalp_*`).
 
 ### Activation
 
@@ -440,21 +471,75 @@ The bot seeds indicators from 100 historical candles before placing any trades.
 
 When `wfo_enabled` is true, the scalp runtime runs `ScalpWalkForwardOptimizer`: periodic rolling train/holdout grid search over stored bars, writing a **champion** parameter set for live trading.
 
+**WFO vs param tuner:** WFO chooses **which strategy mode** (and coarse params) and writes **`data/scalp_champion.json`**. The **param tuner** refines tunables for the **active** mode. While the champion store has a row for a pair’s **exchange symbol**, the tuner does not switch mode away from WFO’s pick for that symbol. If there is **no** champion row for a pair’s symbol, the runtime picks a mode from the last **2 hours** of simulated trades ranked by **return %** until WFO saves a matching row.
+
+**Champion file shape:** JSON is a **map of exchange symbol → champion object** (e.g. `SLP-20DEC30-CDE` → `{ mode, params, holdout_metrics, objective, ... }`). Older single-object champion files are still read; the next successful **`save_champion`** merges into the multi-symbol format. This avoids “last pair wins” overwrites when running several CDE products.
+
+**Scoring:** `wfo_objective` in `[scalp]` selects the WFO metric (`sharpe`, `expectancy`, `expectancy_sqrt_n`, `sortino`, `calmar`, `profit_factor`, `total_pnl`). Holdout slices require **`wfo_min_trades`** trades per window (same threshold as training gates), not a single trade.
+
+**Telemetry:** Session JSONL includes richer WFO rows (`holdout_metrics`, `objective`), **`champion_period_start` / `champion_period_end`** (with forward realized PnL since the period start), and **`strategy_mode` + `direction`** on **`position_closed`**. The dashboard snapshot exposes **`pair_symbols`**, **`champions`** (per symbol), and a backward-compatible **`champion`** summary.
+
+**Strategy lookback (dashboard):** loads several days of bars for indicator warmup; snapshot lists `strategy_lookback_hours` as a label and includes **expectancy** and **return_pct** per mode. Ranking for `best_mode_from_lookback` (when used) prefers **expectancy** with a minimum trade count.
+
 **Config (`[scalp]` in `config.toml`):**
 
-| Key | Role |
-|-----|------|
-| `wfo_enabled` | Master switch for the WFO task and UI block |
-| `wfo_interval_sec` | Seconds between scheduled passes (default 3600); loop sleeps first, then runs |
-| `wfo_train_days` / `wfo_holdout_days` | Rolling window sizes (defaults 14 / 7) |
-| `wfo_min_trades` | Minimum trades for candidate strategies |
-| `wfo_objective` | Scoring objective (e.g. `expectancy_sqrt_n`) |
+| Key | Default | Role |
+|-----|---------|------|
+| `wfo_enabled` | `true` | Master switch for the WFO task and UI block |
+| `wfo_interval_sec` | `1800` | Seconds between scheduled passes; loop sleeps first, then runs |
+| `wfo_train_hours` | `6.0` | Rolling window training period (hours) |
+| `wfo_holdout_hours` | `2.0` | Rolling window holdout/validation period (hours) |
+| `wfo_step_hours` | `2.0` | Rolling window step size (hours) |
+| `wfo_min_trades` | (see `config.toml` / `scalp_config.py`) | Minimum trades on **train and holdout** slices; higher = stricter, fewer spurious champions |
+| `wfo_objective` | `expectancy_sqrt_n` | Scoring objective (actually used by WFO; see list above) |
 
-**Note:** Rolling **step** size for windows defaults to **7 days** in `WFOConfig` (`scalp_wfo.py`) and is not read from TOML unless extended.
+Windows are **hours-based** — for 1-minute scalping, yesterday's data is already a different
+regime. Default total data needed: 6 + 2 + 6 + 1 = 15 hours (~900 bars at 1m).
 
-**Data readiness:** Before WFO can evaluate multiple rolling folds, each pair needs enough **persisted** OHLC history. The server computes `overall_progress_pct` as the **worst** pair’s readiness: calendar span must cover train+holdout, and there must be at least **two** rolling windows. Bars are loaded with a window of `train + holdout + 3×step + 1` days (same footprint as the optimizer). When a champion is already active, the dashboard **LOOKBACK** bar shows full progress (`ui_progress_pct` = 100%) even if you are still accumulating history for the next run.
+**REST backfill:** On startup, `ScalpRuntime` calls `bar_store.backfill_from_rest()` per pair, paginating backwards through Kraken's `/0/public/OHLC` endpoint (720 candles/request, ~1.1s rate limit). The full WFO window is filled in seconds -- no waiting for candles to trickle in. The first WFO pass can run immediately after boot.
 
-**Dashboard (`frontend-new`):** A **LOOKBACK** strip below the header shows progress, short status text, and countdown to the next scheduled WFO pass when `scalp.wfo` is present in snapshots. Restart the backend process after enabling WFO so the snapshot includes the new field.
+**Data readiness:** The server computes `overall_progress_pct` as the **worst** pair's readiness: calendar span must cover train+holdout hours, and there must be at least **two** rolling windows. When a champion is already active, the LOOKBACK bar shows 100%.
+
+**Dashboard (`frontend-new`):** A **LOOKBACK** strip below the header shows progress, short status text, and countdown to the next scheduled WFO pass when `scalp.wfo` is present in snapshots. Restart the backend process after enabling WFO so the snapshot includes the field.
+
+### Regime: “WFO risk on” (April 2026)
+
+When **volume** or **vol-scaled price movement** crosses configured thresholds, the runtime enters a **global** regime window (see `[scalp]` keys: `regime_volume_spike_mult`, `regime_price_move_atr_mult`, `risk_on_hold_sec`, `risk_on_wfo_interval_scale`, `risk_on_bootstrap_hours`, etc.). While active:
+
+- **WFO** sleeps less often (dynamic interval via `ScalpWalkForwardOptimizer`).
+- **No-champion bootstrap** can use a **shorter** lookback hours.
+- **Nemesis** (bootstrap vs tuner) may use slightly relaxed dual-gate parameters.
+
+**Closed bar:** `regime_risk_on_triggers()` runs on each confirmed candle close (`regime_risk.py`).
+
+**Live (WS):** `regime_risk_on_triggers_live()` runs on **tick / intra-bar** updates so the same window can open **before** the interval closes — Coinbase **candles** channel + **ticker** (`coinbase_candle_feed.py`); Kraken **ohlc** updates (`candle_feed.py` `register_tick_callback`). Uses last closed indicators (ATR, volume MA) plus the **open** bar. Config: `regime_live_vol_enabled`, `regime_live_use_volume`, `regime_live_range_atr_mult`, `regime_live_velocity_window_sec`, `regime_live_velocity_min_bps`. This path adjusts **optimizer scheduling only**; it does not place entries.
+
+The dashboard shows **`WFO RISK ON`** on the **Scalp** indicator strip (`ScalpPanel` / **INDICATORS** banner on `ScalpTab`). Snapshot fields: `scalp.regime_risk_on` (includes `live_enabled`), and per-pair `indicators.*.wfo_risk_on_label` / `wfo_risk_on_active`. Details: **`lessons.md` §31**.
+
+### PnL Feedback Lab (historical hypothesis testing)
+
+In-repo artifacts and scripts for structured **hypothesis → research → multi-window backtest** workflows (complements WFO; does not replace it):
+
+| Path | Purpose |
+|------|---------|
+| `.optimization/pnl-feedback-lab/` | Markdown phases (`00_recon.md`, baselines, compare, `VERIFIED_*`), `runs/*.jsonl`, `research/<H-xxx>/`, `lenses/<H-xxx>/` |
+| `.optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py` | Vector backtest sweep: **thirds** of each bar series × all five modes; add `--intervals 5,15,60` to include other Parquet intervals when present (discovery / structural hints) |
+
+```bash
+# From repo root — default: each pair's config interval only
+python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py
+
+# Optional multi-interval discovery (skips missing Parquet)
+python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py --intervals 5,15,60
+```
+
+**Cursor skills (optional):** a **`pnl-feedback-lab`** skill describes a **Nemesis-style dual lens** (theory + tape) with **deep-research** for Lens B; a **`deep-research`** skill section links to this lab layout. Skills live in your **Cursor skills directory** (not committed here). See **`lessons.md` §32**.
+
+## Related external systems (research)
+
+Notes on how other products/repos compare to this codebase (trade-prevention UX, multi-agent orchestration patterns) and what is worth adopting vs avoiding:
+
+- **[research/related-systems-notes.md](research/related-systems-notes.md)** — [Core Alpha Systems / Trade Engine](https://www.corealphasystems.com/) and [meta-metacognition](https://github.com/pazhenchira/meta-metacognition).
 
 ## Docker
 
@@ -464,3 +549,12 @@ docker compose up --build -d
 
 Mounts `./data`, `./config.toml` (read-only), and `.env` for API keys.
 Dashboard at `http://localhost:8080`.
+
+### Stale bar files (INTX → CDE)
+
+If you migrated from Coinbase **INTX** product IDs to **CDE**, old parquet files under `data/coinbase_bars/` may include `INTX` in the filename. They are unused once you only trade CDE symbols. Preview, then delete, e.g. on PowerShell:
+
+```powershell
+Get-ChildItem "data\coinbase_bars" -Filter "*INTX*"
+# Remove-Item "data\coinbase_bars\*INTX*"
+```

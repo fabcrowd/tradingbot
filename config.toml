@@ -4,6 +4,8 @@ port = 8080
 log_level = "INFO"
 
 [bot]
+# Kraken market-making (spread engine). false = scalp + dashboard only (no Kraken WS/book/learner).
+spread_bot_enabled = false
 mode = "live"
 default_cycle_ms = 3000
 enabled_pairs = ["USDG_USDC"]
@@ -250,49 +252,218 @@ fee_schedule = "spot_crypto"
 spread_floor_bps = 20
 
 # ─────────────────────────────────────────────────────────────────────────────
-# SCALP BOT — directional momentum scalping on separate pairs from MM bot
-# Pairs here must NOT overlap with enabled_pairs above (shared rate limits)
+# SCALP BOT — adaptive mode-switching scalper
+#
+# Candle interval (per pair, minutes): ``interval`` under each [scalp.pairs.*] block.
+#   - 15m: fewer signals, less noise; matches current CDE WFO calibration.
+#   - 5m: ~3× more bar closes (more entries / more churn); re-tune atr_* and WFO windows if you switch.
+#   - 1m: highest churn; not recommended until you have a separate WFO profile for 1m.
+#
+# WFO evaluates Optimized Strategy (daviddtech_scalp) plus MACD/EMA/RSI modes.
+# Pairs here must NOT overlap with enabled_pairs above (shared rate limits).
 # ─────────────────────────────────────────────────────────────────────────────
 [scalp]
-enabled = false                  # set true to activate
-max_concurrent_positions = 2
-daily_loss_limit_pct = 5.0       # halt scalp bot if daily loss > 5% of allocated capital
-allocated_capital_usd = 150.0    # USD budget for scalp bot (separate from MM bot)
-order_type = "limit"             # "limit" = maker (no fee on USDG), "market" = immediate fill
-rest_seed_candles = 100          # historical candles to load on startup
+enabled = true
+# Execution + candles: "kraken_spot" (default) or "coinbase_perps" (Coinbase Derivatives Exchange).
+# Perps require COINBASE_API_KEY + COINBASE_API_SECRET (CDP key + EC private key) in .env.
+venue = "coinbase_perps"
+# 0 = no limit on how many pairs can have an open leg at once (capital / per-pair notional still apply).
+# Set a positive integer to cap concurrent open positions across all scalp pairs.
+max_concurrent_positions = 0
+daily_loss_limit_pct = 3.0         # tighter daily limit (was 5 → 3%)
+allocated_capital_usd = 1000.0
+order_type = "limit"
+fee_bps_per_leg = 0.0              # Coinbase CDE promo: 0% maker/taker. Standard: 2 maker / 4 taker bps.
+max_leverage = 1.0                 # start conservative — no amplification
+margin_mode = "CROSS"
+shorts_enabled = true
+max_notional_usd_per_pair = 500.0
+funding_warn_bps_per_hour = 5.0
+liquidation_warn_pct = 5.0
+slippage_bps = 1.0
+sim_mode = false
+rest_seed_candles = 200
 
-# BTC/USD — high liquidity, trending, ideal for EMA/RSI scalping on 5m
+# Mid-bar entries (Coinbase feed only): uses last closed-bar indicators + live WS price.
+# Off by default — enable in sim first. Throttled by tick_signal_cooldown_sec in addition to per-pair signal_cooldown_sec.
+tick_entries_enabled = false
+tick_signal_cooldown_sec = 300.0
+
+# Walk-forward optimizer — calibrated for 15m Coinbase CDE perps (BTC, SOL, XRP)
+# These pairs have high liquidity and ~0.2% avg range per bar.
+# 24h train / 8h holdout / 4h step ≈ 48h data span.
+# Longer holdout (32 bars) gives 6-10+ trades for meaningful validation.
+# Recency half-life inside each window still favours recent market conditions,
+# so stale regime data is naturally down-weighted.
+wfo_enabled = true
+wfo_interval_sec = 900.0              # every 15min — react to each new candle close
+wfo_train_hours = 24.0                # 96 bars at 15m — robust training across regimes
+wfo_holdout_hours = 8.0               # 32 bars — enough for 6-10+ trades per strategy
+wfo_step_hours = 4.0                  # 4h step: latest window always anchored on present
+wfo_min_trades = 6                    # meaningful sample; ±25% CI on win rate vs ±50% at n=2-3
+
+# Regime risk-on: volume spike and/or large vol-scaled bar moves extend a global window where
+# WFO sleeps shorter, no-champion bootstrap uses a shorter lookback, and Nemesis dual-gate can
+# relax slightly (see risk_on_nemesis_*). Any configured pair can trigger; hold extends on each hit.
+regime_risk_on_enabled = true
+regime_volume_spike_mult = 2.5        # bar volume ≥ this × volume MA
+regime_price_move_atr_mult = 1.75     # |close − prev_close| ≥ ATR × this
+# regime_price_move_min_pct = 0.35    # optional extra trigger on |Δ|%% (0 = off)
+# Live regime (WS ticks / ohlc updates) — same risk-on window, no 15m bar wait
+regime_live_vol_enabled = true
+regime_live_use_volume = true         # forming-bar volume vs last closed-bar volume MA × regime_volume_spike_mult
+regime_live_range_atr_mult = 1.75     # (high − low) on open bar ≥ ATR × this
+regime_live_velocity_window_sec = 45.0  # 0 = disable velocity trigger
+regime_live_velocity_min_bps = 20.0   # max-min range / mid in window (bps); 0 = off
+risk_on_hold_sec = 900.0              # seconds to keep risk-on after last trigger (refreshed per hit)
+risk_on_wfo_interval_scale = 0.35     # multiply wfo_interval_sec while active (e.g. 900 → 315s)
+risk_on_wfo_min_interval_sec = 300.0  # floor between WFO passes (loop still enforces ≥60s)
+risk_on_bootstrap_hours = 1.0         # cap no-champion bootstrap window vs default 2h
+risk_on_nemesis_expectancy_slack = 0.0  # tuner wins if t_exp > b_exp − slack (0 = unchanged)
+risk_on_nemesis_min_pf = 0.95         # min tuner PF while risk-on (1.0 = same as calm regime)
+
+strategy_lookback_hours = 2.0          # backtest window for UI strategy comparison + startup mode pick
+
+# ── Backtest fidelity ─────────────────────────────────────────────────────────
+# "next_open" fills entries at open[i+1] instead of close[i] — matches how live
+# limit orders actually fill on 15m bars. Removes ~0.5–1 ATR of look-ahead bias
+# from WFO scores (especially important at 0% fees where there's no cost buffer).
+backtest_fill_model = "next_open"
+
+# use_numpy_indicators = false  # leave off — all pairs use daviddtech_scalp which
+#                               # already shares numpy code; changing indicator math
+#                               # in live is unnecessary risk for this mode.
+
+warmup_enabled = true
+warmup_min_bars = 100              # 100 × 15m = 25h — indicators fully warmed, WFO has real windows
+warmup_require_champion = true     # don't trade until WFO validates a strategy (~45s on restart)
+warmup_max_hours = 0.5             # safety valve: 30 min max wait (WFO normally finishes in <1 min)
+# When true, process starts in operator STANDBY — no new entries until Settings → Go live.
+require_manual_go_live = true
+
+# BIP-20DEC30-CDE — nano BTC Perpetual (0.01 BTC / contract, CDE venue)
 [scalp.pairs.BTC_USD]
-symbol = "XBT/USD"
-interval = 5                     # 5-minute candles
-ema_fast = 9
+symbol = "BIP-20DEC30-CDE"
+contract_size = 0.01
+interval = 15   # minutes per candle (see [scalp] header: 5m vs 15m trade-offs)
+strategy_mode = "daviddtech_scalp"
+t3_length = 7
+hlc_close_period = 5
+hlc_low_period = 13
+hlc_high_period = 34
+adx_period = 14
+adx_threshold = 20.0
+ema_fast = 8
 ema_slow = 21
-rsi_period = 9
-atr_period = 14
-volume_ma_period = 20
-volume_mult = 1.5                # volume must be 1.5× avg to confirm signal
-atr_stop_mult = 1.0              # stop = entry - 1×ATR
-atr_tp_mult = 2.0                # tp = entry + 2×ATR  (2:1 R:R)
-risk_pct = 0.01                  # risk 1% of allocated_capital_usd per trade
-min_signals = 3                  # require 3 of 4 signals: ema, rsi, vwap, volume
-signal_cooldown_sec = 60.0
-loss_cooldown_sec = 120.0
-min_candles_required = 30        # wait for 30 closed candles before first trade
-
-# ETH/USD — second pair, slightly more volatile than BTC
-[scalp.pairs.ETH_USD]
-symbol = "ETH/USD"
-interval = 5
-ema_fast = 9
-ema_slow = 21
-rsi_period = 9
+rsi_period = 14
 atr_period = 14
 volume_ma_period = 20
 volume_mult = 1.5
-atr_stop_mult = 1.0
-atr_tp_mult = 2.0
-risk_pct = 0.01
-min_signals = 3
-signal_cooldown_sec = 60.0
-loss_cooldown_sec = 120.0
+atr_stop_mult = 3.0
+atr_tp_mult = 3.0
+risk_pct = 0.015
+min_signals = 2
+signal_cooldown_sec = 900.0
+loss_cooldown_sec = 1800.0
 min_candles_required = 30
+max_hold_bars = 16                 # 16 × 15m = 4h hold max
+rsi_buy_threshold = 10.0
+rsi_sell_threshold = 50.0
+ema_scalp_period = 20
+ema_scalp_sr_bars = 8
+macd_fast_len = 8
+macd_slow_len = 10
+macd_signal_len = 8
+# Break-even: move stop to entry + fee buffer once 1× ATR in profit.
+# Trailing: once 2× ATR in profit, trail 1× ATR behind price.
+breakeven_atr_trigger = 1.0
+breakeven_buffer_bps = 5.0
+trail_atr_trigger = 2.0
+trail_atr_distance = 1.0
+# ── Risk gates ────────────────────────────────────────────────────────────────
+trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
+trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
+regime_adx_min = 20.0          # block trend entries during ranging markets
+correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk
+
+# SLP-20DEC30-CDE — nano SOL Perpetual (5 SOL / contract, CDE venue)
+[scalp.pairs.SOL_USD]
+symbol = "SLP-20DEC30-CDE"
+contract_size = 5.0
+interval = 15   # minutes per candle
+strategy_mode = "daviddtech_scalp"
+t3_length = 7
+hlc_close_period = 5
+hlc_low_period = 13
+hlc_high_period = 34
+adx_period = 14
+adx_threshold = 20.0
+ema_fast = 8
+ema_slow = 21
+rsi_period = 14
+atr_period = 14
+volume_ma_period = 20
+volume_mult = 1.5
+atr_stop_mult = 3.0
+atr_tp_mult = 3.0
+risk_pct = 0.015
+min_signals = 2
+signal_cooldown_sec = 900.0
+loss_cooldown_sec = 1800.0
+min_candles_required = 30
+max_hold_bars = 16                 # 16 × 15m = 4h hold max
+rsi_buy_threshold = 10.0
+rsi_sell_threshold = 50.0
+ema_scalp_period = 20
+ema_scalp_sr_bars = 8
+macd_fast_len = 8
+macd_slow_len = 10
+macd_signal_len = 8
+breakeven_atr_trigger = 1.0
+breakeven_buffer_bps = 5.0
+trail_atr_trigger = 2.0
+trail_atr_distance = 1.0
+# ── Risk gates ────────────────────────────────────────────────────────────────
+trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
+trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
+regime_adx_min = 20.0          # block trend entries during ranging markets
+correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk
+
+# XPP-20DEC30-CDE — nano XRP Perpetual (500 XRP / contract, CDE venue)
+[scalp.pairs.XRP_USD]
+symbol = "XPP-20DEC30-CDE"
+contract_size = 500.0
+interval = 15   # minutes per candle
+strategy_mode = "daviddtech_scalp"
+t3_length = 7
+hlc_close_period = 5
+hlc_low_period = 13
+hlc_high_period = 34
+adx_period = 14
+adx_threshold = 20.0
+ema_fast = 8
+ema_slow = 21
+rsi_period = 14
+atr_period = 14
+volume_ma_period = 20
+volume_mult = 1.5
+atr_stop_mult = 3.0
+atr_tp_mult = 3.0
+risk_pct = 0.015
+min_signals = 2
+signal_cooldown_sec = 900.0
+loss_cooldown_sec = 1800.0
+min_candles_required = 30
+max_hold_bars = 12                 # 12 × 15m = 3h hold max
+rsi_buy_threshold = 10.0
+rsi_sell_threshold = 50.0
+ema_scalp_period = 20
+ema_scalp_sr_bars = 8
+macd_fast_len = 8
+macd_slow_len = 10
+macd_signal_len = 8
+# ── Risk gates ────────────────────────────────────────────────────────────────
+trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
+trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
+regime_adx_min = 20.0          # block trend entries during ranging markets
+correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk

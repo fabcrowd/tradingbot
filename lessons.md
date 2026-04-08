@@ -272,6 +272,123 @@ Implemented guardrails in ingest script:
 
 - **Rewire execution and market data from Kraken to Coinbase Advanced Trade** — REST/WS clients, auth, symbols, fees, inventory, and order lifecycle should be abstracted or swapped so the same bot logic can target Coinbase; treat as a dedicated migration task (config flags, adapter layer, paper/sim first).
 
+### 28) April 2026 — WFO champion persistence, objective wiring, and forward-validation telemetry
+
+**Problem / context**
+
+- `scalp_champion.json` was a **single object**: the last pair processed by a WFO pass overwrote prior pairs, so only one symbol could hold a durable champion while others fell back to bootstrap/tuner.
+- `wfo_objective` was threaded into `WFOConfig` but **`score_strategy` ignored it** (always Sharpe), so config did not match behavior.
+- Holdout slices accepted **1 trade**, which produced **high, unstable scores** with tiny samples.
+- Multiple **`load_champion()`** calls in one 60s tick could see **different file contents** (TOCTOU) if WFO wrote mid-tick.
+- Session JSONL lacked **holdout predictions** and **per-close trade attribution** needed to compare forward PnL to WFO expectations.
+
+**What we implemented**
+
+- **Per-symbol champion file:** `load_champion()` normalizes JSON to **`symbol → champion_row`**. Legacy files with top-level `symbol` + `params` are wrapped on read. **`save_champion(result)`** merges into the map and writes atomically. Helper **`load_champion_for_symbol(symbol)`** added in `scalp_wfo.py`.
+- **`score_strategy(m, objective)`** with a small dispatch table (`sharpe`, `expectancy`, `expectancy_sqrt_n`, `sortino`, `calmar`, `profit_factor`, `total_pnl`). Train, holdout, and baseline comparison all use **`wfo_cfg.objective`**. Champion dict includes **`objective`**.
+- **Holdout gate:** require **`wfo_min_trades`** on each holdout evaluation (not 1); log how many top-K candidates were skipped per window when below threshold.
+- **`ScalpRuntime`:** `_champion_mtime` initialized to **`-1.0`** so first read is not skipped when mtime is `0`. Main loop **stats mtime once**, **`load_champion()` once** when mtime advances, passes the same map into **`_try_load_champion`**, **`_apply_no_champion_bootstrap`**, **`_maybe_run_tuner`**. `_try_load_champion` applies **every configured pair** that has a row for **`pair_cfg.symbol`**.
+- **Period logging:** on champion signature change per pair, emit **`champion_period_end`** ( **`forward_pnl`** from **`ScalpTrader.forward_pnl_since(pair_key, period_start)`** ) then **`champion_period_start`** with `holdout_metrics`, `objective`, `score`, etc.
+- **JSONL:** `wfo_pass_start` includes `objective`; `wfo_pair_result` includes `holdout_metrics` + `objective` when a champion is saved; **`position_closed`** adds **`strategy_mode`** and **`direction`**.
+- **Snapshot / UI:** `pair_symbols`, **`champions`** map by exchange symbol; legacy **`champion`** kept for first matching pair. **`frontend-new`:** resolve champion via **`champions[activeSymbol]`** with fallbacks.
+- **`pair_has_wfo_champion`** accepts the multi map or legacy flat dict.
+
+**Operational lessons**
+
+- Expect **fewer or slower champion promotions** until holdout windows show enough trades for **`wfo_min_trades`** — intentional trade-off vs overfitting on 1–2 holdout trades.
+- After deploy, **first WFO save** rewrites champion JSON into the **multi-symbol** shape; backup the file if you need a rollback copy.
+- For **forward PnL attribution**, prefer session JSONL + new fields over inferring from `entry_placed` alone.
+
+### 29) April 2026 — Coinbase scalp / INTX: entry price, TP/SL, API keys (LLM handoff summary)
+
+**Purpose:** Exact findings to give another model when continuing Coinbase Advanced Trade (CDP) + INTX perps scalp work. Files: `backend/server/coinbase_order_manager.py`, `backend/server/scalp_bot/scalp_runtime.py`, `backend/server/scalp_bot/scalp_trader.py`.
+
+**Entry price — what is authoritative vs assumed**
+
+- While an entry is **`pending`**, `ScalpPosition` may still show the **signal’s** `entry_price` from `try_open` (intended limit/market level). The **venue-reported** price applies once fills are processed.
+- **`get_fills` (fill stream):** Each fill uses Coinbase’s per-fill **`price`** (and size). Multiple partial entry fills must be combined as **VWAP** over legs, not “last fill only” or signal price. Implementation: accumulate `entry_fill_cost` / `entry_fill_qty` on `ScalpPosition` while `pending`; when cumulative qty reaches the order size, call `on_entry_filled` with **VWAP** and final qty.
+- **`get_order` / pending-order poll (`_poll_pending_orders`):** When the order is done, prefer **`average_filled_price`** (or **`averageFilledPrice`**). If average is missing, derive VWAP from **notional-style** fields (e.g. `filled_value`, `total_value_after_fees`, `quote_size`) ÷ **`filled_size`** — **do not** use the order’s **`limit_price`** from `order_configuration` as a substitute for fill price. If no average and no derivable notional, **log error and do not** promote entry from that path alone.
+- **Authoritative snapshot path:** `ScalpRuntime.on_entry_fill_authoritative(pair_key, fill_price, fill_qty)` clears partial-fill accumulators and calls `on_entry_filled` with the exchange snapshot (used when the pending-order poll detects a full fill).
+- **INTX reconciliation:** `apply_intx_position_reconciliation` / `adopt_intx_position_from_exchange` use venue fields such as **`entry_vwap`** / **`net_size`** from `list_perps_positions` — treat that as ground truth when adopting or refreshing from the exchange.
+- **Mark / uPnL vs Coinbase UI:** For `venue = coinbase_perps`, **do not** overwrite position mark with **candle `close`** on bar close; marks come from **`get_product`** (e.g. mid) via `CoinbaseOrderManager._refresh_scalp_marks` so uPnL aligns with the Advanced Trade / INTX view.
+
+**Take profit / stop loss — what “active management” means in this repo**
+
+- There is **no** implemented loop that **continuously** reprices or trails TP/SL from indicators every bar.
+- **What exists:** After the entry is **fully** filled (live), `ScalpTrader._place_protective_orders_coinbase` submits **one** protective **stop** (implemented as **stop-limit** via Coinbase `stop_limit_stop_limit_gtc`) and **one** **take-profit** (implemented as a **plain limit** order — `take-profit-limit` maps to `limit_limit_gtc` in `add_order`). **Time stop** and **RSI exit** cancel resting TP/SL client ids and send a **market** close.
+- If TP/SL fail to place, expect **`Scalp stop not placed`** / **`Scalp TP not placed`** alerts (`scalp_protective`) and error logs — that is a real operational risk (naked position until handled).
+
+**API key / permissions**
+
+- Coinbase **CDP** API keys must allow the REST calls in use (**view** balances/orders/fills; **trade** for create/cancel). INTX/perps typically require the **account** to have **derivatives/futures** access and the key to be allowed to trade those products.
+- Permission or product-scope problems usually surface as **API errors, rejections, or empty data** in logs — **not** as the bot silently inventing correct fills. If orders or reads fail consistently, verify key scopes, IP allowlists, and that the portfolio/product (e.g. perp symbol) is permitted.
+
+### 30) April 2026 — Coinbase INTX: buying power vs equity, reconcile hardening, capital UI, optional portfolio UUID
+
+**Futures buying power vs total balance**
+
+- Coinbase’s **`futures_buying_power`** (and order **preview**) can be far below **`total_usd_balance`** / **`available_margin`** when margin is already tied up in open perps.
+- **`PREVIEW_INSUFFICIENT_FUNDS_FOR_FUTURES`** on a **1-contract** nano leg is often “not enough *new* buying power for that notional,” not a broken API key.
+- The bot sends **integer contracts** only (`base_size` ≥ 1). You cannot place a “smaller than minimum contract” perp through this path — free buying power must clear the exchange’s preview for **one** full contract.
+
+**Why:** Operators blamed the bot when the real gate was collateral / cross-margin consumption across open legs.
+
+**INTX position reconciliation — what broke and what we fixed**
+
+- **Resting orders ≠ positions:** Unfilled entry limits do **not** appear in `list_perps_positions` / `get_perps_position`. Reconcile now also **`list_orders` … `OPEN`** for configured scalp `product_id`s; the dashboard exposes **`exchange_open_orders`** and the Scalp tab lists them. Filled size still comes from position APIs + fills.
+- **`list_perps_positions` error aborted reconcile:** On failure we used to **`return`** and never ran per-symbol **`get_perps_position`**. Now we continue with an empty list and still probe **every** configured CDE symbol.
+- **Gap fill only when the bot already had a leg:** We only called **`get_perps_position`** if internal state was `open`/`pending`, so **manual** opens could be invisible. Now we always fetch by symbol when that product is missing from the list response.
+- **Wrong INTX portfolio:** Discovery used the **first** portfolio UUID where `list_perps` did not throw. Multi-portfolio accounts can hold perps elsewhere. Discovery now **scores** portfolios (prefer more legs that match **`[scalp.pairs]`** symbols). Override with **`COINBASE_INTX_PORTFOLIO_UUID`** in `.env`, loaded as **`AppConfig.coinbase_intx_portfolio_uuid`** (`config.py`).
+- **Slow cadence:** Reconcile ran only with the **30s** balance poll. It also runs from the **fill loop every ~12s** (every 6 × 2s ticks) so the UI catches up faster.
+- **Scalp OFF hid exchange truth:** We skipped **adopting** positions when `[scalp]` was disabled in the UI. The runtime now **always merges** non-zero INTX rows into `ScalpTrader` for display; **stop/TP placement** runs only when scalp is **enabled** and not **sim** (`place_protectives`). When protectives are off, we **do not cancel** venue orders on snapshot drift.
+
+**Balance snapshot parsing**
+
+- `get_futures_balance_summary` returns SDK objects (e.g. **`FCMBalanceSummary`**) — naive `dict.get` fails. Use normalized **`value`** extraction for **`total_usd_balance`**, **`futures_buying_power`**, **`initial_margin`**, **`available_margin`**, **`total_open_orders_hold_amount`**, plus **`spot_usd_available`** (USDC+USD on spot accounts).
+
+**Dashboard**
+
+- **Analytics → COINBASE_CAPITAL:** total futures equity (`total_usd_balance`), **committed** (initial margin + open-order hold), **available margin** + buying-power subtitle, spot USD/USDC available.
+- **Scalp tab:** **`intx_unmapped_positions`** banner when the exchange has size on a **`product_id` not** listed under **`[scalp.pairs.*].symbol`**.
+
+**Files:** `coinbase_order_manager.py`, `scalp_runtime.py`, `scalp_trader.py`, `config.py`, `frontend-new` AnalyticsTab / ScalpTab / `types.ts`, `.env.example`.
+
+### 31) April 2026 — Regime “WFO risk on” (faster WFO + shorter bootstrap when activity spikes)
+
+**What it does**
+
+- On each **closed candle**, `regime_risk_on_triggers()` (`backend/server/scalp_bot/regime_risk.py`) checks **volume spike** (bar volume ≥ `regime_volume_spike_mult` × volume MA) and/or **large vol-scaled move** (|close − prev_close| ≥ `regime_price_move_atr_mult` × ATR), plus optional **`regime_price_move_min_pct`**.
+- **Live path (no 15m bar wait):** on every feed tick (Coinbase **candles** + **ticker** updates; Kraken **ohlc** stream updates), `regime_risk_on_triggers_live()` uses the **last closed** `IndicatorValues` (ATR, volume MA) plus the **forming** candle. Reason tags include **`live_volume_spike`** (forming-bar cumulative volume vs last closed-bar volume MA × `regime_volume_spike_mult`), **`live_range_atr`** ((high − low) ≥ ATR × `regime_live_range_atr_mult`), and **`live_velocity_bps`** (rolling **max−min** price over `regime_live_velocity_window_sec`, as bps of mid, vs `regime_live_velocity_min_bps`). Same global window and dashboard behavior as closed-bar hits; runs **during warmup** too once `_latest_iv` exists (so WFO cadence can react before first post-warmup close). Throttled **INFO** log: `regime risk-on LIVE reasons=…` (~120s per pair).
+- Any hit extends a **global** window (`risk_on_hold_sec`): while active, **WFO sleep** shrinks (`wfo_interval_sec × risk_on_wfo_interval_scale`, floored by `risk_on_wfo_min_interval_sec`), **no-champion bootstrap** uses a shorter lookback (`risk_on_bootstrap_hours` vs default 2h), and **Nemesis** no-champion resolution can relax slightly (`risk_on_nemesis_expectancy_slack`, `risk_on_nemesis_min_pf`).
+- **Not entry logic:** risk-on only changes **WFO / bootstrap / Nemesis** scheduling. It does **not** open trades. **SELF_TUNER “AGGRESSIVE”** is still **param-tuner** step size from backtest win rate — unrelated to live regime tags.
+- **Dashboard:** snapshot includes `regime_risk_on` (adds **`live_enabled`**) and per-indicator `wfo_risk_on_label` = **“WFO risk on”** when active (`ScalpPanel`, `ScalpTab` banner under INDICATORS). `pair_reasons` may show **`live_*`** tags.
+
+**Config**
+
+- Keys under `[scalp]` in `config.toml` (see comments there): `regime_risk_on_enabled`, spike/move thresholds, hold, WFO scale/floor, bootstrap hours, Nemesis knobs. Disable all regime extension with `regime_risk_on_enabled = false`.
+- **Live-only:** `regime_live_vol_enabled`, `regime_live_use_volume`, `regime_live_range_atr_mult`, `regime_live_velocity_window_sec`, `regime_live_velocity_min_bps` (set window or min bps to **0** to disable that leg).
+
+**Files**
+
+- `scalp_config.py`, `scalp_runtime.py` (`_on_tick_update`, `_apply_regime_risk_on`, velocity deque), `scalp_wfo.py` (`interval_sec_resolver`), `strategy_lookback.py` (bootstrap hours + Nemesis kwargs), `regime_risk.py`, `candle_feed.py` (`register_tick_callback` for Kraken), `coinbase_candle_feed.py` (existing tick + ticker path), `config.toml`, `frontend-new` `types.ts` + `ScalpPanel.tsx` / `ScalpTab.tsx`.
+
+### 32) April 2026 — PnL Feedback Lab (repo harness + Cursor skills for hypothesis testing)
+
+**In-repo harness (no substitute for operator judgment)**
+
+- Folder: **`.optimization/pnl-feedback-lab/`** — recon/baseline/hypotheses/plan/compare/VERIFIED markdown, **`runs/`** for JSONL outputs, **`research/<H-xxx>/`** for Lens B artifacts, **`lenses/<H-xxx>/`** for dual-lens loop notes.
+- Script: **`.optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py`** — multi-window vector backtest (thirds of bar index per series), all five modes; default uses each pair’s **`interval`** from `[scalp]`. Optional **`--intervals 5,15,60`** sweeps other Parquet intervals **when files exist** (discovery only — not a second confirmation tier for live).
+- Optional: `backend/server/scalp_bot/compare_intervals.py` for 5m vs 15m (may hit REST).
+
+**Cursor skills (install path: your Cursor skills directory, e.g. `~/.cursor/skills/`)**
+
+- **`pnl-feedback-lab`** — Nemesis-style **dual lens**: **Lens B** = theory (deep research + mechanism + falsifiers); **Lens A** = tape (multi-window backtests). They **alternate** (Lab Loop, max 3 iterations) to **CORROBORATE / REFUTE / DEFER** a hypothesis. **CONFIRMED** = RULE C on operating-interval windows; **merge/live pilot** should also satisfy **RULE G** (CORROBORATED + CONFIRMED). Pairs with **`deep-research`** (Lens B); that skill’s PnL integration section points back here.
+- **Workflow reminder:** hypothesis → Lens B `report.md` → Lens A runs → loop log → VERIFIED; interval sweep is for **ideas** (strategy vs structure), not mandatory stacked gates unless written into a specific H-xxx.
+
+**Why log it here**
+
+- Operators and agents should know **where** lab artifacts live, that **WFO risk on** is a labeled UI mode, and that **skills are outside the repo** but describe how we want hypothesis + research + backtest structured.
+
 ---
 
 ## 1. Dynamic Spread Widening (Volatility Guard)
