@@ -1,0 +1,26 @@
+services:
+  tradingbot:
+    build: .
+    env_file:
+      - .env
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./config.toml:/app/config.toml:ro
+    restart: unless-stopped
+
+  polymarket-bot:
+    build:
+      context: .
+      dockerfile: bots/polymarket_bot/Dockerfile
+    env_file:
+      - bots/polymarket_bot/.env
+    ports:
+      - "8091:8091"
+    volumes:
+      - ./bots/polymarket_bot/data:/app/bots/polymarket_bot/data
+      - ./bots/polymarket_bot/logs:/app/bots/polymarket_bot/logs
+    restart: unless-stopped
+    profiles:
+      - polymarket

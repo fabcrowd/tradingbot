@@ -1,0 +1,13 @@
+[tool.pytest.ini_options]
+# scalp_bot tests use `from scalp_bot...`; that package root is backend/server (same as `python -m backend.server.main`).
+pythonpath = ["backend/server"]
+testpaths = ["backend/server"]
+
+[tool.ruff.lint.per-file-ignores]
+# Script mutates sys.path before local package imports.
+"backend/server/scalp_bot/compare_intervals.py" = ["E402"]
+
+[tool.vulture]
+paths = ["backend"]
+min_confidence = 80
+ignore_names = ["LiveOrderManager"]

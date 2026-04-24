@@ -1,7 +1,64 @@
+# ── Environment / Secrets ──
 .env
+*.env.local
+
+# ── Python ──
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+
+# ── Node ──
+node_modules/
+.npm/
+.pnp.*
+
+# ── IDE ──
+.cursor/
+.claude/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Task / Plan files ──
+tasks/
+*.plan.md
+
+# ── Runtime data (main bot) ──
+data/sessions/
+data/trades_live.jsonl
+data/trades_paper.jsonl
 data/trades.jsonl
 data/state.json
-.cursor/
-tasks/
+data/learner_state_*.json
+data/sim_report.json
+data/cost_basis.json
+data/fill_barriers.json
+
+# ── Runtime data (polymarket bot) ──
+bots/polymarket_bot/data/trades_*.jsonl
+bots/polymarket_bot/logs/session_*.jsonl
+
+# ── Debug / Temp ──
+debug-*.log
+*.log
+tmp_*.html
+
+# ── Research generated data ──
+research/polymarket_backtests/data/
+research/polymarket_backtests/__pycache__/
+research/polymarket_backtests/results.json
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Lessons (auto-generated) ──
+lessons.md
+lessons

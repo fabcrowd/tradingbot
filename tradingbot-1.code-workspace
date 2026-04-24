@@ -1,0 +1,17 @@
+{
+  "folders": [
+    {
+      "name": "tradingbot-1",
+      "path": "."
+    },
+    {
+      "name": "Front End",
+      "path": "../../../Downloads/Front End"
+    },
+    {
+      "name": "front_endv2",
+      "path": "../../../Downloads/front_endv2"
+    }
+  ],
+  "settings": {}
+}

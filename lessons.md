@@ -1,7 +1,32 @@
 # Lessons & Feature Reference
 
-Compiled from build conversations between Mitch and collaborators.
+Compiled from build conversations for the Fabcrowd Arceus bot and collaborators.
 Each section maps a design decision or friend's instruction to where it lives in code.
+
+---
+
+## Repository source of truth (read this first)
+
+**What actually runs in *this* workspace:** `python -m backend.server.main` loads the
+**dashboard + Coinbase CDE / INTX scalp** path only (`ScalpRuntime`, `scalp_bot/*`,
+`coinbase_order_manager.py`, `ws_server.py`). There is **no** Kraken market-maker loop
+or `spread_engine.py` in the current `backend/server` tree.
+
+**Canonical for agents:** `AGENTS.md`, **`## Current Lessons (March–April 2026)`** below (includes **fee tier poll / auto-applied exchange rates**)
+(including Coinbase / WFO / fee bullets), and the cited **existing** source files. If a
+lesson names a file that is not in the tree, treat the lesson as **archive / historical**
+unless you are on a branch that restored that code.
+
+**Lower sections of this file:** the long **numbered feature list** starting at
+`## 1. Dynamic Spread Widening`, the **Deep Audit** appendix, and many **`### N) …`**
+entries that reference `spread_engine.py`, `live_order_manager.py`, `book_client.py`,
+etc. are **Kraken MM-era documentation**. They can still inform *ideas* (risk halts,
+session logs, fee vs spread economics) but **must not** be taken as descriptions of
+live behavior in the scalp-only entrypoint. Line numbers and constants in those
+sections are **often stale** relative to any restored MM fork.
+
+**Numbering collision:** `### 27)–34)` under Current Lessons are **not** the same items as
+`### 27)` onward in the older audit/MM log farther down—cite by **title**, not number alone.
 
 ---
 
@@ -9,18 +34,86 @@ Each section maps a design decision or friend's instruction to where it lives in
 
 This section is the up-to-date operating guidance from live runs, overnight logs,
 and post-mortem fixes. If this conflicts with older sections below, prefer this section.
+Several items below record **bugs that were later fixed**; those are kept for history
+but are marked **superseded** or **obsolete** so they are not mistaken for current behavior.
 
-### 1) Risk control must be portfolio-level, not pair-level
+### Dashboard WS, Vite dev, CDE resting strip, operator manual controls (Apr 2026)
+
+- **`SERVER OFFLINE` / no snapshot:** WebSocket URL is `ws://<page-host>/ws` (`frontend-new/src/lib/wsClient.ts`). With **`npm run dev`**, Vite must proxy `/ws` to the Python server. **`vite.config.ts`** must target **`http://127.0.0.1:8080`** (match `[server].host` in `config.toml`), not **`http://localhost:8080`**, or Windows can resolve `localhost` to **::1** while aiohttp listens on **IPv4 only** and the UI stays offline. Optional: **`VITE_WS_URL`** / **`VITE_DASHBOARD_TOKEN`** when using LAN + `DASHBOARD_TOKEN` (see `ws_server.py` NM-008).
+- **CDE_RESTING:** Rows are filtered to the **selected tab’s** `[scalp.pairs.*].symbol` (`exchange_open_orders`); `exchange_open_orders_all` is every OPEN key. Empty tab + nonzero all → UI lists **venue `product_id` × count** so mismatches (other pairs / outside config) are obvious (`App.tsx`).
+- **Manual cancel / manual close (Settings):** WS **`scalp_operator_manual_cancel_orders`** and **`scalp_operator_manual_close_positions`** — log + toast, **no** scalp portfolio halt / **no** operator standby. Close path uses **`user_manual_close`** and client id prefix **`scalp_mclose_`** (must stay in `ScalpRuntime.on_fill` routing tuples). Emergency flatten / stop unchanged.
+- **“Is the bot tracking this short?”** Internal **`open_positions`** only reflect **`ScalpTrader._positions`** (bot-placed legs with known `scalp_entry_*` ids). Coinbase **Positions** is venue truth; reconcile via fills + pending poll. **Hardening (Apr 2026):** register **pending** in `_positions` **before** `add_order` (live `try_open`); fill poll resolves **`pair_key`** from **`position_by_entry(client_order_id)`** / **`active_orders`** when `product_id` mapping fails; chart **`snapBarTime`** falls back to first visible bar if entry time is left of the candle window.
+
+### Coinbase CDE backtest / WFO fees (Apr 2026)
+
+- `[scalp]` uses **`fee_bps_per_leg` (maker)** and **`fee_bps_taker_per_leg`**; `effective_scalp_fee_bps_per_leg()` picks one from **`order_type`** (`limit` → maker, `market` → taker) for WFO, tuner, and `evaluate_params`.
+- **`fee_usd_per_contract_per_leg`** models Coinbase’s flat per-contract per fill-side charge (e.g. NFA/clearing); round-trip subtracts **2×** that per contract.
+- **`contract_size`** on each pair scales **gross PnL** and **%-fee notional** (1 contract); `total_pnl` from the vector backtest is **USD for one contract**, not “raw price delta only.”
+- Champion JSON no longer carries fee/slip/contract fields as authoritative — live **`config.toml`** wins on reload.
+- **Bar equity / shorts:** MTM on open legs uses stop-vs-entry to infer long vs short so drawdown and Sharpe paths are not long-biased.
+- **Champion hot-reload:** if `scalp_champion.json` becomes empty or unreadable, runtime **clears** the in-memory champion map (no stale WFO params).
+
+### WFO taker stress, forward demotion, empirical hybrid, funding warn (Apr 2026)
+
+- **`wfo_assume_taker_fee`:** when **true**, WFO and the param tuner use **`fee_bps_taker_per_leg`** for vec sim (per-leg round-trip fee model), while live **`order_type`** can stay **limit**. Use when you rely on **empirical market bursts** and want conservative champion scores. Helper: `wfo_fee_bps_per_leg()` in `scalp_config.py`. Dashboard / config summary exposes **`fee_bps_wfo_sim_per_leg`** vs **`fee_bps_effective_per_leg`** (live order type).
+- **Forward demotion:** **`wfo_forward_min_trades`** and **`wfo_forward_demotion_threshold`** are loaded from TOML, included in **`session_policy`** snapshots, and patchable at runtime (Settings → apply) alongside WFO intervals.
+- **Empirical hybrid:** runtime patch can toggle **`empirical_market_promotion_enabled`** and related empirical knobs; **`EmpiricalMarketPromotion.update_cfg()`** runs after a successful patch. **`trader` snapshot** includes **`empirical_market`** (promotion burst counts, watch count).
+- **`funding_warn_bps_per_hour`:** during Coinbase **`get_product`** mark refresh, parses **`future_product_details.funding_rate`** (best-effort bps/hour estimate). If **≥ threshold**, pushes a **throttled** dashboard alert (~**30 min** per product) and sets **`funding_rate`** on **open** positions (fraction of notional/hour for display). **Confirm magnitude on Coinbase UI** if field scaling changes.
+- **Session JSONL** (unchanged chain): `entry_ttl_cancel` → `empirical_missed_move` → `empirical_market_promotion_armed` → `entry_market_promoted`.
+
+### Scalp halt, fill telemetry, WFO churn, emergency flatten (Apr 2026)
+
+- **`scalp_risk_halted` / `scalp_entries_blocked()`:** blocks **new** entries even when Kraken MM is off; MM `risk_halted` still applies when `mm_spread_bot_enabled`. WS `scalp_risk_halt` / `scalp_risk_resume`; **`scalp_emergency_stop`** also sets scalp halt + operator standby + `cancel_all_scalp_open_orders` (no position flatten).
+- **`scalp_fill_execution`** JSONL on entry/exit fills (reference price, slip bps, fee when Coinbase fill payload includes it); live **market** exits after `time_stop` / `rsi` / `counter` / **emergency flatten** use `register_pending_market_exit` so fills still log after the trader drops the leg.
+- **WFO:** `wfo_min_champion_score_delta` gates champion save vs prior score; **`risk_on_wfo_min_base_interval_frac`** raises minimum sleep under regime risk-on; while **volatility filter** is armed on any pair, the WFO pass uses a **copy** with optional tighter `min_window_fraction` / `min_latest_holdout_pf` and `allow_promotion_relaxation=False` (`wfo_vol_armed_*`). **`wfo_adverse_check_enabled`** re-scores holdouts with `wfo_adverse_fill_model` / taker fee before save; failures set `gate_reason` and **`wfo_adverse_diag`** on promotion JSONL.
+- **`scalp_emergency_flatten`:** WS `confirm` must be exactly **`CONFIRM_FLATTEN`**; runtime sets scalp halt, cancels protectives, submits **reduce-only** perp markets (`market_market_ioc` tries `reduce_only` then plain IOC on venue reject). Dashboard Settings → **Emergency flatten** uses confirm + prompt.
+- **Param tuner:** **`volatility_armed_param_tuner_interval_mult`** (default **1.0** = unchanged): when **> 1** and vol filter armed, tuner interval is multiplied; **≤ 0** skips tuner passes while armed. **`wfo_forward_outperform_factor`** is a first-class **`ScalpBotConfig`** field (forward demotion Gate 2).
+
+### Fee tier volume, exchange poll, and auto-applied rates (Apr 2026)
+
+**What was added**
+
+- **`fee_tier_volume_source`**: `exchange` (Coinbase Advanced `get_transaction_summary` for futures/perps) vs `manual` (operator baseline USD only). On **`coinbase_perps`**, the default in code is exchange; **`manual`** is for blocked APIs or a frozen baseline.
+- **`fee_tier_poll_interval_sec`**: automatic poll cadence when source is exchange (server enforces a floor; default **900s** in repo `config.toml`).
+- **`fee_tier_add_bot_fill_notional`**: when **manual**, optionally add this process’s session fill USD to the displayed baseline (resets on restart; **off** by default so you do not double-count against exchange totals).
+- **`fee_tier_auto_apply_exchange_fee_rates`**: when **on** (default) with **`fee_tier_volume_source = exchange`**, a successful summary response parses **`fee_tier.maker_fee_rate` / `taker_fee_rate`** and updates **in-memory** `fee_bps_per_leg` and `fee_bps_taker_per_leg`. WFO, bar sim, and the param tuner therefore pick up tier changes on the next poll without editing TOML mid-session.
+- **`scalp_refresh_fee_tier`** (dashboard / WS): forces one poll before the interval elapses.
+- **`scalp_auto_invalidate_champion_on_fee_change`**: unchanged meaning on **startup** (disk fee snapshot vs `config.toml`); when **on**, it also clears **`data/scalp_champion.json`** rows after an **exchange-driven bps change** from the poll so you are not trading a champion optimized at stale fees. Repo default is **on** — turn **off** if you want fewer surprise cold starts and accept manual discipline on tier moves.
+- **`scalp_fee_assumption_revision`**: still the operator bump for intentional TOML fee edits; WFO continues to refresh **`data/scalp_fee_assumption_state.json`** after passes.
+
+**What is *not* auto-synced**
+
+- **`fee_usd_per_contract_per_leg`** is not returned on the parsed `fee_tier` object; keep it aligned with Coinbase in **`config.toml`** when clearing/reg fees change.
+- **`config.toml` is never rewritten** by the poll. Restart reloads maker/taker from the file until the next successful poll applies exchange rates again. When your Coinbase tier is stable, copy the live bps from the dashboard snapshot into TOML so cold start matches reality.
+
+**Dashboard (Settings → WFO & param tuner)**
+
+- Runtime patches: WFO/tuner intervals, windows, Top-K, funding sim flags, fee-tier fields above, fee revision, auto-invalidate, param tuner champion gates, **`wfo_assume_taker_fee`**, forward demotion fields, **`funding_warn_bps_per_hour`**, empirical hybrid toggle — tooltips in **`frontend-new/src/lib/scalpSettingsTooltips.ts`**; full empirical numeric knobs are patchable via WS even if not all are on the Settings form.
+- **Live fee-tier snapshot** on the snapshot shows display volume, poll error, effective maker/taker bps, and auto-apply on/off.
+
+**Repo defaults in `config.toml` (as of this lesson)**
+
+- `fee_tier_volume_source = "exchange"`, `fee_tier_poll_interval_sec = 900`, `fee_tier_add_bot_fill_notional = false`, `fee_tier_auto_apply_exchange_fee_rates = true`, `scalp_auto_invalidate_champion_on_fee_change = true`, `scalp_fee_assumption_revision = 0`, `wfo_min_holdout_trades = 0`, `param_tuner_require_wfo_champion = true`, `param_tuner_allow_mode_override_champion = false`, `backtest_funding_enabled = false`, `backtest_funding_bps_per_hour = 0.0`.
+
+**Implementation pointers**
+
+- Poll + apply: **`scalp_runtime.py`** (`_maybe_refresh_fee_tier_volume`, `refresh_fee_tier_from_exchange`, `_apply_exchange_fee_rates_from_summary`).
+- REST wrapper: **`coinbase_order_manager.py`** (`get_futures_transaction_summary_sync` / `fetch_futures_transaction_summary`).
+- Config dataclass + load: **`scalp_config.py`**.
+
+### 1) Risk control must be portfolio-level, not pair-level *(pattern; MM wording)*
 
 - Risk gates are evaluated from global state (`total_pnl`, `session_start_pnl`, `peak_pnl`).
-- Halt action is global: when tripped, the engine cancels all enabled pairs and stops quoting.
+- In **Kraken MM**, halt canceled all enabled pairs and stopped quoting; **CDE scalp** uses
+  its own limits and `ScalpRuntime` / `ScalpTrader`—still keep **account-level** risk in mind.
 - A one-shot halt path prevents repeated halt spam and repeated cancel attempts.
 
 **Why:** Pair-level checks can miss total account risk and create inconsistent behavior.
 
-### 2) Halt behavior needs an explicit top-of-tick guard
+### 2) Halt behavior needs an explicit top-of-tick guard *(generic; MM origin)*
 
-- `risk_halted` is checked at the top of the engine tick.
+- `risk_halted` must be checked **before** doing work each cycle (historically: top of
+  `SpreadEngine._tick()`).
 - Without this, the loop keeps running and repeatedly logs/cancels, which looked like a shutdown.
 - `risk_halt_reason` is persisted in state and exposed to snapshots for dashboard visibility.
 
@@ -31,16 +124,20 @@ and post-mortem fixes. If this conflicts with older sections below, prefer this 
 
 **Why:** Tight drawdown on a small absolute P&L base causes premature halts.
 
-### 4) Drop structurally unprofitable pairs at current fee tier
+### 4) Drop structurally unprofitable pairs at current fee tier *(MM-era example)*
 
-- XRP/USDT repeatedly lost after fees at the observed tier.
-- It was removed from `enabled_pairs`; active focus is USDG/USDT + TEL/USD.
+- XRP/USDT repeatedly lost after fees at the observed tier on **Kraken spot MM**.
+- Historical note: it was removed from `enabled_pairs` in that deployment.
 
 **Why:** If natural spread + fill quality cannot beat fees, "more tuning" does not fix edge.
 
-### 5) Momentum hold prevents buying back tops after sell bursts
+**Scope:** This lesson describes **market-making pair selection**, not Coinbase perps
+`[scalp.pairs]` economics. For CDE, validate each `product_id` the same way (fees,
+width, contract size)—do not assume XRP/USDT is in or out of any live config.
 
-- New logic: if a pair sees at least `momentum_hold_sells` sells within `momentum_hold_sec`,
+### 5) Momentum hold prevents buying back tops after sell bursts *(Kraken MM feature)*
+
+- Logic (when MM engine is enabled): if a pair sees at least `momentum_hold_sells` sells within `momentum_hold_sec`,
   bot enters sell-only mode (suppresses buy placement).
 - Normal two-sided quoting resumes after cooldown.
 
@@ -59,7 +156,7 @@ and post-mortem fixes. If this conflicts with older sections below, prefer this 
 
 **Why:** Most real issues were only obvious after overnight event reconstruction.
 
-### 7) Smart cancel needs guardrails and retry-safe behavior
+### 7) Smart cancel needs guardrails and retry-safe behavior *(Kraken MM / resting quotes)*
 
 - Avoid blind cancel/replace every cycle.
 - Keep near-fill protection, stale checks, drift checks, and cancel failure safety.
@@ -67,27 +164,25 @@ and post-mortem fixes. If this conflicts with older sections below, prefer this 
 
 **Why:** Phantom orders and fill/accounting drift are high-severity live risks.
 
-### 8) Book staleness checks are required before quoting
+### 8) Book staleness checks are required before quoting *(L2 MM path)*
 
 - Skip ticks on stale order book data.
 - Do not place or reprice quotes using outdated mids/touch levels.
 
 **Why:** WS hiccups can otherwise create stale-price orders and false risk events.
 
-### 9) Learner + spread policy must balance fill acquisition vs protection
+### 9) Learner + spread policy must balance fill acquisition vs protection *(Kraken `StrategyLearner`)*
 
 - Strict per-trade profitability floors can choke early fills.
 - Portfolio-level risk caps plus adaptive spread behavior let the bot explore safely.
 - Pain-floor and no-fill decay mechanisms reduce repeated unproductive quoting regimes.
 
-### 10) Live startup/restart discipline matters
+### 10) Live startup/restart discipline matters *(MM checklist; adapt for CDE)*
 
-- Clean restart should:
-  - reconnect WS,
-  - reconcile open orders,
-  - sync balances,
-  - reseed cost basis from live mids,
-  - place initial two-sided quotes on enabled pairs.
+- Clean restart should (MM-era list): reconnect WS, reconcile open orders, sync balances,
+  reseed cost basis from live mids, place initial two-sided quotes on enabled pairs.
+- **Coinbase scalp:** follow logs for `CoinbaseOrderManager.initialize`, INTX reconcile,
+  `ScalpRuntime` / bar store warmup, and first protective orders after fills.
 - Keep startup logs visible and verify first orders after every deploy.
 
 ### 11) Track only tradable/valid symbols in market subscriptions
@@ -134,7 +229,11 @@ Operational guidance:
 - Keep risk controls portfolio-level while tuning; do not remove halt guards.
 - Treat unsupported subscription warnings as cleanup tasks (noise), not immediate root cause.
 
-### 14) Shared-asset inventory is currently double-counted across pairs (critical when enabling overlapping pairs)
+### 14) Shared-asset inventory double-count *(superseded — see §20)*
+
+**Status:** Describes the **pre-fix Kraken `InventoryManager`** bug. Current MM code
+(if present on your branch) should use portfolio-level checks per **§20**. In the
+**scalp-only** tree there is no `InventoryManager` / Kraken balance path—ignore for CDE.
 
 - `InventoryManager.sync_from_kraken()` writes balances per pair from asset symbols.
 - If two configured pairs share the same base or quote asset, each pair receives the full balance copy.
@@ -144,48 +243,69 @@ Operational guidance:
 
 **Why:** This can create portfolio over-allocation and unexpected rejects/live behavior when multiple pairs share inventory.
 
-### 15) Book subscription scope is all configured pairs, not only enabled trading pairs
+### 15) Book subscription scope was all configured pairs *(superseded — see §21)*
+
+**Status:** Old behavior; **§21** documents the **enabled-pairs-only** subscription fix
+for MM stacks that still have `BookClient`. Not applicable to scalp-only `main.py`.
 
 - `start_book_client()` subscribes using `config.symbols()` (every `[pairs.*]` block), not `pair_keys_for_trading()`.
 - Engine/order placement still uses enabled pairs only.
 
 **Why:** Unsupported or noisy symbols in config can still generate WS warnings and hide signal, even if they are not enabled for trading.
 
-### 16) Runtime defaults have drifted from earlier lesson assumptions
+### 16) Runtime defaults have drifted from earlier lesson assumptions *(MM / config snapshot)*
 
-Current code/config differs from earlier guidance text:
+**Scope:** Compares **Kraken MM** narrative vs a past `config.toml` + `spread_engine`
+constant set. The scalp-only server does not load `spread_engine.py`; for MM forks,
+always read **`config.py` / `spread_engine.py` / `config.toml` on that branch** instead
+of this bullet list.
 
-- `default_cycle_ms` is currently `3000` in active `config.toml` (not 500 baseline).
-- `per_trade_profitability` is currently `false` in active `config.toml`.
-- `PROFITABILITY_MARGIN_BPS` in code is `2` (`config.py`), while older notes refer to `4`.
-- Cancel/stale guards now use `STALE_ORDER_SEC = 600` and `BOOK_STALE_SEC = 120.0`.
+Illustrative drifts called out here historically included:
 
-**Why:** Operators should trust current runtime constants over historical narrative when tuning live behavior.
+- `default_cycle_ms` in `config.toml` vs an older 500 ms baseline in docs.
+- `per_trade_profitability` toggled vs older writeups.
+- `PROFITABILITY_MARGIN_BPS` in `config.py` vs older “4” references in prose.
+- Cancel/stale constants (`STALE_ORDER_SEC`, `BOOK_STALE_SEC`) changing over time—**do
+  not** assume the numeric examples in the **Deep Audit** section (e.g. 5s book stale)
+  match a later AGENTS.md snapshot.
 
-### 17) Risk limit updates explicitly clear halt state from the dashboard path
+**Why:** Operators should trust **checked-in constants** over historical narrative when tuning.
 
-- `ws_server.py` action `update_risk` sets new limits and then sets `state.risk_halted = False`.
-- This allows resume after a risk stop without process restart.
+### 17) Risk limit updates cleared halt from the dashboard path *(obsolete)*
 
-**Why:** Useful for operations, but also means UI risk edits have immediate behavioral effect and should be treated as privileged actions.
+**Status:** **Out of date.** Superseded by **§22** and current `ws_server.py`:
+`update_risk` applies new limits but **does not** clear `risk_halted` unless
+`resume_risk_halt: true` is sent. (START may still clear halt for engine resume—see
+code.) Do not use §17 as operational guidance.
 
-### 18) Threat detector does not directly halt quoting in current engine
+- Previously, `update_risk` had cleared halt implicitly; that was reversed to avoid
+  accidental trading restarts.
+
+**Why (historical):** UI risk edits needed to be explicit, not side-effect resume.
+
+### 18) Threat detector vs quoting *(MM / `SpreadEngine` only)*
 
 - `ThreatDetector` computes `threat_level`, imbalance, spread blowout, velocity, and realized volatility.
-- `SpreadEngine` currently uses velocity/volatility widening, but does not branch on `threat_level == CRITICAL` to halt by itself.
+- **When `spread_engine.py` exists**, behavior depends on that revision: some forks tie
+  `CRITICAL` + `threat_quoting_pause` to skipping ticks; others only widen on velocity/vol.
+- **In the scalp-only tree** there is no `SpreadEngine`—this lesson does not describe CDE execution.
 
-**Why:** "Critical threat auto-halt" should not be assumed unless explicitly added in engine logic.
+**Why:** Do not assume "critical threat auto-halt" unless the **checked-in** MM engine does it.
 
-### 19) Fee-tier visibility is spot schedule-biased in UI
+### 19) Fee-tier visibility is spot schedule-biased in UI *(Kraken MM dashboard)*
 
-- Dashboard `fee_tier` summary is computed from `current_tier_info(vol_30d, "spot_crypto")`.
-- Per-pair effective fee used by quoting is schedule-specific (`usdg`, `maker_rebate`, etc.).
+- Historically, a global `fee_tier` summary could be computed from spot-tier tables while
+  per-pair quoting used schedule-specific fees (`usdg`, `maker_rebate`, etc.).
 
-**Why:** The global tier bar can mislead when active pairs are on non-spot schedules; per-pair fee is authoritative for decisions.
+**Why:** Global tier bars can mislead; **per-pair / venue fee** is authoritative. For **Coinbase CDE**,
+use `[scalp]` fee fields and exchange docs—not Kraken spot tier UI.
 
-### 20) Implemented guard: shared-asset pairs now use portfolio-level availability checks
+### 20) Implemented guard: shared-asset pairs now use portfolio-level availability checks *(Kraken MM)*
 
-Code update applied:
+**Scope:** `inventory.py` / `InventoryManager` on branches that still ship Kraken MM. Not
+present in the scalp-only server tree; retain as **spec** if MM returns.
+
+Code update applied (when those files exist):
 
 - `InventoryManager.can_buy()` now checks quote availability at portfolio level for shared quote assets:
   - estimate wallet quote as `max(inventory_quote)` across pairs sharing that quote asset,
@@ -197,7 +317,9 @@ Code update applied:
 
 **Why:** Prevents over-ordering when multiple pairs reference the same wallet assets.
 
-### 21) Implemented noise-control: order-book subscriptions now follow enabled trading pairs
+### 21) Implemented noise-control: order-book subscriptions now follow enabled trading pairs *(Kraken `BookClient`)*
+
+**Scope:** `book_client.py` / `start_book_client()` on MM branches only.
 
 Code update applied:
 
@@ -264,13 +386,16 @@ Implemented guardrails in ingest script:
 - **Live path:** `indicators.py` — rolling OHLC deque + `daviddtech_live_bundle` each close (works even if hexital path fails). `signal_engine.py` — **`auto`** and **`daviddtech_scalp`** use **`optimized_ready` / `optimized_long_setup`**; **Kraken spot stays long-only** (no live short execution). `scalp_runtime.py` — `active_modes` shows **`daviddtech_scalp`** when config mode is **`auto`**; indicator snapshot exposes t3/hlc/wae/adx/optimized flags; entry gating uses **`optimized_ready`** for that mode; champion hot-reload applies new optimized keys. `ws_server.py` — `set_scalp_strategy` allows **`daviddtech_scalp`**.
 - **Frontend:** `frontend-new` — `ScalpTab.tsx` fallback **`auto` → `daviddtech_scalp`**, **OPTIMIZED** badge, optimized indicator group + tooltip, backtest cell for `daviddtech_scalp`; `types.ts` + `app.css` mode styling.
 
-**Explicitly deferred (per plan):**
+**Explicitly deferred (per plan) — now largely addressed on CDE:**
 
-- **Short positions on live** — `scalp_trader` / futures-style sell-to-open not implemented; vector backtest still scores shorts via `simulate_trades_bidir` until a Coinbase/futures order path exists.
+- Coinbase INTX / perps execution and protective orders are implemented in
+  `coinbase_order_manager.py` + `scalp_trader.py`. Vector backtest shorts still reflect
+  `simulate_trades_bidir`; live shorts follow `shorts_enabled` / venue (see `signal_engine.py`).
 
-**Next todo (operator note):**
+**Historical “next todo” (completed for this repo):**
 
-- **Rewire execution and market data from Kraken to Coinbase Advanced Trade** — REST/WS clients, auth, symbols, fees, inventory, and order lifecycle should be abstracted or swapped so the same bot logic can target Coinbase; treat as a dedicated migration task (config flags, adapter layer, paper/sim first).
+- ~~Rewire execution and market data from Kraken to Coinbase Advanced Trade~~ — done for
+  the scalp path; remaining Kraken references in older sections are **archive**.
 
 ### 28) April 2026 — WFO champion persistence, objective wiring, and forward-validation telemetry
 
@@ -389,13 +514,128 @@ Implemented guardrails in ingest script:
 
 - Operators and agents should know **where** lab artifacts live, that **WFO risk on** is a labeled UI mode, and that **skills are outside the repo** but describe how we want hypothesis + research + backtest structured.
 
+### 33) April 2026 — WFO gate hardening, champion reset, macd_scalp removal *(partially superseded — see note below)*, expiry guard, security
+
+> **Update (2026-04-14):** The **`macd_scalp` removal** described in this lesson was **reverted** when `WFO_REGISTERED_STRATEGY_MODES` was introduced (see `nextsession.md`). `macd_scalp` is back in the registry, `build_default_grid()`, `param_tuner.STRATEGY_MODES`, `strategy_lookback.STRATEGY_MODES`, `ws_server.set_scalp_strategy` valid set, and `run_multiwindow_lab.STRATEGIES`. The **holdout-gate fix**, **champion reset**, **expiry guard**, and **security (loopback + token)** items in this lesson remain in effect. Keep macd_scalp under operator attention (it underperformed on BTC 15m in the original analysis) but it is **eligible** for WFO again — holdout gates are the enforcement layer now.
+
+**Context:** 14×24h rolling compare (champion vs 5-mode oracle lab) showed all three CDE champions underperforming by 2–4× on the operating interval (15m). Root causes: WFO holdout gate bug, overfit EMA params, wrong mode (macd_scalp on BTC). Fixes applied in one session.
+
+**WFO holdout gate (`scalp_wfo.py:499–519`)**
+
+- **Bug:** `avg_m = best_metrics[-1]` — champion selection used mean score across windows, but `holdout_metrics` was written from the last window only. A champion with positive mean score but negative last-window PnL could be saved. SOL was live with holdout PnL = −0.35, PF = 0.59.
+- **Fix:** Gate added after `avg_m` assignment — rejects any top candidate where latest-window PnL < 0 or PF < `min_latest_holdout_pf` (default 1.0). New `WFOConfig` fields: `require_positive_latest_holdout: bool = True`, `min_latest_holdout_pf: float = 1.0`.
+- **Also:** `WFOConfig.min_mean_score` raised from −0.1 → 0.0 (no negative-mean champions).
+- **Also:** `holdout_metrics_mean` dict now saved in every champion record (mean PnL, PF, win rate, trades across all windows). Dashboard and logs should prefer this for operator decisions.
+
+**Champion reset**
+
+- All three entries cleared from `data/scalp_champion.json` → `{}`. Bot falls back to bootstrap on next cycle. WFO re-runs under the new gate.
+- On next promotion, champion requires: latest-window PnL ≥ 0, PF ≥ 1.0, mean score ≥ 0.
+
+**macd_scalp removed from WFO grid and tuner** *(reverted — see 2026-04-14 update at top of §33)*
+
+- BTC champion was `macd_scalp` at WFO-selected params. Rolling compare: champion averaged −$1.26/day at 5m (negative), $4.44/day at 15m vs lab oracle's $10.69. Zero trades fired at 60m. Net −1,711 on full BTC history.
+- ~~Removed from:~~ `scalp_vec_backtest.py` `build_default_grid()`, `param_tuner.py` `STRATEGY_MODES`, `strategy_lookback.py` `STRATEGY_MODES`, `ws_server.py` `set_scalp_strategy` valid set. **As of 2026-04-14 `macd_scalp` is re-wired in all of these.** `build_default_grid()` now contains a **compact macd_scalp sub-grid** (≈96 rows) and the signal implementation (`detect_signals_macd_scalp`, `_eval_macd_scalp`) is used live, not just for diagnostics.
+
+**Param tuner always runs — confirmed**
+
+- `scalp_runtime.py:_maybe_run_tuner` runs every 120s in `WarmupPhase.READY` or `DISABLED`. Not gated by champion existence, WFO state, or any per-mode condition. No code change needed.
+- The tuner evaluates all active modes and adjusts params continuously. It **cannot change the execution mode** — that is WFO's exclusive authority via `_active_mode`. A bad WFO champion locks the mode regardless of what the tuner finds is better locally. This is why the gate fix + reset was necessary.
+
+**CDE expiry guard (`scalp_runtime.py`, `scalp_config.py`)**
+
+- Added `_days_to_expiry(symbol)` — parses month+day from CDE symbol regex (e.g. `BIP-20DEC30-CDE` → Dec 30, nearest future occurrence).
+- In `_open_position`: blocks entry when `days_to_expiry ≤ expiry_guard_block_days` (default 3), logs WARNING when `≤ expiry_guard_warning_days` (default 7). Both fields on `ScalpBotConfig`.
+- `BIP-20DEC30-CDE` expires Dec 30 2026 — guard will warn from Dec 23 and block from Dec 27.
+
+**Dashboard mode source**
+
+- `mode_sources` dict already in runtime snapshot (`scalp_runtime.py:698`) and `AnalyticsTab.tsx` — shows SELECTED BY column (WFO champion / bootstrap / tuner / config) per pair. No code change needed; feature was already implemented.
+
+**Security — dashboard (NM-008)**
+
+- `config.toml` `host` changed from `"0.0.0.0"` → `"127.0.0.1"` — loopback-only binding. Non-loopback connections require `DASHBOARD_TOKEN` env var.
+- `DASHBOARD_TOKEN` documented in `.env.example` with generation command.
+- Note: browser WebSocket connections cannot set `Authorization` headers — query param token (`?token=`) is the only mechanism available for remote access. With `host = "127.0.0.1"` (default), the token is not needed.
+
+**Files changed**
+
+| File | Change |
+|------|--------|
+| `scalp_wfo.py` | Holdout gate, `holdout_metrics_mean`, `min_mean_score=0.0`, new `WFOConfig` fields |
+| `data/scalp_champion.json` | Cleared to `{}` |
+| `scalp_vec_backtest.py` | MACD combos loop removed from `build_default_grid()` *(later restored as a compact sub-grid — 2026-04-14)* |
+| `param_tuner.py` | `macd_scalp` removed from `STRATEGY_MODES` *(later restored — 2026-04-14)* |
+| `strategy_lookback.py` | `macd_scalp` removed from `STRATEGY_MODES` *(later restored — 2026-04-14)* |
+| `ws_server.py` | `macd_scalp` removed from `set_scalp_strategy` valid set *(later restored — 2026-04-14)* |
+| `scalp_config.py` | `expiry_guard_warning_days`, `expiry_guard_block_days` added to `ScalpBotConfig` |
+| `scalp_runtime.py` | `_days_to_expiry()`, expiry guard in `_open_position()`, `datetime`/`re` imports |
+| `config.toml` | `host = "127.0.0.1"` |
+| `.env.example` | `DASHBOARD_TOKEN` documented |
+
+### 34) April 2026 — 5 new strategy modes: Supertrend, Squeeze Momentum, QQE Mod, UT Bot Alert, Hull Suite
+
+> **Update (2026-04-14):** `macd_scalp` was **restored** (see §33 note), so the WFO grid now carries **10** registered modes, not 9. Counts below that read "9 modes" / "2,790 configs" are the post-§34 snapshot *before* `macd_scalp` came back — current grid is **≈2,886 configs** after adding macd_scalp's compact sub-grid (~96 rows).
+
+**Context:** After clearing the champion (§33) and removing macd_scalp, the WFO grid had 4 remaining modes: daviddtech_scalp, ema_momentum, rsi_reversion, ema_scalp. Added 5 well-known indicator strategies to expand coverage and give WFO more candidates for different market regimes.
+
+**New modes and their signal logic:**
+
+| Mode | Signal condition | Key params |
+|---|---|---|
+| `supertrend` | Supertrend (hl2 ± factor×ATR) flips direction | `supertrend_period`, `supertrend_factor` |
+| `squeeze_momentum` | TTM Squeeze momentum (LR of BB/KC midpoint delta) crosses zero | `squeeze_bb_period`, `squeeze_kc_mult`, `squeeze_mom_period` |
+| `qqe_mod` | Wilder-smoothed RSI crosses ATR-derived trailing level, confirmed above/below 50 | `qqe_rsi_period`, `qqe_factor`, `qqe_smoothing` |
+| `utbot_alert` | Chandelier Exit trailing stop (ratcheting ATR trail) flips direction | `utbot_atr_period`, `utbot_atr_mult` |
+| `hull_suite` | Hull MA (WMA(2×WMA(n/2)−WMA(n), √n)) slope changes direction | `hull_period` |
+
+**Wiring (all 5 modes hooked everywhere the 4 legacy modes exist):**
+
+| File | Change |
+|---|---|
+| `scalp_vec_backtest.py` | `wma()` helper added; 5 `detect_signals_*()` + 5 `*_live_bundle()` functions; 13 new `ParamSet` fields; 5 new branches in `evaluate_params()`; 891 new grid configs in `build_default_grid()` |
+| `scalp_config.py` | 13 new fields in `ScalpPairConfig` (all with sensible defaults); parsed in `load_scalp_config()` |
+| `indicators.py` | 15 new `IndicatorValues` bool fields; 5 live bundle calls in `IndicatorSet.update()` using existing `_ohlc_hist` deque |
+| `signal_engine.py` | `_TREND_MODES` updated; 5 `_eval_*()` methods (long+short per mode); dispatched in `evaluate()`, `evaluate_counter()`, `evaluate_tick()` |
+| `scalp_wfo.py` | `_params_from_config()` updated with 13 new params |
+| `param_tuner.py` | `STRATEGY_MODES` → 9 modes; `TUNABLE_PARAMS` + new mode entries; `_params_from_pair_config()` + `apply_tuner_result()` attr_map updated |
+| `strategy_lookback.py` | `STRATEGY_MODES` → 9 modes |
+| `ws_server.py` | `valid` set expanded for `set_scalp_strategy` handler |
+| `run_multiwindow_lab.py` | `STRATEGIES` updated to 9 modes (macd_scalp dropped) |
+
+**Key design notes:**
+- Incremental live path reuses the vectorized detect functions via live_bundle helpers on `_ohlc_hist` (maxlen=320 bars), matching the backtest math exactly.
+- All 5 new modes are guarded by try/except in `IndicatorSet.update()` — a single bad candle won't crash live trading.
+- WFO grid grew from 1,899 → 2,790 configs (+891); param tuner trains across all 9 modes per cycle.
+- `squeeze_momentum` and `qqe_mod` are not added to `_TREND_MODES` (they work in ranging conditions); `supertrend`, `utbot_alert`, `hull_suite` are trend-following and gated by ADX regime filter.
+- No new champions set — WFO will select the best-performing mode per pair from next cycle.
+
+**Smoke test (synthetic 500 bars):** All 5 modes generate trades (6–69 trades); real INTX data (449 bars) shows squeeze_momentum positive PnL at default params.
+
+---
+
+## Historical archive: Kraken spot market maker (`spread_engine` era)
+
+**Everything from here through the “Deep Audit” appendix and most following `### N)` MM
+entries assumes a Kraken L2 + `SpreadEngine` loop.** In the **scalp-only** checkout,
+those modules are **not part of `backend/server`**. Treat the material as:
+
+- **Archive:** useful if you merge MM code back from history or another branch.
+- **Non-authoritative for live behavior** of `python -m backend.server.main` on this tree.
+- **Line numbers and constants:** verify in git if you revive MM; they conflict across
+  versions (e.g. `STALE_ORDER_SEC` 90 vs 600, `BOOK_STALE_SEC` 5 vs 120 vs 600).
+
+Scalp-specific narratives farther down (WFO postmortems, fee vs ATR) remain **strategy**
+lessons but may reference **Kraken candles** or **side-by-side MM**—check **§29–34** and
+`scalp_runtime.py` / `coinbase_candle_feed.py` for the **current** data path.
+
 ---
 
 ## 1. Dynamic Spread Widening (Volatility Guard)
 
 **Instruction:** "dynamic spread that widens when prices move fast"
 
-**Implementation:** `backend/server/spread_engine.py`, `_tick()` lines 247–249
+**Implementation (MM archive):** `backend/server/spread_engine.py`, `_tick()` lines 247–249 — **file may not exist on scalp-only branches**
 
 When `realized_vol` exceeds `VOL_WIDEN_THRESHOLD` (0.0005), the engine adds
 extra basis points to the effective half-spread proportional to volatility.
@@ -700,7 +940,11 @@ than `depeg_threshold_bps` (default 50 bps = 0.5%), the bot:
 
 ---
 
-## Architecture Summary
+## Architecture Summary *(Kraken MM — historical diagram)*
+
+**Obsolete as a description of `main.py` in the scalp-only repo.** Today’s entrypoint is
+**dashboard + `ScalpRuntime` + optional `CoinbaseOrderManager`** (see `AGENTS.md`). The
+diagram below is the **dormant Kraken spread-MM** pipeline (historical reference only).
 
 ```
 config.toml + .env
@@ -727,10 +971,12 @@ config.toml + .env
 
 ---
 
-## Deep Audit: Findings and Fixes (April 2026)
+## Deep Audit: Findings and Fixes (April 2026) *(Kraken MM codebase — historical)*
 
 Full code audit of Proper Fill Detection, Rebate Pairs, Dynamic Spread,
-and Smart Cancel logic. Findings labeled A1-A6, B1-B4, C1-C2.
+and Smart Cancel logic on the **market-making** stack. Findings labeled A1-A6, B1-B4, C1-C2.
+**Numeric constants and line references below are not maintained** against the
+scalp-only tree.
 
 ### A. Smart Cancel Logic
 
@@ -847,13 +1093,16 @@ back to 3-second cycles.
 Added a token-bucket limiter (`backend/server/rate_limiter.py`) and wired it into live add/cancel message sends.
 On Kraken rate-limit style errors, the limiter applies a temporary penalty window to reduce message pressure.
 
-### 28) Threat levels now directly influence quoting
+### 28) Threat levels now directly influence quoting *(MM fork; verify if revived)*
 
-`spread_engine.py` now consumes `PairState.threat_level`:
+**Scope:** Applies only where **`spread_engine.py`** exists and wires `PairState.threat_level`
+into `_tick()`. **Not** the Coinbase scalp path in the current scalp-only server.
+
+`spread_engine.py` (when present) may consume `PairState.threat_level`:
 - `HIGH`: multiplies spread by `threat_spread_multiplier`
 - `CRITICAL` + `threat_quoting_pause=true`: skips quoting for that tick
 
-This closes the gap where threat level was computed but not used.
+Conflicts with **Current Lessons §18** if your branch differs—**read the engine**, not this blurb.
 
 ### 29) Startup security check warns on potentially over-privileged API keys
 
@@ -1020,7 +1269,7 @@ XRP_USDT (5 events, 0 sells): SKIPPED — no sell data.
 
 ### 37) Orphan orders on Kraken lock funds silently — cancel ALL at startup
 
-**Problem:** Previous reconciliation used `cl_ord_id` (e.g., `mitch-7fdbdb021521`) as the `txid` param
+**Problem:** Previous reconciliation used `cl_ord_id` (e.g., `arceus-7fdbdb021521`) as the `txid` param
 in Kraken's REST `cancel_order`. Kraken expects the native order ID (`OXXXXX-XXXXX-XXXXXX`), not the
 client order ID. Every cancel attempt returned "Invalid order" and was silently logged as a warning.
 The orphan orders stayed open, locking USDT balance. The bot's `can_buy()` passed (it checked local
@@ -1881,12 +2130,16 @@ apply — they benefit from the directional signal the weighting provides.
 
 **Files:** `backend/server/spread_engine.py`
 
-### 61) Scalp bot design — directional momentum on Kraken spot (April 2026)
+### 61) Scalp bot design — directional momentum on Kraken spot (April 2026) *(partially superseded)*
 
 **Context:** After repeated failures with market making on directional assets (DRIFT/USD)
 and thin stablecoin books (USDG/USDC), a second independent trading engine was built for
-directional scalp trading on liquid pairs (BTC/USD, ETH/USD). Runs alongside the MM bot
-in the same process on separate pairs.
+directional scalp trading on liquid pairs (BTC/USD, ETH/USD).
+
+**Process layout (updated):** On the **current scalp-first** branch, `main.py` does **not**
+start the MM bot; scalp + Coinbase is the live path. The “runs alongside the MM bot” wording
+below is **historical**. Data feeds may be **Coinbase candles** (`coinbase_candle_feed.py`)
+per `[scalp].venue`, not only Kraken OHLC—confirm `ScalpRuntime` / config for your run.
 
 ---
 
@@ -2333,3 +2586,59 @@ When WFO can't find a champion (hostile regime), the self-tuner is the correct f
 doesn't require cross-window consistency and makes incremental improvements.
 
 **Files:** `config.toml`, `scalp_wfo.py`, `param_tuner.py`
+
+### 35) April 2026 — `sar_chop` 11th WFO mode (TV "5 min bot scalper" decode)
+
+Implemented a new registered strategy mode `sar_chop` after decoding the closed-source TV script
+`PUB;1CeTr8xhlMOD1KIBlPpqEoblpE0cTavq` (slug `vNSZwQsS`) via `pine-facade.tradingview.com`. The decode
+found: Parabolic SAR(0.02, 0.02, 0.2) + Lucid SAR(0.02, 0.02, 0.2) + MA(50) + MA(200) + MACD(12,26,9)
++ UT Bot Alert(mult=2) + CHOP(10), with 4 alerts and 12 plotshapes — a multi-filter trend-following
+system with an ATR-trail exit.
+
+**Entry conditions (long; short is the mirror):**
+- Primary PSAR flips bear → bull on this bar
+- Choppiness Index < threshold (default 38.2 — trending regime)
+- `close > MA(200)` AND `MA(50) ≥ MA(200)` (bullish stack)
+- MACD histogram > 0 (momentum confirmation)
+- Optional: Lucid (close-based) SAR also in bull state
+- Optional: UT Bot ATR trail already in bull state (prevents fighting the exit gate)
+
+**Exit:** `simulate_trades_bidir` ATR stop/TP (same simulator as utbot_alert/hull_suite). The UT Bot
+trail agreement gate keeps entries aligned with the stop that would protect a live fill.
+
+**Wiring checklist completed:**
+- `scalp_vec_backtest.py`: `detect_signals_sar_chop()`, `sar_chop_live_bundle()`, ParamSet fields
+  (`sar_start`, `sar_increment`, `sar_max`, `sar_chop_ma_long_period`, `sar_chop_ma_short_period`,
+  `sar_chop_chop_period`, `sar_chop_chop_threshold`, `sar_chop_macd_{fast,slow,signal}`,
+  `sar_chop_use_lucid`, `sar_chop_use_utbot_trail`, `sar_chop_utbot_atr_period`, `sar_chop_utbot_mult`),
+  `WFO_REGISTERED_STRATEGY_MODES` (now 11 modes), `evaluate_params` branch, 1,728-row grid block.
+- `scalp_config.py`: `ScalpPairConfig` fields + `load_scalp_config()` parsing.
+- `indicators.py`: `IndicatorValues.sar_chop_long_setup/short_setup/sar_value/chop_value/sar_chop_trail_bull`
+  and `sar_chop_live_bundle()` call in both (standard + numpy) update paths.
+- `signal_engine.py`: `_eval_sar_chop()` (closed bar, counter) and `_eval_tick_sar_chop()` (Coinbase
+  tick-path entry), wired into `evaluate()`, `evaluate_counter()`, `evaluate_tick()`.
+  **Bonus fix:** the tick path no longer silently falls back to `ema_momentum` on unknown modes —
+  it now errors like `evaluate()` / `evaluate_counter()` (closes the parity gap noted in
+  nextsession 2026-04-14 outstanding item #2).
+- `scalp_wfo.py`: `_params_from_config()` + champion `params` serialization include all 16 new fields.
+- `param_tuner.py`: `STRATEGY_MODES` (11 entries), `TUNABLE_PARAMS["sar_chop"]` tuple, priority map,
+  `_params_from_pair_config()`, and `apply_tuner_result` `attr_map`.
+- `strategy_lookback.py`, `ws_server.py` (`set_scalp_strategy` valid set),
+  `.optimization/pnl-feedback-lab/scripts/{run_multiwindow_lab,compare_champion_multi_timeframe}.py`,
+  `.optimization/timeframe_3d_pnl_sweep.py`, `.optimization/shorts_ab_test.py`.
+- `test_registered_strategy_modes.py`: +3 tests (registry coverage, grid entries present, flat-series
+  smoke test does not crash).
+
+**Grid:** 2 × 2 × 3 × 2 × 3 × 2 × 3 × 2 × 2 = 1,728 combinations per pair per window, bringing the
+default WFO grid from ~2,886 to 4,362 ParamSets. Tunable dims were chosen to cover the critical
+filters (CHOP threshold, MA length, UT Bot mult, Lucid toggle) plus ATR risk multipliers.
+
+**Decode methodology:** see `feedback_tradingview_extract_skill.md` in memory. The `pine-facade`
+endpoint returns `source` for closed-source scripts when `scriptIdPart/version` is supplied;
+internal aliases like `alerts`, `plots`, and embedded `library_id` strings reveal the indicator set
+without reverse-engineering the PineScript.
+
+**Files:** `scalp_vec_backtest.py`, `scalp_config.py`, `indicators.py`, `signal_engine.py`,
+`scalp_wfo.py`, `param_tuner.py`, `strategy_lookback.py`, `ws_server.py`,
+`.optimization/pnl-feedback-lab/scripts/*.py`, `.optimization/*.py`,
+`test_registered_strategy_modes.py`

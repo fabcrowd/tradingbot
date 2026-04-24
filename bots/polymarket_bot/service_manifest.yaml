@@ -1,0 +1,47 @@
+{
+  "bot_id": "polymarket_bot",
+  "display_name": "Polymarket Bot",
+  "version": "0.1.0",
+  "runtime": "python",
+  "entrypoint": "python -m bots.polymarket_bot.src.runner",
+  "healthcheck": {
+    "path": "/status",
+    "method": "GET"
+  },
+  "capabilities": [
+    "market_making",
+    "fee_aware_taker_gate",
+    "paper_trading"
+  ],
+  "config_schema": {
+    "env_prefix": "PMBOT_",
+    "required": [
+      "PMBOT_MODE",
+      "PMBOT_PORT"
+    ]
+  },
+  "ui_panels": [
+    "status",
+    "pnl",
+    "positions",
+    "recent_trades",
+    "risk_controls"
+  ],
+  "metrics_contract": [
+    "pnl_total_usd",
+    "win_rate",
+    "open_positions",
+    "orders_placed",
+    "mode"
+  ],
+  "risk_controls": [
+    "daily_loss_limit_usd",
+    "max_position_pct",
+    "max_portfolio_exposure_usd"
+  ],
+  "service": {
+    "host": "polymarket-bot",
+    "port": 8091,
+    "base_path": ""
+  }
+}

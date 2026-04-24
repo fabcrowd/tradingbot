@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
+import uuid
 from dataclasses import dataclass, field
-from enum import Enum
 from typing import Any
+
+LOG = logging.getLogger(__name__)
 
 
 @dataclass
@@ -24,19 +27,7 @@ class PairState:
     ask_levels: list[OrderBookLevel] = field(default_factory=list)
     inventory_base: float = 0.0
     inventory_quote: float = 0.0
-    # Quote currency locked in the base position (incl. buy fees); for P&L on sells
     position_cost_quote: float = 0.0
-    # Fast threat / market metrics (set by ThreatDetector).
-    threat_level: "ThreatLevel" = field(default=None)  # type: ignore[assignment]
-    book_imbalance: float = 0.0
-    mid_velocity_bps: float = 0.0
-    tick_volatility: float = 0.0
-    spread_blow_out_ratio: float = 1.0
-
-    # Per-pair realized volatility (set by ThreatDetector).
-    realized_vol: float = 0.0
-    # Timestamp of last book update (for staleness detection).
-    last_book_update_ts: float = 0.0
 
     @property
     def mid_price(self) -> float:
@@ -62,6 +53,21 @@ class PairState:
             return self.best_ask - self.best_bid
         return 0.0
 
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "symbol": self.symbol,
+            "best_bid": self.best_bid,
+            "best_ask": self.best_ask,
+            "mid_price": self.mid_price,
+            "spread": self.spread,
+            "microprice": self.microprice,
+            "bid_levels": [{"price": lvl.price, "volume": lvl.volume} for lvl in self.bid_levels],
+            "ask_levels": [{"price": lvl.price, "volume": lvl.volume} for lvl in self.ask_levels],
+            "inventory_base": self.inventory_base,
+            "inventory_quote": self.inventory_quote,
+            "position_cost_quote": self.position_cost_quote,
+        }
+
 
 @dataclass
 class ActiveOrder:
@@ -72,9 +78,10 @@ class ActiveOrder:
     price: float
     qty: float
     placed_at: float = field(default_factory=time.time)
-    kraken_order_id: str = ""
+    exchange_order_id: str = ""
     filled_qty: float = 0.0
     cancel_retry: bool = False
+    cancel_attempt_count: int = 0  # NM-008: cap cancel retries to avoid rate-limiter starvation
 
 
 @dataclass
@@ -90,20 +97,12 @@ class TradeRecord:
     spread_bps: int | None = None
 
 
-class ThreatLevel(str, Enum):
-    CALM = "calm"
-    ELEVATED = "elevated"
-    HIGH = "high"
-    CRITICAL = "critical"
-
-
-class CancelReason(str, Enum):
-    NONE = ""
-    PRICE_DRIFT = "price drift > 1.5x spread"
-    STALE = "stale order (age)"
-    DEPEG = "depeg circuit breaker"
-    STOP = "engine stopped"
-    SURVIVAL_PNL = "survival P&L floor"
+@dataclass
+class OCOPair:
+    pair_key: str
+    stop_cl_ord_id: str
+    take_cl_ord_id: str
+    created_at: float = field(default_factory=time.time)
 
 
 class BotState:
@@ -111,32 +110,129 @@ class BotState:
 
     def __init__(self) -> None:
         self.pairs: dict[str, PairState] = {}
-        self.active_orders: dict[str, ActiveOrder] = {}  # cl_ord_id -> order
+        self.active_orders: dict[str, ActiveOrder] = {}
         self.recent_fills: list[TradeRecord] = []
         self.total_pnl: float = 0.0
-        # Completed sell legs (round-trip metrics / win rate)
         self.total_trades: int = 0
         self.total_wins: int = 0
-        # Every logged fill (buy or sell)
         self.fill_event_count: int = 0
-        self.spread_captured: float = 0.0
-        self.pnl_curve: list[tuple[float, float]] = []  # (timestamp, cumulative_pnl)
+        self.pnl_curve: list[tuple[float, float]] = []
         self.running: bool = False
         self.mode: str = "paper"
+        self.mm_spread_bot_enabled: bool = False
         self.active_pair_key: str = ""
         self._lock = asyncio.Lock()
-        self.market_signals: dict[str, Any] | None = None
-        self.last_cancel_reason: dict[str, str] = {}  # pair_key -> reason text
-        self.learner_info: dict[str, Any] = {}  # pair_key -> {spread, rate, direction}
-        self.volume_30d: float = 0.0  # rolling 30-day USD volume for fee tier
-        # Risk management tracking
-        self.peak_pnl: float = 0.0          # highest P&L reached in this session
-        self.session_start_pnl: float = 0.0  # P&L at session start (for daily calc)
-        self.session_start_ts: float = 0.0   # timestamp when session started
-        self.risk_halted: bool = False        # True when auto-stop triggered
+        self.last_cancel_reason: dict[str, str] = {}
+        self.peak_pnl: float = 0.0
+        self.session_start_pnl: float = 0.0
+        self.session_start_ts: float = 0.0
+        self.risk_halted: bool = False
         self.risk_halt_reason: str = ""
-        self.last_order_reject_ts: float = 0.0  # timestamp of last order rejection (for backoff)
-        self.last_fill_ts: dict[str, float] = {}  # pair_key -> timestamp of most recent fill
+        # Scalp-native portfolio halt (independent of spread-MM bot / portfolio risk_halted).
+        self.scalp_risk_halted: bool = False
+        self.scalp_risk_halt_reason: str = ""
+        self.scalp_risk_halted_ts: float = 0.0
+        self.last_order_reject_ts: float = 0.0
+        self.last_order_reject_reason: str = ""
+        self.order_reject_count: int = 0
+        self.insufficient_funds_until: float = 0.0
+        self.order_reject_pause_until: float = 0.0
+        self.last_fill_ts: dict[str, float] = {}
+        self.oco_pairs: dict[str, OCOPair] = {}
+        self._alert_fn: Any = None
+        # Dashboard asyncio loop — set when DashboardServer starts; used to deliver
+        # alerts from worker threads (e.g. bar_store Parquet append via asyncio.to_thread).
+        self._alert_loop: Any = None  # asyncio.AbstractEventLoop | None
+        self._exchange_errors: list[dict[str, Any]] = []
+        self._request_snapshot_bump: Any = None
+
+    def push_alert(
+        self,
+        level: str,
+        title: str,
+        detail: str = "",
+        source: str = "",
+        *,
+        persistent: bool = False,
+        exchange_error_id: str | None = None,
+    ) -> None:
+        if level == "error":
+            LOG.error("ALERT [%s] %s — %s", source, title, detail)
+        elif level == "warning":
+            LOG.warning("ALERT [%s] %s — %s", source, title, detail)
+        else:
+            LOG.info("ALERT [%s] %s — %s", source, title, detail)
+        if self._alert_fn is None:
+            return
+        coro = self._alert_fn(level, title, detail, source, persistent, exchange_error_id)
+        main_loop = getattr(self, "_alert_loop", None)
+        try:
+            cur = asyncio.get_running_loop()
+        except RuntimeError:
+            cur = None
+
+        def _fail(fut: asyncio.Future | asyncio.Task) -> None:
+            try:
+                exc = fut.exception()
+            except (asyncio.CancelledError, asyncio.InvalidStateError):
+                return
+            if exc is not None:
+                LOG.warning("alert broadcast task failed: %s", exc)
+
+        if main_loop is not None and main_loop.is_running() and cur is not main_loop:
+            try:
+                fut = asyncio.run_coroutine_threadsafe(coro, main_loop)
+                fut.add_done_callback(_fail)
+            except Exception:
+                LOG.warning("ALERT thread-dispatch failed", exc_info=True)
+        elif cur is not None:
+            try:
+                t = cur.create_task(coro)
+                t.add_done_callback(_fail)
+            except Exception:
+                LOG.warning("ALERT create_task failed", exc_info=True)
+        elif main_loop is not None and main_loop.is_running():
+            try:
+                fut = asyncio.run_coroutine_threadsafe(coro, main_loop)
+                fut.add_done_callback(_fail)
+            except Exception:
+                LOG.warning("ALERT thread-dispatch failed", exc_info=True)
+        else:
+            LOG.warning("ALERT dropped (no dashboard loop): [%s] %s — %s", source, title, detail)
+
+    def record_exchange_error(self, level: str, title: str, detail: str = "", source: str = "") -> str:
+        lv = level if level in ("error", "warning") else "warning"
+        err_id = f"ex-{uuid.uuid4().hex[:12]}"
+        entry: dict[str, Any] = {
+            "id": err_id,
+            "ts": time.time(),
+            "level": lv,
+            "title": title,
+            "detail": detail,
+            "source": source,
+            "acknowledged": False,
+        }
+        self._exchange_errors.append(entry)
+        if len(self._exchange_errors) > 100:
+            self._exchange_errors = self._exchange_errors[-100:]
+        self.push_alert(lv, title, detail, source, persistent=True, exchange_error_id=err_id)
+        bump = getattr(self, "_request_snapshot_bump", None)
+        if callable(bump):
+            try:
+                bump()
+            except Exception:
+                LOG.debug("exchange error snapshot bump failed", exc_info=True)
+        return err_id
+
+    def acknowledge_exchange_errors(self, error_ids: list[str] | None) -> None:
+        if error_ids is None:
+            for e in self._exchange_errors:
+                e["acknowledged"] = True
+            return
+        want = set(error_ids)
+        for e in self._exchange_errors:
+            if e["id"] in want:
+                e["acknowledged"] = True
 
     @property
     def win_rate(self) -> float:
@@ -144,35 +240,61 @@ class BotState:
             return 0.0
         return self.total_wins / self.total_trades * 100
 
+    def trim_lists(self) -> None:
+        if len(self.recent_fills) > 1000:
+            self.recent_fills = self.recent_fills[-500:]
+        if len(self.pnl_curve) > 2000:
+            self.pnl_curve = self.pnl_curve[-1000:]
+
     def init_pair(self, key: str, symbol: str) -> None:
         if key not in self.pairs:
             self.pairs[key] = PairState(symbol=symbol)
 
-    def snapshot(self) -> dict[str, Any]:
-        """Return a JSON-serializable snapshot for the dashboard."""
-        pair_data = {}
-        for key, ps in self.pairs.items():
-            pair_data[key] = {
-                "symbol": ps.symbol,
-                "best_bid": ps.best_bid,
-                "best_ask": ps.best_ask,
-                "mid_price": ps.mid_price,
-                "spread": ps.spread,
-                "bid_levels": [
-                    {"price": l.price, "volume": l.volume} for l in ps.bid_levels
-                ],
-                "ask_levels": [
-                    {"price": l.price, "volume": l.volume} for l in ps.ask_levels
-                ],
-                "inventory_base": ps.inventory_base,
-                "inventory_quote": ps.inventory_quote,
-                "threat_level": (ps.threat_level.value if isinstance(ps.threat_level, ThreatLevel) else None),
-                "book_imbalance": ps.book_imbalance,
-                "mid_velocity_bps": ps.mid_velocity_bps,
-                "tick_volatility": ps.tick_volatility,
-                "spread_blow_out_ratio": ps.spread_blow_out_ratio,
-            }
+    def exchange_entries_throttled(self) -> bool:
+        """True during cooldown after consecutive venue rejects or insufficient-funds errors."""
+        now = time.time()
+        return now < self.order_reject_pause_until or now < self.insufficient_funds_until
 
+    def note_order_reject(
+        self,
+        reason: str,
+        *,
+        source: str = "coinbase",
+        max_consecutive: int = 3,
+        consecutive_pause_sec: float = 120.0,
+        insufficient_funds_cooldown_sec: float = 300.0,
+    ) -> None:
+        self.last_order_reject_ts = time.time()
+        self.last_order_reject_reason = (reason or "")[:500]
+        self.order_reject_count += 1
+        ur = self.last_order_reject_reason.upper()
+        if "INSUFFICIENT" in ur and "FUND" in ur:
+            self.insufficient_funds_until = max(
+                self.insufficient_funds_until,
+                time.time() + max(1.0, float(insufficient_funds_cooldown_sec)),
+            )
+        mc = max(1, int(max_consecutive))
+        if self.order_reject_count >= mc:
+            self.order_reject_pause_until = max(
+                self.order_reject_pause_until,
+                time.time() + max(1.0, float(consecutive_pause_sec)),
+            )
+            self.order_reject_count = 0
+
+    def note_order_success(self) -> None:
+        self.order_reject_count = 0
+
+    def scalp_entries_blocked(self) -> bool:
+        """True when new scalp entries must not fire (scalp halt or MM risk halt)."""
+        if self.scalp_risk_halted:
+            return True
+        if self.mm_spread_bot_enabled and self.risk_halted:
+            return True
+        if self.exchange_entries_throttled():
+            return True
+        return False
+
+    def snapshot(self) -> dict[str, Any]:
         orders = [
             {
                 "cl_ord_id": o.cl_ord_id,
@@ -184,7 +306,6 @@ class BotState:
             }
             for o in self.active_orders.values()
         ]
-
         fills = [
             {
                 "timestamp": f.timestamp,
@@ -197,28 +318,41 @@ class BotState:
             }
             for f in self.recent_fills[-50:]
         ]
-
         return {
-            "pairs": pair_data,
+            "pairs": {key: ps.to_dict() for key, ps in self.pairs.items()},
             "active_orders": orders,
             "recent_fills": fills,
             "total_pnl": round(self.total_pnl, 6),
             "total_trades": self.total_trades,
             "fill_event_count": self.fill_event_count,
             "win_rate": round(self.win_rate, 1),
-            "spread_captured": round(self.spread_captured, 6),
             "pnl_curve": self.pnl_curve[-500:],
             "running": self.running,
             "mode": self.mode,
+            "spread_bot_enabled": False,
             "active_pair_key": self.active_pair_key,
             "last_cancel_reason": self.last_cancel_reason,
-            "learner_info": self.learner_info,
             "last_fill_ts": {k: round(v, 1) for k, v in self.last_fill_ts.items()},
-            "volume_30d": round(self.volume_30d, 2),
-            # Risk / projections
             "session_start_pnl": round(self.session_start_pnl, 6),
             "session_start_ts": self.session_start_ts,
             "peak_pnl": round(self.peak_pnl, 6),
             "risk_halted": self.risk_halted,
             "risk_halt_reason": self.risk_halt_reason,
+            "scalp_risk_halted": self.scalp_risk_halted,
+            "scalp_risk_halt_reason": self.scalp_risk_halt_reason,
+            "scalp_risk_halted_ts": self.scalp_risk_halted_ts,
+            "scalp_entries_blocked": self.scalp_entries_blocked(),
+            "oco_pairs": {
+                k: {"pair_key": v.pair_key, "stop": v.stop_cl_ord_id, "take": v.take_cl_ord_id}
+                for k, v in self.oco_pairs.items()
+            },
+            "last_order_reject_reason": self.last_order_reject_reason,
+            "order_reject_count": self.order_reject_count,
+            "order_reject_pause_until": self.order_reject_pause_until,
+            "insufficient_funds_until": self.insufficient_funds_until,
+            "exchange_entries_throttled": self.exchange_entries_throttled(),
+            "exchange_errors": list(self._exchange_errors),
+            "exchange_errors_unacked": sum(
+                1 for e in self._exchange_errors if not e.get("acknowledged")
+            ),
         }

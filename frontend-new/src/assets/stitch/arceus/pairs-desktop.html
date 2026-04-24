@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>ARCEUS_TRADER // FABCROWD</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "secondary-container": "#005236",
+                        "inverse-on-surface": "#313031",
+                        "tertiary-container": "#919090",
+                        "outline": "#919191",
+                        "on-tertiary-fixed-variant": "#e4e2e2",
+                        "primary-fixed-dim": "#004f53",
+                        "on-tertiary-fixed": "#ffffff",
+                        "surface": "#131314",
+                        "surface-container-highest": "#353436",
+                        "surface-bright": "#3a393a",
+                        "background": "#131314",
+                        "on-primary-fixed-variant": "#63f7ff",
+                        "surface-container-high": "#2a2a2b",
+                        "surface-container-low": "#1c1b1c",
+                        "on-secondary-container": "#6ffbbe",
+                        "secondary-fixed": "#4edea3",
+                        "primary-fixed": "#00696e",
+                        "on-error-container": "#ffdad6",
+                        "on-primary-fixed": "#ffffff",
+                        "surface-variant": "#353436",
+                        "secondary": "#4edea3",
+                        "on-surface-variant": "#c6c6c6",
+                        "primary": "#ffffff",
+                        "tertiary-fixed-dim": "#464747",
+                        "surface-tint": "#00dce5",
+                        "surface-container-lowest": "#0e0e0f",
+                        "primary-container": "#00ebf5",
+                        "secondary-fixed-dim": "#26c289",
+                        "inverse-surface": "#e5e2e3",
+                        "on-secondary-fixed-variant": "#00452d",
+                        "tertiary": "#e4e2e2",
+                        "error-container": "#93000a",
+                        "on-primary": "#002021",
+                        "surface-dim": "#131314",
+                        "on-error": "#690005",
+                        "on-surface": "#e5e2e3",
+                        "error": "#ffb4ab",
+                        "on-tertiary": "#1b1c1c",
+                        "tertiary-fixed": "#5e5e5e",
+                        "on-background": "#e5e2e3",
+                        "inverse-primary": "#00696e",
+                        "on-secondary": "#002113",
+                        "on-tertiary-container": "#000000",
+                        "on-secondary-fixed": "#002113",
+                        "on-primary-container": "#000000",
+                        "surface-container": "#201f20",
+                        "outline-variant": "#474747"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0px",
+                        "lg": "0px",
+                        "xl": "0px",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "headline": ["Inter"],
+                        "body": ["Inter"],
+                        "label": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body { font-family: 'Inter', sans-serif; background-color: #131314; color: #e5e2e3; }
+        .material-symbols-outlined { font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24; }
+        .tabular-nums { font-variant-numeric: tabular-nums; }
+        ::-webkit-scrollbar { width: 4px; height: 4px; }
+        ::-webkit-scrollbar-track { background: #131314; }
+        ::-webkit-scrollbar-thumb { background: #353436; }
+    </style>
+</head>
+<body class="overflow-hidden">
+<!-- TopNavBar -->
+<nav class="fixed top-0 w-full z-50 h-14 bg-neutral-950 flex justify-between items-center px-6">
+<div class="flex items-center gap-8">
+<span class="text-lg font-bold text-white tracking-tighter">ARCEUS_TRADER // FABCROWD</span>
+<div class="hidden md:flex gap-6">
+<a class="font-['Inter'] uppercase tracking-[0.05em] text-[0.6875rem] font-medium text-[#00EBF5] border-b border-[#00EBF5] pb-1" href="#">TERMINAL</a>
+<a class="font-['Inter'] uppercase tracking-[0.05em] text-[0.6875rem] font-medium text-neutral-500 hover:text-white transition-none" href="#">ANALYTICS</a>
+<a class="font-['Inter'] uppercase tracking-[0.05em] text-[0.6875rem] font-medium text-neutral-500 hover:text-white transition-none" href="#">EXECUTIONS</a>
+</div>
+</div>
+<div class="flex items-center gap-4">
+<span class="material-symbols-outlined text-neutral-500 hover:text-white cursor-pointer" data-icon="sensors">sensors</span>
+<span class="material-symbols-outlined text-neutral-500 hover:text-white cursor-pointer" data-icon="notifications">notifications</span>
+<span class="material-symbols-outlined text-neutral-500 hover:text-white cursor-pointer" data-icon="settings">settings</span>
+<img alt="User Profile" class="w-7 h-7 border border-neutral-800" data-alt="Minimalist geometric avatar icon with grayscale tones and high contrast professional profile look" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD8mf3xoeOx6U_9ZPHHrvj97dASndRyfeSX9A3vNjoMaUhz1Ieg4B7vVrlxXwWVx-H6Qk5teeB603lXI-IySzHzs5a8bY6xMOSrUgjtWOTnpEDDVgyXK_1bLRfaiH8wy9tNSfL1QED-uQeqmZWxX62cq7PjATx3pFLHoj5Tl6lcsJv46flsUpPCe1bPG1yOngy6vPLwQd6vXW2eVAZ2-64jlps_RN_f-JqJTDPHCOEiYYSJ-8FDJnyaqLYUbpkfdT01KAzdnuNlFts"/>
+</div>
+</nav>
+<!-- SideNavBar -->
+<aside class="fixed left-0 top-14 h-screen w-64 bg-neutral-950 flex flex-col py-8 px-0 border-r border-outline-variant/15">
+<div class="px-6 mb-8">
+<div class="flex items-center gap-3">
+<div class="w-2 h-2 bg-secondary animate-pulse"></div>
+<div>
+<div class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest text-white uppercase">STRAT_ALPHA</div>
+<div class="font-['Inter'] font-medium text-[0.5rem] tracking-widest text-neutral-500">V2.0.4 ACTIVE</div>
+</div>
+</div>
+</div>
+<nav class="flex flex-col flex-grow">
+<div class="flex items-center px-6 py-3 gap-4 text-white bg-[#1C1B1C] border-l-2 border-[#00EBF5]">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="dashboard">dashboard</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">DASHBOARD</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-4 text-neutral-500 hover:text-white hover:bg-neutral-900 cursor-pointer">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="account_balance_wallet">account_balance_wallet</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">PORTFOLIO</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-4 text-neutral-500 hover:text-white hover:bg-neutral-900 cursor-pointer">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="smart_toy">smart_toy</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">BOT_CONFIG</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-4 text-neutral-500 hover:text-white hover:bg-neutral-900 cursor-pointer">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="sensors">sensors</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">SENSORS</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-4 text-neutral-500 hover:text-white hover:bg-neutral-900 cursor-pointer">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="terminal">terminal</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">LOGS</span>
+</div>
+<div class="flex items-center px-6 py-3 gap-4 text-neutral-500 hover:text-white hover:bg-neutral-900 cursor-pointer">
+<span class="material-symbols-outlined text-[1.2rem]" data-icon="currency_exchange">currency_exchange</span>
+<span class="font-['Inter'] font-medium text-[0.6875rem] tracking-widest">PAIR_SELECTOR</span>
+</div>
+</nav>
+<div class="px-6 py-6 border-t border-outline-variant/15">
+<button class="w-full bg-primary text-on-primary py-3 font-['Inter'] font-bold text-[0.6875rem] tracking-widest hover:bg-primary-container transition-none active:scale-100">
+                DEPLOY_NODE
+            </button>
+</div>
+</aside>
+<!-- Main Content -->
+<main class="ml-64 mt-14 p-0 h-[calc(100vh-3.5rem)] overflow-hidden flex flex-col">
+<!-- Header / Pair Selector Toggle -->
+<div class="bg-surface border-b border-outline-variant/10 px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+<div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
+<div class="bg-surface-container-low p-1 flex gap-1">
+<button class="px-4 py-2 text-[0.6875rem] font-bold tracking-widest bg-primary-container text-on-primary-container">BTC/USDT</button>
+<button class="px-4 py-2 text-[0.6875rem] font-bold tracking-widest text-on-surface-variant hover:text-white hover:bg-surface-container-highest transition-none">ETH/USDT</button>
+<button class="px-4 py-2 text-[0.6875rem] font-bold tracking-widest text-on-surface-variant hover:text-white hover:bg-surface-container-highest transition-none">SOL/USDT</button>
+<button class="px-4 py-2 text-[0.6875rem] font-bold tracking-widest text-on-surface-variant hover:text-white hover:bg-surface-container-highest transition-none">BNB/USDT</button>
+<button class="px-4 py-2 text-[0.6875rem] font-bold tracking-widest text-on-surface-variant hover:text-white hover:bg-surface-container-highest transition-none">ARB/USDT</button>
+</div>
+</div>
+<div class="flex items-center gap-6">
+<div class="flex flex-col items-end">
+<span class="text-[0.625rem] text-on-surface-variant tracking-widest uppercase">Last Price</span>
+<span class="text-lg font-bold tabular-nums text-secondary">64,281.42</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="text-[0.625rem] text-on-surface-variant tracking-widest uppercase">24h Change</span>
+<span class="text-[0.875rem] font-medium tabular-nums text-secondary">+4.21%</span>
+</div>
+<div class="flex flex-col items-end">
+<span class="text-[0.625rem] text-on-surface-variant tracking-widest uppercase">Volume (BTC)</span>
+<span class="text-[0.875rem] font-medium tabular-nums text-white">12,482.90</span>
+</div>
+</div>
+</div>
+<!-- Dashboard Grid -->
+<div class="flex-grow grid grid-cols-12 gap-px bg-outline-variant/10 overflow-hidden">
+<!-- Left Panel: Chart & Core Logic -->
+<div class="col-span-12 lg:col-span-9 flex flex-col bg-surface overflow-hidden">
+<!-- TradingView-style Chart Placeholder -->
+<div class="flex-grow relative bg-surface-container-lowest overflow-hidden">
+<div class="absolute inset-0 opacity-20 pointer-events-none" style="background-image: linear-gradient(#474747 1px, transparent 1px), linear-gradient(90deg, #474747 1px, transparent 1px); background-size: 60px 60px;"></div>
+<div class="absolute top-8 left-8 z-10 flex flex-col gap-2">
+<div class="flex items-center gap-2">
+<span class="text-[0.75rem] font-bold text-white tracking-widest">BTCUSDT</span>
+<span class="text-[0.75rem] font-medium text-on-surface-variant">1m • BYBIT</span>
+</div>
+<div class="flex items-center gap-4">
+<span class="text-2xl font-bold tabular-nums text-white">64,281.42</span>
+<span class="text-sm font-medium text-secondary">H 64,500.00</span>
+<span class="text-sm font-medium text-error">L 63,120.50</span>
+</div>
+</div>
+<!-- Visual Representation of a Candle Chart (CSS Grid) -->
+<div class="absolute inset-0 flex items-end justify-between px-10 pb-20 opacity-40">
+<div class="w-1 bg-error h-[40%]"></div>
+<div class="w-1 bg-secondary h-[50%]"></div>
+<div class="w-1 bg-secondary h-[60%]"></div>
+<div class="w-1 bg-error h-[45%]"></div>
+<div class="w-1 bg-secondary h-[70%]"></div>
+<div class="w-1 bg-secondary h-[85%]"></div>
+<div class="w-1 bg-error h-[60%]"></div>
+<div class="w-1 bg-secondary h-[75%]"></div>
+<div class="w-1 bg-secondary h-[90%]"></div>
+<div class="w-1 bg-error h-[70%]"></div>
+<div class="w-1 bg-secondary h-[80%]"></div>
+<div class="w-1 bg-secondary h-[95%]"></div>
+</div>
+<!-- Overlay Execution Marker -->
+<div class="absolute top-[30%] left-[60%] flex flex-col items-center">
+<div class="w-3 h-3 bg-secondary glow shadow-[0_0_10px_rgba(78,222,147,0.5)] mb-1"></div>
+<span class="text-[0.625rem] font-bold text-secondary bg-surface-container-high px-2 py-0.5 border border-secondary/20">BOT_BUY @ 64,120</span>
+</div>
+</div>
+<!-- Horizontal Status Rail -->
+<div class="h-12 border-t border-outline-variant/15 flex items-center px-6 justify-between">
+<div class="flex gap-6">
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 bg-secondary"></span>
+<span class="text-[0.625rem] font-bold tracking-widest uppercase">Engine Online</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="w-1.5 h-1.5 bg-primary-container"></span>
+<span class="text-[0.625rem] font-bold tracking-widest uppercase">Latency: 14ms</span>
+</div>
+</div>
+<div class="flex gap-4">
+<span class="text-[0.625rem] font-medium text-on-surface-variant uppercase">Local Time: 14:22:01</span>
+</div>
+</div>
+</div>
+<!-- Right Panel: Order Execution & Orderbook -->
+<div class="col-span-12 lg:col-span-3 flex flex-col bg-surface border-l border-outline-variant/15 overflow-hidden">
+<!-- Order Entry -->
+<div class="p-6 border-b border-outline-variant/15">
+<div class="flex justify-between mb-4">
+<button class="flex-1 py-2 text-[0.6875rem] font-bold tracking-widest border-b-2 border-secondary text-secondary">BUY</button>
+<button class="flex-1 py-2 text-[0.6875rem] font-bold tracking-widest text-on-surface-variant hover:text-error transition-none">SELL</button>
+</div>
+<div class="space-y-4">
+<div>
+<label class="block text-[0.625rem] text-on-surface-variant tracking-widest uppercase mb-1">Order Type</label>
+<div class="bg-surface-container-low border-b border-outline-variant p-2 text-[0.75rem] font-medium flex justify-between items-center cursor-pointer">
+<span>MARKET</span>
+<span class="material-symbols-outlined text-sm" data-icon="expand_more">expand_more</span>
+</div>
+</div>
+<div>
+<label class="block text-[0.625rem] text-on-surface-variant tracking-widest uppercase mb-1">Amount (BTC)</label>
+<input class="w-full bg-transparent border-0 border-b border-outline-variant focus:ring-0 focus:border-primary-container p-2 text-[0.75rem] tabular-nums text-white" type="text" value="0.05"/>
+</div>
+<div class="pt-2">
+<div class="flex justify-between text-[0.625rem] text-on-surface-variant uppercase tracking-widest mb-2">
+<span>Total Cost</span>
+<span>3,214.07 USDT</span>
+</div>
+<button class="w-full bg-secondary text-on-secondary font-bold py-3 text-[0.75rem] tracking-widest hover:opacity-90 active:scale-100 transition-none">EXECUTE_TRADE</button>
+</div>
+</div>
+</div>
+<!-- Orderbook -->
+<div class="flex-grow overflow-hidden flex flex-col">
+<div class="px-6 py-3 border-b border-outline-variant/15 flex justify-between items-center">
+<span class="text-[0.625rem] font-bold tracking-widest uppercase">Orderbook</span>
+<div class="flex gap-2">
+<span class="material-symbols-outlined text-xs text-on-surface-variant cursor-pointer" data-icon="filter_list">filter_list</span>
+</div>
+</div>
+<div class="flex-grow overflow-y-auto px-6 py-2 font-['Inter']">
+<!-- Sells (Red) -->
+<div class="space-y-0.5 mb-4">
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-error">64,285.50</span>
+<span class="text-right text-on-surface-variant">0.412</span>
+</div>
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-error">64,284.10</span>
+<span class="text-right text-on-surface-variant">1.109</span>
+</div>
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-error">64,283.00</span>
+<span class="text-right text-on-surface-variant">0.024</span>
+</div>
+</div>
+<!-- Mid Price -->
+<div class="py-2 border-y border-outline-variant/10 mb-4 flex justify-between items-center">
+<span class="text-lg font-bold text-white tabular-nums">64,281.42</span>
+<span class="material-symbols-outlined text-secondary text-sm" data-icon="trending_up">trending_up</span>
+</div>
+<!-- Buys (Green) -->
+<div class="space-y-0.5">
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-secondary">64,280.00</span>
+<span class="text-right text-on-surface-variant">0.892</span>
+</div>
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-secondary">64,279.50</span>
+<span class="text-right text-on-surface-variant">2.441</span>
+</div>
+<div class="grid grid-cols-2 text-[0.6875rem] tabular-nums">
+<span class="text-secondary">64,278.20</span>
+<span class="text-right text-on-surface-variant">0.115</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Footer -->
+<footer class="w-full py-4 bg-black border-t border-neutral-800/15 flex justify-between items-center px-8 shrink-0">
+<span class="font-['Inter'] text-[10px] tracking-widest text-neutral-600">© 2024 ARCEUS_LABS // OBSIDIAN_PRECISION</span>
+<div class="flex gap-6">
+<a class="font-['Inter'] text-[10px] tracking-widest text-[#00EBF5] underline decoration-1" href="#">API_DOCS</a>
+<a class="font-['Inter'] text-[10px] tracking-widest text-neutral-600 hover:text-neutral-200 transition-none" href="#">SYSTEM_STATUS</a>
+<a class="font-['Inter'] text-[10px] tracking-widest text-neutral-600 hover:text-neutral-200 transition-none" href="#">SECURITY</a>
+</div>
+<div class="hidden md:block">
+<span class="text-[#00EBF5] font-bold font-['Inter'] text-[10px] tracking-widest">ARCEUS_TRADER // v2.0.4</span>
+</div>
+</footer>
+</main>
+</body></html>

@@ -1,5 +1,7 @@
-python-kraken-sdk>=2.3.0
 aiohttp>=3.9.0
 python-dotenv>=1.0.0
 tomli>=2.0.0;python_version<"3.11"
 hexital>=1.5.0
+coinbase-advanced-py>=1.8.0
+# coinbase-advanced-py may pin websockets loosely; CDE WS benefits from a current websockets release.
+websockets>=14.1,<17

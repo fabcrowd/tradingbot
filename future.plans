@@ -1,0 +1,21 @@
+# Future plans / exploration backlog
+
+## Perps funding rate vs PnL (derivatives)
+
+**Why it matters:** On Coinbase CDE / perpetual-style products, **funding (or equivalent carry)** accrues while a position is open. It can **help or hurt** net PnL independently of entry/exit edge. Champions chosen under **fee + slippage** assumptions can **underperform live** if funding is materially positive/negative for the dominant side (long vs short) and hold times.
+
+**Current repo touchpoints (for later wiring):**
+
+- **Bar sim / WFO / tuner:** `[scalp]` `backtest_funding_enabled`, `backtest_funding_bps_per_hour` — constant signed bps/hour on notional while flat in sim (`scalp_vec_backtest`, `scalp_config.py`). Default is **off**; WFO rankings may **ignore** carry unless enabled with a realistic signed rate.
+- **Live:** `funding_warn_bps_per_hour` alerts when |funding| is large; `ScalpPosition.funding_rate` exists for telemetry — **explore** whether venue polls feed it consistently and whether **live PnL / forward validation** should incorporate funding or a funding-aware objective.
+- **Alignment:** If funding is often non-negligible for your hold profile, future work could include: poll or model **time-varying** funding into sim; **gate or size** entries when predicted carry overwhelms edge; document in champion selection vs live gap (similar to limit-fill vs signal gap).
+
+**Open questions for a dedicated pass:**
+
+1. Typical **funding magnitude and sign** for configured products vs average hold (15m bar strategies).
+2. Whether **WFO objective** (`total_pnl`, etc.) should always include funding when `venue = coinbase_perps`.
+3. Whether **forward demotion** / live expectancy should be **funding-adjusted** for fair comparison to holdout.
+
+---
+
+_Add items below as needed._

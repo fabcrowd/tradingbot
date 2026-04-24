@@ -45,6 +45,20 @@ export type ExchangeErrorEvent = {
   acknowledged: boolean;
 };
 
+/** Server ring-buffer row: alerts, actions, etc. (`backend/server/ui_event_log.py`). */
+export type UiLogEntry = {
+  id: string;
+  ts: number;
+  kind: string;
+  level: string;
+  title: string;
+  detail: string;
+  source: string;
+  persistent?: boolean;
+  exchange_error_id?: string;
+  meta?: Record<string, unknown>;
+};
+
 export type Fill = {
   timestamp: number;
   pair_key: string;
@@ -86,6 +100,8 @@ export type Snapshot = {
   order_reject_count: number;
   exchange_errors?: ExchangeErrorEvent[];
   exchange_errors_unacked?: number;
+  /** Last K UI log rows for Logs tab hydration (matches server ring buffer tail). */
+  ui_log_tail?: UiLogEntry[];
   scalp?: ScalpSnapshot;
   [key: string]: unknown;
 };
@@ -114,10 +130,16 @@ export type Alert = {
   ts: number;
   persistent?: boolean;
   exchange_error_id?: string;
+  /** When set, matches ``UiLogEntry.id`` from server ``broadcast_alert``. */
+  server_id?: string;
 };
 
 export type ScalpPosition = {
   symbol: string;
+  /** Config pair key (multiple legs can share the same symbol). */
+  pair_key?: string;
+  /** Unique client order id for this entry leg. */
+  entry_cl_ord_id?: string;
   /** "long" | "short" — shorts require venue=coinbase_perps */
   direction?: string;
   /** Strategy that opened the position (live attribution). */
@@ -179,6 +201,16 @@ export type ScalpCandle = {
   t: number; o: number; h: number; l: number; c: number; v: number;
 };
 
+export type IndicatorOverlayPoint = {
+  t: number;
+  ema_fast: number;
+  ema_slow: number;
+  t3: number;
+  vwap: number;
+  /** MACD line − signal (same bar); rendered as lower-pane histogram, not full-width price rules. */
+  macd_hist?: number;
+};
+
 export type ScalpTrade = {
   pair_key: string;
   direction?: string;
@@ -201,6 +233,8 @@ export type WarmupStepData = {
   detail: string;
   retry_count: number;
   error: string;
+  /** Server-incremented tick while the step runs (proves snapshots are still updating). */
+  heartbeat?: number;
 };
 
 export type ScalpWarmup = {
@@ -255,13 +289,98 @@ export type ScalpOperator = {
 /** Read-only policy from server ``[scalp]`` for Settings explanations. */
 export type ScalpSessionPolicy = {
   warmup_enabled: boolean;
+  /** First configured pair's bar size; for warm-up hour estimate before candles load. */
+  default_candle_interval_minutes?: number;
   warmup_min_bars: number;
   warmup_require_champion: boolean;
   warmup_max_hours: number;
   wfo_enabled: boolean;
+  /** Seconds between scheduled WFO passes (server floor 60s; risk-on can shorten further). */
+  wfo_interval_sec?: number;
   wfo_train_hours: number;
   wfo_holdout_hours: number;
   wfo_step_hours: number;
+  /** Holdout phase: how many top train-scoring grid combos to validate per rolling window. */
+  wfo_top_k?: number;
+  wfo_objective?: string;
+  /** When true, server forces mean holdout ``total_pnl`` and relaxes strict WFO promotion gates. */
+  wfo_pnl_first_promotion?: boolean;
+  /** Seconds between param-tuner cycles (server floor 30s). */
+  param_tuner_interval_sec?: number;
+  /** Rolling WFO: number of train→holdout folds in the sliding band. */
+  wfo_max_roll_windows?: number;
+  /** Extra train-score weight for trades on the UTC day of the train window end (0 = off). */
+  wfo_train_same_calendar_day_boost?: number;
+  /** Hours of bar history used for rolling WFO (derived). */
+  wfo_roll_span_hours?: number;
+  /** Minimum closed trades on each training slice for a grid point to score. */
+  wfo_min_trades?: number;
+  /** Holdout-only minimum trades (0 = use wfo_min_trades). */
+  wfo_min_holdout_trades?: number;
+  /** Minimum train-slice profit factor to score a grid point (WFO IS hard gate). */
+  wfo_min_profit_factor?: number;
+  /** Minimum train-slice win rate (0–1) to score. */
+  wfo_min_win_rate?: number;
+  /** Maximum train-slice drawdown % to score. */
+  wfo_max_train_drawdown_pct?: number;
+  /** Include constant perps funding in bar backtests / WFO / tuner. */
+  backtest_funding_enabled?: boolean;
+  /** Signed bps per hour on notional while flat; >0 means longs pay. */
+  backtest_funding_bps_per_hour?: number;
+  /** Bump when fee tier assumptions change; tracked vs data/scalp_fee_assumption_state.json. */
+  scalp_fee_assumption_revision?: number;
+  /** Rolling fee-tier volume baseline when source is manual (USD). When source is exchange, Coinbase poll fills display. */
+  fee_tier_30d_volume_usd?: number | null;
+  /** ``exchange`` = poll Coinbase transaction_summary; ``manual`` = baseline (+ optional session bot notional). */
+  fee_tier_volume_source?: string;
+  /** Minimum seconds between automatic exchange polls (60–86400). */
+  fee_tier_poll_interval_sec?: number;
+  /** Manual path only: add abs(bot fill USD) this session to baseline for display. */
+  fee_tier_add_bot_fill_notional?: boolean;
+  /** When true with exchange volume source, Coinbase poll updates maker/taker bps in memory for WFO/sim. */
+  fee_tier_auto_apply_exchange_fee_rates?: boolean;
+  /** On startup, remove champions if persisted fee snapshot differs from config. */
+  scalp_auto_invalidate_champion_on_fee_change?: boolean;
+  /** Do not run param tuner until a WFO champion exists for the symbol. */
+  param_tuner_require_wfo_champion?: boolean;
+  /** Allow tuner to switch active mode away from WFO champion when it disagrees. */
+  param_tuner_allow_mode_override_champion?: boolean;
+  /** WFO/tuner vec sim uses taker bps per leg (stress vs live hybrid market bursts). */
+  wfo_assume_taker_fee?: boolean;
+  /** Resolved per-leg bps for WFO grid after ``wfo_assume_taker_fee``. */
+  wfo_fee_bps_sim_per_leg?: number;
+  wfo_forward_min_trades?: number;
+  wfo_forward_demotion_threshold?: number;
+  wfo_forward_outperform_factor?: number;
+  volatility_armed_param_tuner_interval_mult?: number;
+  funding_warn_bps_per_hour?: number;
+  empirical_market_promotion_enabled?: boolean;
+  /** When true, each entry TTL cancel immediately arms N market entries (bypasses missed-move pattern + arm cooldown). */
+  empirical_market_ttl_cancel_arms_promotion?: boolean;
+  empirical_market_missed_move_bps?: number;
+  empirical_market_miss_eval_window_sec?: number;
+  empirical_market_min_pattern_in_window?: number;
+  empirical_market_pattern_window_sec?: number;
+  empirical_market_promotion_entries?: number;
+  empirical_market_promotion_cooldown_sec?: number;
+  /** First daily loss breach also sets scalp portfolio halt (snapshot + JSONL). */
+  daily_loss_set_scalp_halt?: boolean;
+  slip_calibration_enabled?: boolean;
+  slip_calibration_ema_alpha?: number;
+  slip_calibration_min_samples?: number;
+  slip_calibration_floor_bps?: number;
+  slip_calibration_cap_bps?: number;
+  slip_calibration_mode?: string;
+};
+
+/** Scalp-native portfolio halt (independent of MM risk_halted). */
+export type ScalpPortfolioRisk = {
+  scalp_risk_halted: boolean;
+  scalp_risk_halt_reason: string;
+  scalp_risk_halted_ts: number;
+  scalp_entries_blocked: boolean;
+  mm_spread_bot_enabled?: boolean;
+  mm_risk_halted?: boolean;
 };
 
 export type ChampionSummary = {
@@ -307,6 +426,48 @@ export type WfoPairReadiness = {
   progress_pct: number;
 };
 
+/** Per-strategy mode row from the last WFO holdout aggregation (best grid row per ``mode``). */
+export type WfoModeScoreboardRow = {
+  mode: string;
+  pi?: number;
+  holdout_windows?: number;
+  mean_holdout_score?: number;
+  stability?: number | null;
+  mean_holdout_total_pnl?: number;
+  sum_holdout_total_pnl?: number;
+  mean_max_drawdown_pct?: number;
+  mean_holdout_trades?: number;
+  qualified_champion_pool?: boolean;
+  is_wfo_champion_row?: boolean;
+  is_wfo_champion_mode?: boolean;
+  objective?: string;
+};
+
+/** One row from the last WFO pass (dashboard + JSONL parity). */
+export type WfoLastPassPairSummary = {
+  pair_key: string;
+  outcome: string;
+  skip_reason?: string | null;
+  gate_reason?: string | null;
+  n_windows?: number | null;
+  span_hours?: number | null;
+  bar_count?: number | null;
+  /** Holdout scoreboard: one best row per strategy mode (``optimize_pair`` diagnostics). */
+  wfo_mode_scoreboard?: WfoModeScoreboardRow[];
+};
+
+/** Result of the most recent ``run_once`` (per-pair outcomes + skip histogram). */
+export type WfoLastPass = {
+  ts: number;
+  /** WFO objective name for the pass (e.g. ``total_pnl``, ``sharpe``). */
+  objective?: string;
+  champion_pairs: string[];
+  n_pairs: number;
+  champion_count: number;
+  by_skip_reason: Record<string, number>;
+  pairs: WfoLastPassPairSummary[];
+};
+
 /** Walk-forward optimizer UI: data buildup + next scheduled grid pass */
 export type WfoUi = {
   enabled: boolean;
@@ -324,6 +485,11 @@ export type WfoUi = {
   holdout_hours: number;
   step_hours: number;
   pairs: Record<string, WfoPairReadiness>;
+  max_roll_windows?: number;
+  /** Latest ``run_once`` summary (null until first pass completes). */
+  last_wfo_pass?: WfoLastPass | null;
+  /** Newest-last lines from the in-process WFO deque (read-only). */
+  wfo_action_log?: string;
 };
 
 /** Self-tuner state per mode within a pair. */
@@ -352,7 +518,7 @@ export type TunerPairState = {
 
 export type ScalpSpotAccount = { currency: string; available: number };
 export type ScalpFuturesBalance = {
-  /** Coinbase INTX / futures wallet equity in USD (balance_summary.total_usd_balance). */
+  /** Coinbase futures / perps wallet equity in USD (balance_summary.total_usd_balance). */
   total_usd_balance?: number;
   buying_power: number;
   unrealized_pnl: number;
@@ -371,6 +537,40 @@ export type ScalpBalances = {
   futures?: ScalpFuturesBalance;
 };
 
+/** Slim resting-order row from Coinbase reconcile (perps + dated futures + brackets). */
+export type ScalpVenueOpenOrder = {
+  product_id: string;
+  side: string;
+  status: string;
+  order_type: string;
+  client_order_id: string;
+  order_id: string;
+  filled_base: number;
+  /** Resting limit (0 if unknown or not a limit leg). */
+  limit_price?: number;
+  /** Stop / trigger price when applicable. */
+  trigger_price?: number;
+  /** Order size in base (contracts) when provided by list_orders. */
+  base_size?: number;
+};
+
+/** Fee-tier / 30d volume telemetry (Coinbase perps + manual baseline). */
+export type ScalpFeeTierSnapshot = {
+  volume_source: string;
+  display_volume_usd: number | null;
+  manual_baseline_usd: number | null;
+  bot_fill_usd_session: number;
+  exchange: Record<string, unknown> | null;
+  last_poll_ts: number;
+  poll_error: string | null;
+  poll_interval_sec: number;
+  auto_apply_exchange_fee_rates?: boolean;
+  effective_maker_bps?: number;
+  effective_taker_bps?: number;
+  /** Flat NFA/clearing USD per contract per leg from config (not in Coinbase summary API). */
+  fee_usd_per_contract_per_leg?: number;
+};
+
 export type ScalpSnapshot = {
   /** False while `ScalpRuntime` is not wired yet (dashboard starts before exchange init). */
   runtime_attached?: boolean;
@@ -379,29 +579,29 @@ export type ScalpSnapshot = {
   /** Server fell back to placeholder after snapshot() raised. */
   snapshot_error?: boolean;
   enabled: boolean;
-  /** "kraken_spot" | "coinbase_perps" */
+  /** Coinbase CDE: ``coinbase_perps`` */
   venue?: string;
+  /** Resolved fee-tier volume + last Coinbase poll metadata. */
+  fee_tier?: ScalpFeeTierSnapshot;
   sim_mode: boolean;
   /** Max open legs across all scalp pairs; ``<= 0`` in config means unlimited. */
   max_concurrent_positions?: number;
   operator?: ScalpOperator;
+  /** Portfolio halt / MM risk mirror for operator controls. */
+  portfolio_risk?: ScalpPortfolioRisk;
   session_policy?: ScalpSessionPolicy;
   balances?: ScalpBalances;
-  /** INTX legs on the exchange whose product_id is not in config [scalp.pairs] (manual / wrong symbol). */
-  intx_unmapped_positions?: { product_id: string; net_size_hint: number }[];
   /** Resting Coinbase Advanced Trade orders on configured scalp products (from reconcile). */
-  exchange_open_orders?: {
-    product_id: string;
-    side: string;
-    status: string;
-    order_type: string;
-    client_order_id: string;
-    order_id: string;
-    filled_base: number;
-  }[];
+  exchange_open_orders?: ScalpVenueOpenOrder[];
+  /** Every OPEN order returned by Coinbase for this key (includes dated futures, brackets, manual). */
+  exchange_open_orders_all?: ScalpVenueOpenOrder[];
+  /** Subset of ``exchange_open_orders_all`` whose product_id is not in ``[scalp.pairs.*].symbol``. */
+  exchange_open_orders_outside_pairs?: ScalpVenueOpenOrder[];
   warmup: ScalpWarmup;
   /** pair_key -> exchange symbol (e.g. CDE product id); used with ``champions``. */
   pair_symbols?: Record<string, string>;
+  /** [scalp] default when ``strategy_mode`` is auto and no champion exists. */
+  auto_mode_fallback?: string;
   active_modes?: Record<string, string>;
   mode_sources?: Record<string, string>;
   champion?: ChampionSummary | null;
@@ -419,12 +619,20 @@ export type ScalpSnapshot = {
     reserved_capital: number;
     trade_history: ScalpTrade[];
     sim_mode: boolean;
+    /** Live empirical limit→market promotion state (optional on older servers). */
+    empirical_market?: {
+      enabled: boolean;
+      promotion_remaining: Record<string, number>;
+      active_watch_count: number;
+      pattern_buffer_len: number;
+    };
   };
   indicators: Record<string, ScalpIndicators>;
   candles?: Record<string, {
     closed?: ScalpCandle[];
     live: ScalpCandle | null;
     interval: number;
+    indicator_overlay?: IndicatorOverlayPoint[];
   }>;
   orderbooks?: Record<string, {
     bids: [number, number][];
@@ -442,11 +650,27 @@ export type ScalpSnapshot = {
     effective_bootstrap_hours: number;
     effective_wfo_sleep_sec: number | null;
   };
+  /** Bootstrap vs champion / tuner reconciliation hints from runtime. */
+  nemesis?: {
+    champion_bootstrap_advisory?: Record<string, unknown>;
+    no_champion_last_resolution?: Record<string, unknown>;
+  };
+  /** Operator-facing config vs live-behavior mismatches (e.g. partial TP on live). */
+  config_warnings?: string[];
+  /** Live slip calibration telemetry (WFO/tuner use ``effective_bps`` when enabled). */
+  slip_calibration?: {
+    enabled: boolean;
+    samples: number;
+    ema_bps: number | null;
+    effective_bps: number;
+    config_bps: number;
+    mode: string;
+  };
 };
 
 export type ConfigSnapshot = {
   mode: string;
-  /** When false, Kraken spread/MM stack is off; Terminal START and MM actions are disabled. */
+  /** When false, spread-MM stack is off; spread-MM dashboard actions are disabled. */
   spread_bot_enabled?: boolean;
   pair_keys_for_trading: string[];
   pairs: Record<string, PairConfig>;

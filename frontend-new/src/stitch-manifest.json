@@ -1,0 +1,27 @@
+{
+  "ingestedAt": "2026-04-01T16:50:46.014Z",
+  "source": "frontend-new\\src\\assets",
+  "assets": [
+    {
+      "source": "frontend-new\\src\\assets\\hero.png",
+      "output": "frontend-new\\src\\assets\\stitch\\hero.png"
+    },
+    {
+      "source": "frontend-new\\src\\assets\\react.svg",
+      "output": "frontend-new\\src\\assets\\stitch\\react.svg"
+    },
+    {
+      "source": "frontend-new\\src\\assets\\stitch\\hero.png",
+      "output": "frontend-new\\src\\assets\\stitch\\hero.png"
+    },
+    {
+      "source": "frontend-new\\src\\assets\\stitch\\react.svg",
+      "output": "frontend-new\\src\\assets\\stitch\\react.svg"
+    },
+    {
+      "source": "frontend-new\\src\\assets\\vite.svg",
+      "output": "frontend-new\\src\\assets\\stitch\\vite.svg"
+    }
+  ],
+  "notes": "Re-run this script whenever Google Stitch export changes."
+}

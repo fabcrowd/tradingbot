@@ -1,10 +1,10 @@
 [server]
-host = "0.0.0.0"
+host = "127.0.0.1"   # NM-008: bind to loopback only; use "0.0.0.0" only if remote dashboard access is needed and DASHBOARD_TOKEN is set in .env
 port = 8080
 log_level = "INFO"
 
 [bot]
-# Kraken market-making (spread engine). false = scalp + dashboard only (no Kraken WS/book/learner).
+# Legacy spread-MM settings (disabled). This tree’s ``main.py`` does not start the MM engine.
 spread_bot_enabled = false
 mode = "live"
 default_cycle_ms = 3000
@@ -113,8 +113,7 @@ depeg_threshold_bps = 50
 # per_trade_profitability = true floors the half-spread at (maker_fee + 4 bps)
 # so even spread_bps = 8 gets floored above fees at the current volume tier.
 #
-# Kraken spot_crypto maker fee: 25 bps ($0+) → 20 ($10K+) → 14 ($50K+) → ...
-# The bot auto-resolves from 30-day volume; fee_bps is just a static fallback.
+# Example spot fee ladder (historical MM pairs): fee_bps is a static fallback when schedules apply.
 
 # --- USDG/USDT: 0% maker, 0.01% taker. $510K daily vol, 5bps spread, 9bps range.
 # Inventory: 156 USDG + 217 USDT (shared w/ XRP). Best spread pair.
@@ -188,7 +187,7 @@ min_order_qty = 5.0
 symbol = "DRIFT/USD"
 spread_bps = 25            # was 50; market natural spread 28-57 bps — 100 bps total was too wide
 spread_floor_bps = 25      # was 50; matches profitability floor (23 bps fee + 2 bps margin)
-order_size = 225.0         # was 200; 225/3 levels = 75/level = Kraken minimum exactly
+order_size = 225.0         # was 200; 225/3 levels = 75/level = venue minimum at time of tuning
 sell_order_size = 225.0    # was 200; match order_size
 max_inventory = 10000
 sell_floor_base = 5000.0
@@ -255,98 +254,247 @@ spread_floor_bps = 20
 # SCALP BOT — adaptive mode-switching scalper
 #
 # Candle interval (per pair, minutes): ``interval`` under each [scalp.pairs.*] block.
-#   - 15m: fewer signals, less noise; matches current CDE WFO calibration.
-#   - 5m: ~3× more bar closes (more entries / more churn); re-tune atr_* and WFO windows if you switch.
-#   - 1m: highest churn; not recommended until you have a separate WFO profile for 1m.
+#   This checkout uses 5m CDE bars (see pair blocks). 15m = fewer signals; 1m = highest churn.
+#   When switching interval, clear WFO champions for that symbol and rescale wall-clock bar gates.
 #
-# WFO evaluates Optimized Strategy (daviddtech_scalp) plus MACD/EMA/RSI modes.
+# WFO evaluates multiple strategy modes (grid includes daviddtech_scalp, MACD, EMA, RSI, sar_chop, etc.).
+# ``strategy_mode = "auto"`` uses the champion row's mode for that symbol; if no champion yet,
+# ``auto_mode_fallback`` (default sar_chop) — WFO will replace it with a champion if one scores better.
 # Pairs here must NOT overlap with enabled_pairs above (shared rate limits).
 # ─────────────────────────────────────────────────────────────────────────────
 [scalp]
 enabled = true
-# Execution + candles: "kraken_spot" (default) or "coinbase_perps" (Coinbase Derivatives Exchange).
+# When pair ``strategy_mode`` is "auto" and there is no WFO champion row yet — default to sar_chop
+# (TV "5 min bot scalper" decode: PSAR + Lucid SAR + MACD + MA50/200 + UT Bot trail + CHOP<38.2).
+# WFO will still promote a different mode as champion if it scores better on that symbol.
+auto_mode_fallback = "sar_chop"
+# Execution + candles: ``coinbase_perps`` only (Coinbase Derivatives Exchange).
 # Perps require COINBASE_API_KEY + COINBASE_API_SECRET (CDP key + EC private key) in .env.
+# NOTE: CDE *nano perpetual* product_ids look like dated futures (e.g. XPP-20DEC30-CDE). That is still a
+# perp instrument code on this venue — not a separate “futures vs perps” product choice in this bot.
 venue = "coinbase_perps"
 # 0 = no limit on how many pairs can have an open leg at once (capital / per-pair notional still apply).
 # Set a positive integer to cap concurrent open positions across all scalp pairs.
 max_concurrent_positions = 0
-daily_loss_limit_pct = 3.0         # tighter daily limit (was 5 → 3%)
-allocated_capital_usd = 1000.0
-order_type = "limit"
-fee_bps_per_leg = 0.0              # Coinbase CDE promo: 0% maker/taker. Standard: 2 maker / 4 taker bps.
-max_leverage = 1.0                 # start conservative — no amplification
+daily_loss_limit_pct = 5.0         # $25 hard stop (5% × $500 allocated)
+daily_loss_enter_standby = true    # on breach: block all new entries
+daily_loss_cancel_open_orders = true  # on breach: cancel any pending limit orders
+# Also set BotState.scalp_risk_halted on first daily loss breach (snapshot + JSONL).
+daily_loss_set_scalp_halt = true
+daily_auto_reset = false           # never reset PnL/breach state at midnight — stays halted until manual restart
+allocated_capital_usd = 500.0
+# Margin / venue alignment — caps sizing by exchange buying_power and reserves margin for protectives.
+use_exchange_buying_power_cap = true        # min(allocated, Coinbase futures buying_power - buffer)
+buying_power_buffer_usd = 50.0              # keep $50 headroom beyond what the bot sizes against
+balance_stale_sec = 120.0                   # ignore buying_power if futures summary older than this
+protective_margin_reserve_mult = 1.5        # extra reserved margin = entry_margin × this after stop+TP OK
+# Reject cooldowns — pause entries after consecutive exchange rejections.
+order_reject_max_consecutive = 3
+order_reject_cooldown_sec = 120.0
+insufficient_funds_cooldown_sec = 300.0
+exchange_penalize_base_sec = 15.0           # RateLimiter penalty on 403 / connection errors
+# limit | market | hybrid (limit first; empirical_market_promotion may switch to market bursts)
+order_type = "hybrid"
+# Unfilled entry limits block new signals for that pair (internal ``pending``). Cancel quickly so
+# the pair can take the next signal; long TTLs leave you flat while the move is gone.
+# For 5m bars, 60–180s is typical; 900s spans multiple bars and is often too slow for CDE liquidity.
+entry_limit_ttl_sec = 120.0
+# Nudge limit entry through the book: buys +bps, sells −bps (improves fill rate vs bar-close-only price).
+entry_limit_offset_bps = 12.0
+# Hybrid execution (live Coinbase): default stays limit+TTL+offset. After repeated
+# TTL cancel + favorable missed-move vs the resting limit, arm N market entries for that pair.
+# Session JSONL: entry_ttl_cancel → (optional arm) empirical_market_promotion_armed → entry_market_promoted;
+# missed-move path: empirical_missed_move → empirical_market_promotion_armed (pattern) → entry_market_promoted.
+empirical_market_promotion_enabled = true
+# After each TTL cancel, arm this many market entries for the *next* signal(s) on that pair.
+empirical_market_ttl_cancel_arms_promotion = true
+empirical_market_ttl_cancel_promotion_entries = 1
+empirical_market_missed_move_bps = 12.0
+empirical_market_miss_eval_window_sec = 600.0
+empirical_market_min_pattern_in_window = 2
+empirical_market_pattern_window_sec = 86400.0
+empirical_market_promotion_entries = 2
+empirical_market_promotion_cooldown_sec = 3600.0
+# When true, WFO + param tuner vec sim charge taker bps per leg (stress vs empirical market bursts).
+wfo_assume_taker_fee = false
+# Backtest / WFO / tuner / live PnL sim: Coinbase **Derivatives** (CDE) schedule — NOT spot.
+# Example Advanced 2 @ ~$50k–$500k 30d derivatives volume: 0.065% maker / 0.070% taker (= 6.5 / 7.0 bps per leg).
+# Maker/taker are % of notional per fill leg. Coinbase also charges a flat **per-contract** amount for
+# NFA/exchange/clearing (fee page: e.g. $0.15/contract) — that is fee_usd_per_contract_per_leg below; it is
+# NOT returned by the transaction_summary API, so you must update it in toml if Coinbase changes the table.
+# With fee_tier_volume_source = "exchange" + fee_tier_auto_apply_exchange_fee_rates = true, maker/taker bps
+# are overwritten in memory from GET transaction_summary (futures/perp variants) on startup and on each poll;
+# WFO / vec backtest / param tuner read the live ScalpBotConfig (so they track tier moves automatically).
+# effective bps follow order_type: limit / hybrid → maker, market → taker (see effective_scalp_fee_bps_per_leg).
+fee_bps_per_leg = 6.5
+fee_bps_taker_per_leg = 7.0
+# Poll Coinbase Advanced **futures** transaction_summary for 30d volume + fee_tier; sync maker/taker bps when auto_apply on.
+fee_tier_volume_source = "exchange"
+fee_tier_poll_interval_sec = 900.0
+fee_tier_add_bot_fill_notional = false
+fee_tier_auto_apply_exchange_fee_rates = true
+# Clear champions on startup if fee snapshot ≠ toml; also when exchange poll applies new bps (if on).
+scalp_auto_invalidate_champion_on_fee_change = true
+scalp_fee_assumption_revision = 0
+fee_usd_per_contract_per_leg = 0.15
+max_leverage = 2.0                 # 2× margin leverage on CDE nano perps
 margin_mode = "CROSS"
 shorts_enabled = true
-max_notional_usd_per_pair = 500.0
+# max_notional_usd_per_pair not set — no per-contract notional cap; position size governed by risk_pct
 funding_warn_bps_per_hour = 5.0
 liquidation_warn_pct = 5.0
 slippage_bps = 1.0
+# Optional: EMA live entry slip from scalp_fill_execution → WFO / param tuner sim slippage (after min_samples).
+# slip_calibration_enabled = false
+# slip_calibration_ema_alpha = 0.2
+# slip_calibration_min_samples = 8
+# slip_calibration_floor_bps = 0.0
+# slip_calibration_cap_bps = 80.0
+# slip_calibration_mode = "max_with_config"   # or "replace"
 sim_mode = false
 rest_seed_candles = 200
 
-# Mid-bar entries (Coinbase feed only): uses last closed-bar indicators + live WS price.
-# Off by default — enable in sim first. Throttled by tick_signal_cooldown_sec in addition to per-pair signal_cooldown_sec.
+# Mid-bar entries (Coinbase feed only): last closed-bar indicators + live WS price.
+# DISABLED: WFO backtest is bar-based only (OHLCV); tick entry fills cannot be
+# validated against bar data. Re-enable only with a tick-level backtest simulation.
 tick_entries_enabled = false
-tick_signal_cooldown_sec = 300.0
+tick_signal_cooldown_sec = 45.0
 
-# Walk-forward optimizer — calibrated for 15m Coinbase CDE perps (BTC, SOL, XRP)
-# These pairs have high liquidity and ~0.2% avg range per bar.
-# 24h train / 8h holdout / 4h step ≈ 48h data span.
-# Longer holdout (32 bars) gives 6-10+ trades for meaningful validation.
-# Recency half-life inside each window still favours recent market conditions,
-# so stale regime data is naturally down-weighted.
+# Walk-forward optimizer — Coinbase CDE perps (BTC, SOL, XRP); bar size = pair ``interval`` (5m here)
+# Rolling band: only the last (train + holdout + (max_roll_windows-1)*step) hours of tape
+# are used; folds step back from the latest bar. Set wfo_step_hours >= (train+holdout)
+# for a single train/holdout pair only (e.g. 999).
 wfo_enabled = true
-wfo_interval_sec = 900.0              # every 15min — react to each new candle close
-wfo_train_hours = 24.0                # 96 bars at 15m — robust training across regimes
-wfo_holdout_hours = 8.0               # 32 bars — enough for 6-10+ trades per strategy
-wfo_step_hours = 4.0                  # 4h step: latest window always anchored on present
-wfo_min_trades = 6                    # meaningful sample; ±25% CI on win rate vs ±50% at n=2-3
+# Shorter interval = more WFO passes (CPU); still floored at 60s in the WFO loop.
+wfo_interval_sec = 300.0              # 5min — faster champion refresh when machine can take it
+wfo_train_hours = 168.0               # 1 week (~2016 bars at 5m) — flat weighting = more data is better
+wfo_holdout_hours = 24.0              # 1-day out-of-sample window — reduced from 48h; 48h windows were entirely signal-free on choppy days (sar_chop CHOP>38.2 wipes whole window)
+wfo_step_hours = 24.0                 # roll folds by 24h (set very large for one-window WFO)
+wfo_max_roll_windows = 21             # more folds = stabler $ ranking (span grows ~linearly; more CPU)
+# REST backfill requests WFO roll span + this many hours (gaps/pagination slack; 0 = exact span only).
+wfo_backfill_buffer_hours = 24
+# false = strict primary min-window count only (no quarter-fold / min_windows=1 WFO promotion fallback).
+wfo_allow_promotion_relaxation = false  # no fallback tiers — must meet primary window fraction or stay flat
+wfo_top_k = 80                        # more train survivors re-tested on each holdout (default was 50)
+wfo_train_same_calendar_day_boost = 0.0  # disabled — rolling windows already capture recency; boost distorts total_pnl
+wfo_min_trades = 3                    # minimum closed trades per train slice to score a grid point
+wfo_min_holdout_trades = 3            # minimum closed trades on holdout — requires meaningful evidence before promotion
+# Fine layer: perturb params within WFO mode. Min 30s enforced in runtime; higher = less knob drift vs bar cadence.
+param_tuner_interval_sec = 900.0
+# Optional throttles (0 = off): min closed bars between tuner passes per pair; cooldown after a successful apply.
+# param_tuner_min_bars_between_runs = 0
+# param_tuner_cooldown_sec_after_apply = 0.0
+# If >0: log WARNING when interval < this multiple of bar duration (longest pair interval).
+# param_tuner_warn_interval_below_bar_mult = 5.0
+# Holdout champion tie-break within wfo_holdout_score_epsilon of top mean wfo_objective score.
+# PnL-first: more aggregate holdout $, then shallower DD, then trade count, then stability.
+wfo_holdout_tiebreakers = ["sum_holdout_total_pnl", "neg_mean_max_dd_pct", "min_holdout_trade_count", "stability"]
+# wfo_holdout_score_epsilon = 0.0   # >0 widens tie pool so tiebreakers matter more often
+param_tuner_require_wfo_champion = true
+# false = WFO locks mode; tuner perturbs params only (fewer surprises, recommended while tuning).
+# true = tuner may switch mode vs champion (large behavioral lever; enable only if forward stats justify it).
+param_tuner_allow_mode_override_champion = false
+# WFO champion ranking: holdout metric to maximize (see backend/server/scalp_bot/scalp_wfo.py _OBJECTIVES).
+# total_pnl = sum of simulated USD P&L on holdout (1 contract, pair contract_size, maker/taker + flat/leg).
+# When true: each WFO pass maximizes mean holdout simulated USD (``total_pnl``) and skips heavy
+# promotion gates (stability, mean-score floor, latest-window PnL/PF, same-mode param safety,
+# beat-prior, min_champion_score_delta, vol-armed WFO overlay). Rolling folds + trade floors unchanged.
+wfo_pnl_first_promotion = true
+wfo_objective = "total_pnl"
+wfo_forward_min_trades = 10          # live trades required before demotion check activates
+wfo_forward_demotion_threshold = -0.5 # Gate 1: live PnL ratio floor (forward_pnl / holdout_expectancy×trades)
+wfo_forward_outperform_factor = 1.5  # Gate 2: replacement must have ≥1.5× the champion's live expectancy/trade (and positive PF≥1.0)
+# Holdout quality gates — loosened to allow "best available" strategy to run
+wfo_min_mean_score = 0.0              # reject any champion with negative mean holdout PnL
+wfo_require_positive_holdout = true   # require positive holdout PnL before promotion
+wfo_min_holdout_pf = 0.3             # very loose PF floor; real protection comes from daily loss limit + require_champion_to_trade
+# Champion stability gates — prevent thrashing and score regressions
+wfo_require_holdout_beat_prior = true   # new champion must strictly outscore prior — prevents chop from marginal fluctuations
+wfo_champion_cooldown_sec = 3600.0      # 1h min gap between champion replacements; switch also waits for open positions to close
+# Safety gate deltas: raise from hardcoded 1.0/1.5 — grid explores TP 1.5→6.0 so ±1.5 blocked 31% of passes
+wfo_max_param_delta_stop = 2.0          # was 1.0 — allow stop_mult swings up to ±2.0 between champions
+wfo_max_param_delta_tp = 3.0            # was 1.5 — allow tp_mult swings up to ±3.0 between champions
+# Holdout participation: require each candidate on >= floor(N folds * fraction). 0.35 promotes more often than legacy half-window bar.
+wfo_min_window_fraction = 0.35
+# Train IS hard gates (per rolling train slice, before a grid point scores). Defaults match WFOConfig.
+wfo_min_profit_factor = 0.0              # disabled — with min_trades=2, single-window PF is noise; holdout aggregation is the real filter
+wfo_min_win_rate = 0.0                   # disabled — same reason; WR at 2 trades is 0/50/100%
+wfo_max_train_drawdown_pct = 100.0       # disabled — wider stops (atr_stop_mult=2) cause legitimate 30%+ drawdowns; aggregate holdout handles quality
 
 # Regime risk-on: volume spike and/or large vol-scaled bar moves extend a global window where
 # WFO sleeps shorter, no-champion bootstrap uses a shorter lookback, and Nemesis dual-gate can
-# relax slightly (see risk_on_nemesis_*). Any configured pair can trigger; hold extends on each hit.
+# relax slightly (see risk_on_nemesis_*). Live ticks turn this on quickly; calm release turns it off
+# when no pair is stressed (see risk_on_relax_after_calm_sec). Any pair can trigger; hold is a cap.
+# Enabled: relaxes WFO interval + bootstrap window during volume/volatility spikes.
 regime_risk_on_enabled = true
 regime_volume_spike_mult = 2.5        # bar volume ≥ this × volume MA
 regime_price_move_atr_mult = 1.75     # |close − prev_close| ≥ ATR × this
 # regime_price_move_min_pct = 0.35    # optional extra trigger on |Δ|%% (0 = off)
-# Live regime (WS ticks / ohlc updates) — same risk-on window, no 15m bar wait
+# Live regime (WS ticks / ohlc updates) — same risk-on window, no wait for bar close
 regime_live_vol_enabled = true
 regime_live_use_volume = true         # forming-bar volume vs last closed-bar volume MA × regime_volume_spike_mult
 regime_live_range_atr_mult = 1.75     # (high − low) on open bar ≥ ATR × this
 regime_live_velocity_window_sec = 45.0  # 0 = disable velocity trigger
 regime_live_velocity_min_bps = 20.0   # max-min range / mid in window (bps); 0 = off
-risk_on_hold_sec = 900.0              # seconds to keep risk-on after last trigger (refreshed per hit)
-risk_on_wfo_interval_scale = 0.35     # multiply wfo_interval_sec while active (e.g. 900 → 315s)
-risk_on_wfo_min_interval_sec = 300.0  # floor between WFO passes (loop still enforces ≥60s)
+risk_on_hold_sec = 120.0              # max tail if ticks stop; refreshed on each trigger
+risk_on_relax_after_calm_sec = 30.0   # end risk-on after this many seconds with all pairs calm (0 = off)
+risk_on_wfo_interval_scale = 0.25     # multiply wfo_interval_sec while active (e.g. 900 → 225s)
+risk_on_wfo_min_interval_sec = 60.0   # floor between WFO passes (loop still enforces ≥60s)
 risk_on_bootstrap_hours = 1.0         # cap no-champion bootstrap window vs default 2h
 risk_on_nemesis_expectancy_slack = 0.0  # tuner wins if t_exp > b_exp − slack (0 = unchanged)
 risk_on_nemesis_min_pf = 0.95         # min tuner PF while risk-on (1.0 = same as calm regime)
 
-strategy_lookback_hours = 2.0          # backtest window for UI strategy comparison + startup mode pick
+# Volatility filter (execution risk-on — separate from regime / WFO risk-on above).
+# Prime: closed bar must pass volume_confirmed AND volume ≥ spike_mult × vol MA (strict).
+# Optional climax guard rejects one-print washout bars; next bar must confirm (sustained vol or ATR follow-through).
+# When confirmed, new entries use volatility_exec_risk_mult on dollar risk until volatility_exec_hold_sec elapses.
+# volatility_filter_enabled = false
+# volatility_spike_volume_mult = 4.0
+# volatility_confirm_min_volume_mult = 1.15
+# volatility_confirm_follow_atr_mult = 0.35   # 0 = volume-only confirmation
+# volatility_reject_bearish_climax = true
+# volatility_climax_bearish_range_frac = 0.22
+# volatility_reject_bullish_exhaust = false
+# volatility_climax_bullish_exhaust_frac = 0.88
+# volatility_exec_risk_mult = 1.25
+# volatility_exec_risk_cap = 2.0
+# volatility_exec_hold_sec = 1800.0
+# volatility_armed_tick_cooldown_scale = 0.5    # × tick_signal_cooldown_sec while armed
+# volatility_armed_signal_cooldown_scale = 0.5   # × pair signal_cooldown_sec (bar + tick)
+# volatility_armed_cooldown_floor_sec = 1.0
+
+strategy_lookback_hours = 24.0         # BACKTEST_BY_STRATEGY window (entries in last N h); full bars for warmup
 
 # ── Backtest fidelity ─────────────────────────────────────────────────────────
 # "next_open" fills entries at open[i+1] instead of close[i] — matches how live
-# limit orders actually fill on 15m bars. Removes ~0.5–1 ATR of look-ahead bias
+# limit orders actually fill on the next bar open. Removes ~0.5–1 ATR of look-ahead bias
 # from WFO scores (especially important at 0% fees where there's no cost buffer).
 backtest_fill_model = "next_open"
+# Perps funding in bar sim / WFO / tuner — off until you have a measured signed bps/hour from the venue.
+backtest_funding_enabled = false
+backtest_funding_bps_per_hour = 0.0
 
 # use_numpy_indicators = false  # leave off — all pairs use daviddtech_scalp which
 #                               # already shares numpy code; changing indicator math
 #                               # in live is unnecessary risk for this mode.
 
 warmup_enabled = true
-warmup_min_bars = 100              # 100 × 15m = 25h — indicators fully warmed, WFO has real windows
-warmup_require_champion = true     # don't trade until WFO validates a strategy (~45s on restart)
+warmup_min_bars = 300              # 300 × 5m = 25h — indicators fully warmed, WFO has real windows
+warmup_require_champion = false    # trade immediately on restart; WFO runs in background and promotes champion when ready
 warmup_max_hours = 0.5             # safety valve: 30 min max wait (WFO normally finishes in <1 min)
 # When true, process starts in operator STANDBY — no new entries until Settings → Go live.
-require_manual_go_live = true
+require_manual_go_live = false
+# When true, entries are blocked for any pair still in bootstrap (no WFO champion).
+# The pair waits silently until WFO crowns a champion — then the chosen indicator trades freely.
+require_champion_to_trade = true   # block entries until a qualified WFO champion is crowned
 
-# BIP-20DEC30-CDE — nano BTC Perpetual (0.01 BTC / contract, CDE venue)
+# CDE nano BTC perpetual (FCM): BIP — Dec 2030 expiry name; contract_size from get_product future_product_details.
+# contract_size=0.01: each contract = 0.01 BTC (~$730 notional @ $73k/BTC for 1 contract).
 [scalp.pairs.BTC_USD]
 symbol = "BIP-20DEC30-CDE"
 contract_size = 0.01
-interval = 15   # minutes per candle (see [scalp] header: 5m vs 15m trade-offs)
-strategy_mode = "daviddtech_scalp"
+interval = 5   # minutes per candle
+strategy_mode = "auto"
 t3_length = 7
 hlc_close_period = 5
 hlc_low_period = 13
@@ -359,14 +507,14 @@ rsi_period = 14
 atr_period = 14
 volume_ma_period = 20
 volume_mult = 1.5
-atr_stop_mult = 3.0
-atr_tp_mult = 3.0
+atr_stop_mult = 2.0              # 2x lev: stop = 2×ATR (~0.7% underlying = ~1.4% leveraged at median BTC ATR)
+atr_tp_mult = 3.5               # R:R 1:1.75 — targets ~2.45% leveraged at median ATR; was 4.0 (overshot)
 risk_pct = 0.015
-min_signals = 2
-signal_cooldown_sec = 900.0
-loss_cooldown_sec = 1800.0
-min_candles_required = 30
-max_hold_bars = 16                 # 16 × 15m = 4h hold max
+min_signals = 1
+signal_cooldown_sec = 0.0          # indicators + bar/tick path gate frequency; 0 = no artificial spacing
+loss_cooldown_sec = 0.0            # 0 = no post-loss lockout (stops/daily limit still apply)
+min_candles_required = 90
+max_hold_bars = 48                 # 48 × 5m = 4h hold max
 rsi_buy_threshold = 10.0
 rsi_sell_threshold = 50.0
 ema_scalp_period = 20
@@ -374,24 +522,24 @@ ema_scalp_sr_bars = 8
 macd_fast_len = 8
 macd_slow_len = 10
 macd_signal_len = 8
-# Break-even: move stop to entry + fee buffer once 1× ATR in profit.
-# Trailing: once 2× ATR in profit, trail 1× ATR behind price.
-breakeven_atr_trigger = 1.0
-breakeven_buffer_bps = 5.0
-trail_atr_trigger = 2.0
-trail_atr_distance = 1.0
+# Break-even: trigger at 1×R (= atr_stop_mult) so stop moves to entry only after profit covers the full risk unit.
+# Trailing: start after 1.5×R in profit; trail 1.5×ATR behind price (wider to avoid normal candle whipsaw).
+breakeven_atr_trigger = 2.0      # was 1.0 — was triggering at 0.5×R, causing scratch trades
+breakeven_buffer_bps = 7.0       # slightly wider buffer at 2x leverage to absorb spread + fees
+trail_atr_trigger = 3.0          # was 2.0 — start trailing after 1.5×R in profit
+trail_atr_distance = 1.5         # was 1.0 — wider trail reduces whipsaw on 5m candles
 # ── Risk gates ────────────────────────────────────────────────────────────────
-trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
-trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
-regime_adx_min = 20.0          # block trend entries during ranging markets
+# Optional chop filter (daviddtech only): set true to skip entries when ADX is weak / sideways.
+regime_adx_filter = false
+regime_adx_min = 20.0          # legacy — signal engine ignores; tune adx_threshold / WFO instead
 correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk
 
-# SLP-20DEC30-CDE — nano SOL Perpetual (5 SOL / contract, CDE venue)
+# CDE SOL perpetual (FCM): SLP — contract_size = 5 SOL per contract (from get_product).
 [scalp.pairs.SOL_USD]
 symbol = "SLP-20DEC30-CDE"
 contract_size = 5.0
-interval = 15   # minutes per candle
-strategy_mode = "daviddtech_scalp"
+interval = 5   # minutes per candle
+strategy_mode = "auto"
 t3_length = 7
 hlc_close_period = 5
 hlc_low_period = 13
@@ -404,14 +552,14 @@ rsi_period = 14
 atr_period = 14
 volume_ma_period = 20
 volume_mult = 1.5
-atr_stop_mult = 3.0
-atr_tp_mult = 3.0
+atr_stop_mult = 1.5              # was 2.0 — tighter stop; still above SOL noise floor (~0.8% min underlying)
+atr_tp_mult = 2.5               # R:R 1:1.67 — targets ~2.8% leveraged at median ATR; was 4.0 (rarely filled)
 risk_pct = 0.015
-min_signals = 2
-signal_cooldown_sec = 900.0
-loss_cooldown_sec = 1800.0
-min_candles_required = 30
-max_hold_bars = 16                 # 16 × 15m = 4h hold max
+min_signals = 1
+signal_cooldown_sec = 0.0
+loss_cooldown_sec = 0.0
+min_candles_required = 90
+max_hold_bars = 48                 # 48 × 5m = 4h hold max
 rsi_buy_threshold = 10.0
 rsi_sell_threshold = 50.0
 ema_scalp_period = 20
@@ -419,22 +567,22 @@ ema_scalp_sr_bars = 8
 macd_fast_len = 8
 macd_slow_len = 10
 macd_signal_len = 8
-breakeven_atr_trigger = 1.0
-breakeven_buffer_bps = 5.0
-trail_atr_trigger = 2.0
-trail_atr_distance = 1.0
+breakeven_atr_trigger = 1.5      # was 1.0 — now 1×R (= atr_stop_mult); prevents early scratch trades
+breakeven_buffer_bps = 7.0
+trail_atr_trigger = 2.5          # was 2.0 — proportionally scaled to new stop distance
+trail_atr_distance = 1.5         # was 1.0 — wider trail reduces whipsaw
 # ── Risk gates ────────────────────────────────────────────────────────────────
-trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
-trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
-regime_adx_min = 20.0          # block trend entries during ranging markets
+# Optional chop filter (daviddtech only): set true to skip entries when ADX is weak / sideways.
+regime_adx_filter = false
+regime_adx_min = 20.0          # legacy — signal engine ignores; tune adx_threshold / WFO instead
 correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk
 
-# XPP-20DEC30-CDE — nano XRP Perpetual (500 XRP / contract, CDE venue)
+# CDE XRP perpetual (FCM): XPP — contract_size = 500 XRP per contract (from get_product).
 [scalp.pairs.XRP_USD]
 symbol = "XPP-20DEC30-CDE"
 contract_size = 500.0
-interval = 15   # minutes per candle
-strategy_mode = "daviddtech_scalp"
+interval = 5   # minutes per candle
+strategy_mode = "auto"
 t3_length = 7
 hlc_close_period = 5
 hlc_low_period = 13
@@ -447,14 +595,14 @@ rsi_period = 14
 atr_period = 14
 volume_ma_period = 20
 volume_mult = 1.5
-atr_stop_mult = 3.0
-atr_tp_mult = 3.0
+atr_stop_mult = 1.5              # was 2.0 — tighter stop; still above XRP noise floor (~0.8% min underlying)
+atr_tp_mult = 2.5               # R:R 1:1.67 — targets ~2.8% leveraged at median ATR; was 4.0 (rarely filled)
 risk_pct = 0.015
-min_signals = 2
-signal_cooldown_sec = 900.0
-loss_cooldown_sec = 1800.0
-min_candles_required = 30
-max_hold_bars = 12                 # 12 × 15m = 3h hold max
+min_signals = 1
+signal_cooldown_sec = 0.0
+loss_cooldown_sec = 0.0
+min_candles_required = 90
+max_hold_bars = 36                 # 36 × 5m = 3h hold max
 rsi_buy_threshold = 10.0
 rsi_sell_threshold = 50.0
 ema_scalp_period = 20
@@ -462,8 +610,12 @@ ema_scalp_sr_bars = 8
 macd_fast_len = 8
 macd_slow_len = 10
 macd_signal_len = 8
+breakeven_atr_trigger = 1.5      # was 1.0 — now 1×R (= atr_stop_mult); prevents early scratch trades
+breakeven_buffer_bps = 7.0
+trail_atr_trigger = 2.5          # was 2.0 — proportionally scaled to new stop distance
+trail_atr_distance = 1.5         # was 1.0 — wider trail reduces whipsaw
 # ── Risk gates ────────────────────────────────────────────────────────────────
-trade_hours_start = 8          # 8am UTC — CDE perp liquidity opens
-trade_hours_end = 23           # 11pm UTC — avoid overnight dead zone
-regime_adx_min = 20.0          # block trend entries during ranging markets
+# Optional chop filter (daviddtech only): set true to skip entries when ADX is weak / sideways.
+regime_adx_filter = false
+regime_adx_min = 20.0          # legacy — signal engine ignores; tune adx_threshold / WFO instead
 correlation_group = "l1_crypto" # BTC/SOL/XRP correlated — scale concurrent risk
