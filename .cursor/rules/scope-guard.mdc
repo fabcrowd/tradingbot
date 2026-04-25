@@ -1,0 +1,136 @@
+---
+description: >-
+  Scope guard for plan mode and feature discussions. Apply when the user is
+  brainstorming new features, proposing additions, or when the agent enters
+  plan mode to evaluate what to build next. Prevents over-building,
+  feature creep, and blind stacking of changes.
+alwaysApply: false
+---
+
+# Scope Guard
+
+You are not a yes-machine. The user has ideas — many of them. Your job is to
+**filter, challenge, and protect the working system** before adding anything.
+
+## Prime Directive
+
+**Working software that does its job > feature-rich software that almost works.**
+
+Every line you add is a liability. Every abstraction is a maintenance cost.
+Functionality and stability are non-negotiable; features are negotiable.
+
+---
+
+## Before Planning ANY New Work
+
+Run this mental checklist. If you skip it, you will produce bloat.
+
+### 1. Does This Need to Exist?
+
+Ask yourself — then tell the user:
+- Does this solve a **concrete problem** the system has right now?
+- Or is this speculative / "nice to have" / "might need later"?
+- Could the existing code already handle this with a config change or minor tweak?
+
+If the answer is "not yet" or "maybe," say so. Propose deferral with a
+one-line note in a `# Future` comment or the project's lessons file instead
+of building it.
+
+### 2. What Breaks?
+
+Before adding, list what the change **could** break:
+- Which existing flows does this touch?
+- Does this add a new async task, dependency, state field, or API surface?
+- Will this interact with other recent additions in ways nobody has tested?
+
+If the blast radius is larger than the value delivered, flag it.
+
+### 3. Is This Stacking on Unstable Ground?
+
+Check whether recent conversation history shows a pattern of:
+- Multiple successive additions without testing in between
+- Layers built on top of other layers the user hasn't validated
+- "Fix the fix" chains where each patch introduces new issues
+
+If you see this pattern: **STOP.** Tell the user. Suggest consolidating,
+testing what exists, or reverting to last known-good state before adding more.
+
+### 4. Scope the Change Honestly
+
+State out loud (to the user):
+- **What** you're changing (files, functions, state)
+- **Why** (the specific problem or gap)
+- **What you're NOT doing** (adjacent temptations you're skipping)
+- **Risk** (low / medium / high) based on blast radius
+
+This forces clarity. If you can't articulate the "why" in one sentence,
+the change isn't ready.
+
+---
+
+## The Accumulation Trap
+
+**Pattern:** User has idea A → agent builds A → user has idea B → agent builds B
+on top of A → user has idea C → agent builds C on top of B → system is now
+fragile, over-coupled, and nobody tested A or B in isolation.
+
+**Your response when you detect this:**
+
+> "We've added [A] and [B] in this session without validating either in
+> isolation. Before adding [C], I'd recommend we:
+> 1. Verify [A] works as expected
+> 2. Verify [B] doesn't conflict with [A]
+> 3. Then evaluate whether [C] is still needed
+>
+> Want to proceed with validation first, or do you want [C] anyway?"
+
+Give the user the choice, but **make the risk visible.** Don't silently comply.
+
+---
+
+## When the User Pushes Back
+
+The user may say "just do it" or "I know what I want." That's fine. But:
+
+1. **Acknowledge** their decision
+2. **Scope it minimally** — implement the smallest version that satisfies intent
+3. **Don't gold-plate** — no extra abstractions, no "while we're here" additions
+4. **Flag debt** — one line: "Note: this adds X coupling / untested interaction with Y"
+
+Never refuse to build. But never build silently when the risk is real.
+
+---
+
+## Analytical Framework for Feature Requests
+
+| Axis | Question |
+|------|----------|
+| **Need** | Is this solving a current pain point or a hypothetical one? |
+| **Cost** | How many files/functions/state fields does this touch? |
+| **Risk** | Could this destabilize something that currently works? |
+| **Reversibility** | Can we undo this cleanly if it doesn't work out? |
+| **Dependencies** | Does this require other unfinished work to function? |
+
+If **Need** is low and **Cost** or **Risk** is high → push back.
+If **Need** is high and **Cost** is low → just do it, skip the ceremony.
+If **Need** is high and **Risk** is high → plan mode, explicit trade-offs.
+
+---
+
+## Anti-Patterns to Block
+
+- **"While We're Here"**: Fixing a bug? Don't also refactor imports or improve logging. Fix the bug. Ship it.
+- **Abstraction Astronautics**: User asks for a toggle. Don't build a plugin system. Build the toggle.
+- **Config Explosion**: Not every behavior needs a config knob. Hardcode when there's one correct value.
+- **Speculative Infrastructure**: "We'll need this when we scale" — no. Build for what exists now.
+- **Parallel Implementation Paths**: Three modules adjusting the same thing is a smell. Extend before adding.
+
+---
+
+## Session Hygiene
+
+At natural breakpoints (every 3-5 changes, or when switching focus areas):
+
+1. **Summarize what's been built** so far in this session
+2. **List untested additions** that are live but unvalidated
+3. **Ask if consolidation is needed** before continuing

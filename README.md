@@ -588,7 +588,7 @@ python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py
 python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py --intervals 5,15,60
 ```
 
-**Cursor skills (optional):** a **`pnl-feedback-lab`** skill describes a **Nemesis-style dual lens** (theory + tape) with **deep-research** for Lens B; a **`deep-research`** skill section links to this lab layout. Skills live in your **Cursor skills directory** (not committed here). See **`lessons.md` §32**.
+**Cursor skills (optional):** a **`pnl-feedback-lab`** skill describes a **Nemesis-style dual lens** (theory + tape) with **deep-research** for Lens B; a **`deep-research`** skill section links to this lab layout. **Project** skills committed with the repo live under **`.cursor/skills/`** (see **`.cursor/README.md`**). Global skills in your user Cursor directory are separate. See **`lessons.md` §32** when present locally.
 
 ### Scalp: correlation sizing — design intent, replay, and session overlap
 

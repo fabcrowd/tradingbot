@@ -18,7 +18,17 @@ node_modules/
 .pnp.*
 
 # ── IDE ──
-.cursor/
+# Cursor: track portable project assets; ignore everything else under .cursor/
+.cursor/**
+!.cursor/README.md
+!.cursor/skills/
+!.cursor/skills/**
+!.cursor/rules/
+!.cursor/rules/**
+!.cursor/agents/
+!.cursor/agents/**
+!.cursor/references/
+!.cursor/references/**
 .claude/
 .vscode/
 *.swp
