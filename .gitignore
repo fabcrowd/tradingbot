@@ -39,6 +39,7 @@ data/learner_state_*.json
 data/sim_report.json
 data/cost_basis.json
 data/fill_barriers.json
+data/session_observer.jsonl
 
 # ── Runtime data (polymarket bot) ──
 bots/polymarket_bot/data/trades_*.jsonl

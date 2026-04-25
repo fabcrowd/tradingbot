@@ -1,0 +1,18 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775473984.062}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 16.0, "wfo_holdout_hours": 4.0, "wfo_step_hours": 4.0, "ts": 1775473987.135}
+{"event": "scalp", "subtype": "warmup_complete", "elapsed_sec": 0.0, "champion_found": true, "bars": {"BTC_USD": 205, "SOL_USD": 197, "XRP_USD": 192}, "ts": 1775473989.269}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 15, "new_rows": 0, "total_in_store": 205, "hours_needed": 33.0, "ts": 1775473989.717}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 15, "new_rows": 0, "total_in_store": 197, "hours_needed": 33.0, "ts": 1775473990.159}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 15, "new_rows": 0, "total_in_store": 192, "hours_needed": 33.0, "ts": 1775473993.056}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 16.0, "holdout_hours": 4.0, "step_hours": 4.0, "interval_sec": 900.0, "ts": 1775473993.056}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775474007.039}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 15, "outcome": "champion_saved", "mode": "macd_scalp", "score": 139.959294, "windows_evaluated": 4, "ts": 1775474020.224}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775474033.059}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": ["SOL_USD"], "n_pairs": 3, "ts": 1775474033.059}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 16.0, "holdout_hours": 4.0, "step_hours": 4.0, "interval_sec": 900.0, "ts": 1775474033.072}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775474047.151}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 15, "outcome": "champion_saved", "mode": "macd_scalp", "score": 139.959294, "windows_evaluated": 4, "ts": 1775474060.703}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775474073.503}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": ["SOL_USD"], "n_pairs": 3, "ts": 1775474073.504}
+{"event": "scalp", "subtype": "tuner_applied", "pair_key": "SOL_USD", "best_mode": "ema_momentum", "win_rate": 0.6349, "pnl": 2.57249, "changes": ["atr_stop_mult: 1.0 -> 2.5", "atr_tp_mult: 4.0 -> 3.0", "max_hold_bars: 5 -> 25", "rsi_period: 14 -> 22"], "aggressiveness": "frozen", "ts": 1775474094.145}
+{"event": "scalp", "subtype": "tuner_applied", "pair_key": "XRP_USD", "best_mode": "macd_scalp", "win_rate": 0.5784, "pnl": 0.031682, "changes": ["atr_stop_mult: 3.0 -> 2.75", "atr_tp_mult: 3.0 -> 3.5", "max_hold_bars: 12 -> 7"], "aggressiveness": "slow", "ts": 1775474094.706}

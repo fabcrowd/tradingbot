@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "config": "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\config.toml",
+    "venue": "coinbase_perps",
+    "load_days_override": 35.0,
+    "grid_cap": 100,
+    "suite": "stage2_train_hours",
+    "ts": 1775827027.3110456
+  },
+  "rows": [
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 93.07,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=202"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 215.46,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=196"
+    }
+  ]
+}

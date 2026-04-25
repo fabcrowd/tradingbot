@@ -1,0 +1,67 @@
+{
+  "meta": {
+    "config": "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\config.toml",
+    "venue": "coinbase_perps",
+    "load_days_override": 28.0,
+    "grid_cap": 150,
+    "fast": true,
+    "suite": "stage2_train_hours",
+    "ts": 1775827877.6724544
+  },
+  "rows": [
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 6.13,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 5.74,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 5.73,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 13.57,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 13.76,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 13.51,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\scalp_bot\scalp_vec_backtest.py:133: RuntimeWarning: Mean of empty slice
+  m = np.nanmean(sl)
+C:\Users\daroo\AppData\Roaming\Python\Python314\site-packages\numpy\lib\_nanfunctions_impl.py:1997: RuntimeWarning: Degrees of freedom <= 0 for slice.
+  var = nanvar(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+# BTC_USD BIP-20DEC30-CDE 15m full_span bars=781 ts=1775329200..1775629800
+# SOL_USD SLP-20DEC30-CDE 15m full_span bars=761 ts=1775329200..1775629800
+# XRP_USD XPP-20DEC30-CDE 15m full_span bars=734 ts=1775329200..1775629800
+
+# SUMMARY best score_exp_sqrt_n per pair_key+interval+window
+BTC_USD       15m early -> daviddtech_scalp pnl=1301.2808 trades=3 score=751.2948
+BTC_USD       15m late  -> ema_momentum     pnl=4265.3947 trades=21 score=930.7854
+BTC_USD       15m mid   -> rsi_reversion    pnl=463.4188 trades=1 score=463.4188
+SOL_USD       15m early -> daviddtech_scalp pnl=0.7875 trades=2 score=0.5569
+SOL_USD       15m late  -> ema_momentum     pnl=6.4853 trades=21 score=1.4152
+SOL_USD       15m mid   -> daviddtech_scalp pnl=0.2943 trades=1 score=0.2943
+XRP_USD       15m early -> daviddtech_scalp pnl=0.0159 trades=2 score=0.0112
+XRP_USD       15m late  -> daviddtech_scalp pnl=0.0285 trades=3 score=0.0165
+XRP_USD       15m mid   -> macd_scalp       pnl=0.0110 trades=19 score=0.0025

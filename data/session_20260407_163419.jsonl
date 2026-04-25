@@ -1,0 +1,4 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775579663.815}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": false, "warmup_enabled": true, "wfo_train_hours": 24.0, "wfo_holdout_hours": 8.0, "wfo_step_hours": 4.0, "ts": 1775579668.024}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 15, "new_rows": 0, "total_in_store": 613, "hours_needed": 45.0, "ts": 1775579671.355}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 4.0, "interval_sec": 900.0, "objective": "expectancy_sqrt_n", "ts": 1775579671.907}

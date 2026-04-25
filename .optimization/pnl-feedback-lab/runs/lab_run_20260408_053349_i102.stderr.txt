@@ -1,0 +1,24 @@
+# skip BTC_USD BIP-20DEC30-CDE 5m: insufficient or missing parquet
+C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\scalp_bot\scalp_vec_backtest.py:133: RuntimeWarning: Mean of empty slice
+  m = np.nanmean(sl)
+C:\Users\daroo\AppData\Roaming\Python\Python314\site-packages\numpy\lib\_nanfunctions_impl.py:1997: RuntimeWarning: Degrees of freedom <= 0 for slice.
+  var = nanvar(a, axis=axis, dtype=dtype, out=out, ddof=ddof,
+# BTC_USD BIP-20DEC30-CDE 15m full_span bars=768 ts=1775329200..1775625900
+# skip BTC_USD BIP-20DEC30-CDE 60m: insufficient or missing parquet
+# skip SOL_USD SLP-20DEC30-CDE 5m: insufficient or missing parquet
+# SOL_USD SLP-20DEC30-CDE 15m full_span bars=748 ts=1775329200..1775625900
+# skip SOL_USD SLP-20DEC30-CDE 60m: insufficient or missing parquet
+# skip XRP_USD XPP-20DEC30-CDE 5m: insufficient or missing parquet
+# XRP_USD XPP-20DEC30-CDE 15m full_span bars=721 ts=1775329200..1775625900
+# skip XRP_USD XPP-20DEC30-CDE 60m: insufficient or missing parquet
+
+# SUMMARY best score_exp_sqrt_n per pair_key+interval+window
+BTC_USD       15m early -> daviddtech_scalp pnl=1171.2808 trades=3 score=676.2393
+BTC_USD       15m late  -> ema_momentum     pnl=3624.0383 trades=22 score=772.6476
+BTC_USD       15m mid   -> rsi_reversion    pnl=463.8349 trades=1 score=463.8349
+SOL_USD       15m early -> ema_momentum     pnl=2.2179 trades=22 score=0.4729
+SOL_USD       15m late  -> ema_momentum     pnl=6.5921 trades=21 score=1.4385
+SOL_USD       15m mid   -> ema_momentum     pnl=1.4634 trades=20 score=0.3272
+XRP_USD       15m early -> daviddtech_scalp pnl=0.0127 trades=2 score=0.0090
+XRP_USD       15m late  -> daviddtech_scalp pnl=0.0285 trades=3 score=0.0165
+XRP_USD       15m mid   -> daviddtech_scalp pnl=0.0011 trades=1 score=0.0011

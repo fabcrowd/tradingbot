@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "config": "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\config.toml",
+    "venue": "coinbase_perps",
+    "load_days_override": 28.0,
+    "grid_cap": 150,
+    "fast": true,
+    "suite": "holdout_pf",
+    "ts": 1775827937.0370429
+  },
+  "rows": [
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 6.13,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 5.45,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 5.42,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 5.39,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 5.43,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 6.37,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 6.59,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 6.22,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 6.03,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    }
+  ]
+}

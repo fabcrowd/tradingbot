@@ -1,0 +1,2 @@
+{"event": "session_start", "mode": "paper", "ts": 1775939484.406}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 168.0, "wfo_holdout_hours": 48.0, "wfo_step_hours": 24.0, "ts": 1775939484.472}

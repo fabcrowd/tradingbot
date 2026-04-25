@@ -1,0 +1,14 @@
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["SOL_USD", "XRP_USD"], "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 24.0, "wfo_holdout_hours": 8.0, "wfo_step_hours": 8.0, "ts": 1775394934.496}
+{"event": "scalp", "subtype": "warmup_complete", "elapsed_sec": 0.0, "champion_found": false, "bars": {"SOL_USD": 724, "XRP_USD": 725}, "ts": 1775394941.149}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "SOL_USD", "symbol": "SOL/USD", "interval": 15, "new_rows": 1, "total_in_store": 725, "hours_needed": 57.0, "ts": 1775394941.339}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "XRP_USD", "symbol": "XRP/USD", "interval": 15, "new_rows": 1, "total_in_store": 726, "hours_needed": 57.0, "ts": 1775394941.528}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 8.0, "interval_sec": 1800.0, "ts": 1775394941.528}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SOL/USD", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775394949.541}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XRP/USD", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775394960.262}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": [], "n_pairs": 2, "ts": 1775394960.263}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 8.0, "interval_sec": 1800.0, "ts": 1775394960.263}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SOL/USD", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775394969.466}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XRP/USD", "interval": 15, "outcome": "no_change", "skip_reason": "no_candidates_after_stability_filters", "ts": 1775394977.956}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": [], "n_pairs": 2, "ts": 1775394977.956}
+{"event": "scalp", "subtype": "tuner_applied", "pair_key": "SOL_USD", "best_mode": "macd_scalp", "win_rate": 0.1959, "pnl": -2.914191, "changes": ["atr_stop_mult: 1.5 -> 1.0", "atr_tp_mult: 4.0 -> 3.0", "max_hold_bars: 16 -> 26"], "aggressiveness": "aggressive", "ts": 1775395020.307}
+{"event": "scalp", "subtype": "tuner_applied", "pair_key": "XRP_USD", "best_mode": "ema_momentum", "win_rate": 0.1687, "pnl": -0.036021, "changes": ["atr_stop_mult: 1.5 -> 1.0", "max_hold_bars: 12 -> 22"], "aggressiveness": "aggressive", "ts": 1775395020.34}

@@ -1,0 +1,391 @@
+{
+  "meta": {
+    "config": "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\config.toml",
+    "venue": "coinbase_perps",
+    "load_days_override": 28.0,
+    "grid_cap": 150,
+    "fast": true,
+    "suite": "all",
+    "ts": 1775827127.235359
+  },
+  "rows": [
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 54.36,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 55.24,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 24.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 59.3,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 129.9,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 166.18,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "stage2_train_hours",
+      "train_hours": 48.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 163.46,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 129.03,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 129.41,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 109.98,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 103.61,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 110.45,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 107.12,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 111.97,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 109.97,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 107.93,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=77"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 4,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 47.17,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 4,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 47.54,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 4,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 47.19,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 6,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 44.4,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 6,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 43.67,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 6,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 43.82,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 10,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 43.95,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 10,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 45.86,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "wfo_min_trades",
+      "min_trades": 10,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 46.83,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 46.45,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 46.77,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 0.95,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 46.35,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 44.88,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 42.0,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 42.06,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 41.85,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 43.19,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "min_latest_holdout_pf",
+      "min_latest_holdout_pf": 1.05,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 46.39,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=80"
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 1.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "ok": true,
+      "best_mode": "daviddtech_scalp",
+      "elapsed_sec": 0.025
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 1.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "ok": true,
+      "best_mode": "daviddtech_scalp",
+      "elapsed_sec": 0.024
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 1.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "ok": true,
+      "best_mode": "squeeze_momentum",
+      "elapsed_sec": 0.024
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 2.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "ok": true,
+      "best_mode": "daviddtech_scalp",
+      "elapsed_sec": 0.024
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 2.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "ok": true,
+      "best_mode": "ema_momentum",
+      "elapsed_sec": 0.025
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 2.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "ok": true,
+      "best_mode": "ema_scalp",
+      "elapsed_sec": 0.025
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 4.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "ok": true,
+      "best_mode": "ema_momentum",
+      "elapsed_sec": 0.025
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 4.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "ok": true,
+      "best_mode": "ema_momentum",
+      "elapsed_sec": 0.025
+    },
+    {
+      "suite": "bootstrap_lookback_hours",
+      "lookback_hours": 4.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "ok": true,
+      "best_mode": "ema_scalp",
+      "elapsed_sec": 0.025
+    }
+  ]
+}

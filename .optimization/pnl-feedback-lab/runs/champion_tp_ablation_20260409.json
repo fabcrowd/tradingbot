@@ -1,0 +1,416 @@
+{
+  "lookbacks": "wfo,full",
+  "pairs": {
+    "BTC_USD": {
+      "symbol": "BIP-20DEC30-CDE",
+      "disk_tp": 4.0,
+      "lookbacks": {
+        "wfo": {
+          "n_bars": 665,
+          "disk": {
+            "full_pnl_usd": 58.844705188987426,
+            "full_sharpe": 10.793024818492592,
+            "full_trades": 80,
+            "thirds_robust": false,
+            "thirds_seg_ok": 2,
+            "thirds_min_sharpe": -6.67676374166395,
+            "thirds_min_pnl_usd": -10.113677941966888,
+            "blk_pass": 4,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -9.841635218775432,
+            "blk_min_pnl_usd": -9.86457980085732
+          },
+          "picks": {
+            "BASE_BAR_ROB": null,
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": {
+              "tp": 4.0,
+              "full_pnl_usd": 58.844705188987426,
+              "full_sharpe": 10.793024818492592,
+              "full_trades": 80,
+              "thirds_robust": false,
+              "thirds_seg_ok": 2,
+              "thirds_min_sharpe": -6.67676374166395,
+              "thirds_min_pnl_usd": -10.113677941966888,
+              "blk_pass": 4,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -9.841635218775432,
+              "blk_min_pnl_usd": -9.86457980085732
+            },
+            "BASE_BLK_GE3": {
+              "tp": 3.0,
+              "full_pnl_usd": 40.99247369682373,
+              "full_sharpe": 8.699510605340635,
+              "full_trades": 85,
+              "thirds_robust": false,
+              "thirds_seg_ok": 2,
+              "thirds_min_sharpe": -5.856305425367807,
+              "thirds_min_pnl_usd": -6.666192912643601,
+              "blk_pass": 3,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -4.773943011075338,
+              "blk_min_pnl_usd": -3.3395670591095405
+            },
+            "RFLT_BAR_ROB": null,
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": {
+              "tp": 4.0,
+              "full_pnl_usd": 58.844705188987426,
+              "full_sharpe": 10.793024818492592,
+              "full_trades": 80,
+              "thirds_robust": false,
+              "thirds_seg_ok": 2,
+              "thirds_min_sharpe": -6.67676374166395,
+              "thirds_min_pnl_usd": -10.113677941966888,
+              "blk_pass": 4,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -9.841635218775432,
+              "blk_min_pnl_usd": -9.86457980085732
+            },
+            "BASE_BEST_EFF": {
+              "tp": 4.0,
+              "full_pnl_usd": 58.844705188987426,
+              "full_sharpe": 10.793024818492592,
+              "full_trades": 80,
+              "thirds_robust": false,
+              "thirds_seg_ok": 2,
+              "thirds_min_sharpe": -6.67676374166395,
+              "thirds_min_pnl_usd": -10.113677941966888,
+              "blk_pass": 4,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -9.841635218775432,
+              "blk_min_pnl_usd": -9.86457980085732
+            }
+          },
+          "holdout_train_tp": 4.0,
+          "holdout_test_tp": 5.0,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.6
+        },
+        "full": {
+          "n_bars": 3385,
+          "disk": {
+            "full_pnl_usd": -27.088973115246628,
+            "full_sharpe": -0.8242394058652702,
+            "full_trades": 407,
+            "thirds_robust": false,
+            "thirds_seg_ok": 1,
+            "thirds_min_sharpe": -3.1659644407192653,
+            "thirds_min_pnl_usd": -39.82260985768808,
+            "blk_pass": 1,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -8.247611983533128,
+            "blk_min_pnl_usd": -53.677373994108784
+          },
+          "picks": {
+            "BASE_BAR_ROB": {
+              "tp": 2.5,
+              "full_pnl_usd": 26.335439496708133,
+              "full_sharpe": 0.8605833635817983,
+              "full_trades": 434,
+              "thirds_robust": true,
+              "thirds_seg_ok": 3,
+              "thirds_min_sharpe": 0.23713852623420445,
+              "thirds_min_pnl_usd": 2.7760189442046976,
+              "blk_pass": 2,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -2.952027524606046,
+              "blk_min_pnl_usd": -14.865778036949196
+            },
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": null,
+            "BASE_BLK_GE3": null,
+            "RFLT_BAR_ROB": {
+              "tp": 2.5,
+              "full_pnl_usd": 26.335439496708133,
+              "full_sharpe": 0.8605833635817983,
+              "full_trades": 434,
+              "thirds_robust": true,
+              "thirds_seg_ok": 3,
+              "thirds_min_sharpe": 0.23713852623420445,
+              "thirds_min_pnl_usd": 2.7760189442046976,
+              "blk_pass": 2,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -2.952027524606046,
+              "blk_min_pnl_usd": -14.865778036949196
+            },
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": null,
+            "BASE_BEST_EFF": {
+              "tp": 2.5,
+              "full_pnl_usd": 26.335439496708133,
+              "full_sharpe": 0.8605833635817983,
+              "full_trades": 434,
+              "thirds_robust": true,
+              "thirds_seg_ok": 3,
+              "thirds_min_sharpe": 0.23713852623420445,
+              "thirds_min_pnl_usd": 2.7760189442046976,
+              "blk_pass": 2,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -2.952027524606046,
+              "blk_min_pnl_usd": -14.865778036949196
+            }
+          },
+          "holdout_train_tp": 2.5,
+          "holdout_test_tp": 3.5,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.2
+        }
+      }
+    },
+    "SOL_USD": {
+      "symbol": "SLP-20DEC30-CDE",
+      "disk_tp": 5.0,
+      "lookbacks": {
+        "wfo": {
+          "n_bars": 647,
+          "disk": {
+            "full_pnl_usd": 21.76320324648536,
+            "full_sharpe": 5.683626443529123,
+            "full_trades": 72,
+            "thirds_robust": false,
+            "thirds_seg_ok": 1,
+            "thirds_min_sharpe": -11.383354810346972,
+            "thirds_min_pnl_usd": -13.190513687077399,
+            "blk_pass": 3,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -27.226030118032046,
+            "blk_min_pnl_usd": -10.85181726517952
+          },
+          "picks": {
+            "BASE_BAR_ROB": null,
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": null,
+            "BASE_BLK_GE3": {
+              "tp": 5.0,
+              "full_pnl_usd": 21.76320324648536,
+              "full_sharpe": 5.683626443529123,
+              "full_trades": 72,
+              "thirds_robust": false,
+              "thirds_seg_ok": 1,
+              "thirds_min_sharpe": -11.383354810346972,
+              "thirds_min_pnl_usd": -13.190513687077399,
+              "blk_pass": 3,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -27.226030118032046,
+              "blk_min_pnl_usd": -10.85181726517952
+            },
+            "RFLT_BAR_ROB": null,
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": null,
+            "BASE_BEST_EFF": null
+          },
+          "holdout_train_tp": 5.0,
+          "holdout_test_tp": 1.0,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.4166666666666667
+        },
+        "full": {
+          "n_bars": 3336,
+          "disk": {
+            "full_pnl_usd": -8.670158854177217,
+            "full_sharpe": -0.2709248607406037,
+            "full_trades": 401,
+            "thirds_robust": false,
+            "thirds_seg_ok": 1,
+            "thirds_min_sharpe": -5.82787332727073,
+            "thirds_min_pnl_usd": -66.74498784951076,
+            "blk_pass": 2,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -6.380299288785293,
+            "blk_min_pnl_usd": -36.28328075817528
+          },
+          "picks": {
+            "BASE_BAR_ROB": null,
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": null,
+            "BASE_BLK_GE3": {
+              "tp": 3.5,
+              "full_pnl_usd": -23.00871663151007,
+              "full_sharpe": -0.7789914112259843,
+              "full_trades": 417,
+              "thirds_robust": false,
+              "thirds_seg_ok": 1,
+              "thirds_min_sharpe": -6.208597672037877,
+              "thirds_min_pnl_usd": -66.72707338148186,
+              "blk_pass": 3,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -5.554791684762597,
+              "blk_min_pnl_usd": -41.60170371323851
+            },
+            "RFLT_BAR_ROB": null,
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": null,
+            "BASE_BEST_EFF": null
+          },
+          "holdout_train_tp": 6.0,
+          "holdout_test_tp": 5.0,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.43333333333333335
+        }
+      },
+      "sol_mode_compare_full": {
+        "champion_mode": "ema_momentum",
+        "champion": {
+          "BAR_ROB": null,
+          "BLK_ROB": null,
+          "BEST_EFF": null
+        },
+        "daviddtech": {
+          "BAR_ROB": null,
+          "BLK_ROB": null,
+          "BEST_EFF": {
+            "tp": 2.5,
+            "full_pnl_usd": 20.257838724913952,
+            "full_sharpe": 2.0951602832561154,
+            "full_trades": 44,
+            "thirds_robust": false,
+            "thirds_seg_ok": 2,
+            "thirds_min_sharpe": -6.526563282791869,
+            "thirds_min_pnl_usd": -21.557030341369625,
+            "blk_pass": 4,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -9.012922455358295,
+            "blk_min_pnl_usd": -14.675428248538651
+          }
+        },
+        "champion_narrow_grid": {
+          "grid": [
+            1.0,
+            1.5,
+            2.0,
+            2.5,
+            3.0,
+            3.5
+          ],
+          "BLK_ROB": null,
+          "BEST_EFF": null
+        }
+      }
+    },
+    "XRP_USD": {
+      "symbol": "XPP-20DEC30-CDE",
+      "disk_tp": 3.0,
+      "lookbacks": {
+        "wfo": {
+          "n_bars": 626,
+          "disk": {
+            "full_pnl_usd": 35.60655646165534,
+            "full_sharpe": 7.96653870606376,
+            "full_trades": 77,
+            "thirds_robust": false,
+            "thirds_seg_ok": 1,
+            "thirds_min_sharpe": -5.008070014475912,
+            "thirds_min_pnl_usd": -6.019335415287985,
+            "blk_pass": 2,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -7.348656152409068,
+            "blk_min_pnl_usd": -4.693715223153205
+          },
+          "picks": {
+            "BASE_BAR_ROB": null,
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": null,
+            "BASE_BLK_GE3": {
+              "tp": 6.0,
+              "full_pnl_usd": 19.93341386145786,
+              "full_sharpe": 4.070817604898603,
+              "full_trades": 67,
+              "thirds_robust": false,
+              "thirds_seg_ok": 1,
+              "thirds_min_sharpe": -5.442392251737412,
+              "thirds_min_pnl_usd": -7.729703767296647,
+              "blk_pass": 3,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -7.197739686620495,
+              "blk_min_pnl_usd": -5.434263640655912
+            },
+            "RFLT_BAR_ROB": null,
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": null,
+            "BASE_BEST_EFF": {
+              "tp": 1.5,
+              "full_pnl_usd": 14.883470775471253,
+              "full_sharpe": 3.9842611298166775,
+              "full_trades": 95,
+              "thirds_robust": false,
+              "thirds_seg_ok": 2,
+              "thirds_min_sharpe": -6.747405905054271,
+              "thirds_min_pnl_usd": -6.033142407910752,
+              "blk_pass": 2,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -11.430489976615604,
+              "blk_min_pnl_usd": -5.6843727805645505
+            }
+          },
+          "holdout_train_tp": 3.0,
+          "holdout_test_tp": 3.5,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.4
+        },
+        "full": {
+          "n_bars": 3264,
+          "disk": {
+            "full_pnl_usd": -0.8756884325307192,
+            "full_sharpe": -0.022974979617259875,
+            "full_trades": 393,
+            "thirds_robust": false,
+            "thirds_seg_ok": 1,
+            "thirds_min_sharpe": -3.0673884913655876,
+            "thirds_min_pnl_usd": -37.83550166939664,
+            "blk_pass": 3,
+            "blk_n": 5,
+            "blk_robust": false,
+            "blk_min_sharpe": -7.366072680848653,
+            "blk_min_pnl_usd": -57.45638078547822
+          },
+          "picks": {
+            "BASE_BAR_ROB": null,
+            "BASE_BLK_ROB": null,
+            "BASE_BLK_GE4": null,
+            "BASE_BLK_GE3": {
+              "tp": 3.5,
+              "full_pnl_usd": 1.2744886035223058,
+              "full_sharpe": 0.03113087764290315,
+              "full_trades": 378,
+              "thirds_robust": false,
+              "thirds_seg_ok": 1,
+              "thirds_min_sharpe": -1.923646981850772,
+              "thirds_min_pnl_usd": -26.307710384189107,
+              "blk_pass": 3,
+              "blk_n": 5,
+              "blk_robust": false,
+              "blk_min_sharpe": -5.509827623710256,
+              "blk_min_pnl_usd": -44.4413737822863
+            },
+            "RFLT_BAR_ROB": null,
+            "RFLT_BLK_ROB": null,
+            "RFLT_BLK_GE4": null,
+            "BASE_BEST_EFF": null
+          },
+          "holdout_train_tp": 4.0,
+          "holdout_test_tp": 3.0,
+          "holdout_top1_match": false,
+          "spearman_tp_vs_full_sharpe": 0.7333333333333333
+        }
+      }
+    }
+  }
+}

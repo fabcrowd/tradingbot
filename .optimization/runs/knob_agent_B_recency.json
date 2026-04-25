@@ -1,0 +1,94 @@
+{
+  "meta": {
+    "config": "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\config.toml",
+    "venue": "coinbase_perps",
+    "load_days_override": 28.0,
+    "grid_cap": 150,
+    "fast": true,
+    "suite": "recency_divisor",
+    "ts": 1775827879.3426607
+  },
+  "rows": [
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 13.95,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 13.33,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 2.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 13.55,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 13.4,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 13.36,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 3.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 12.64,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "BTC_USD",
+      "symbol": "BTC-PERP-INTX",
+      "elapsed_sec": 14.19,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "SOL_USD",
+      "symbol": "SOL-PERP-INTX",
+      "elapsed_sec": 14.57,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    },
+    {
+      "suite": "recency_divisor",
+      "recency_half_life_divisor": 4.0,
+      "pair_key": "XRP_USD",
+      "symbol": "XRP-PERP-INTX",
+      "elapsed_sec": 13.92,
+      "ok": false,
+      "skip_reason": "no_strategies_passed_train_gates:windows=8"
+    }
+  ]
+}

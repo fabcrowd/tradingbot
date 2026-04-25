@@ -1,0 +1,23 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775433980.243}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 24.0, "wfo_holdout_hours": 8.0, "wfo_step_hours": 8.0, "ts": 1775433983.309}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "BTC_USD", "symbol": "BTC-PERP-INTX", "interval": 15, "new_rows": 0, "total_in_store": 0, "hours_needed": 57.0, "ts": 1775433985.788}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 8.0, "interval_sec": 900.0, "ts": 1775433990.356}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "BTC_USD", "symbol": "BTC-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.67", "ts": 1775433990.371}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SOL-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.75", "ts": 1775433990.379}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=60,span_h=7.00", "ts": 1775433990.386}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": [], "n_pairs": 3, "ts": 1775433990.386}
+{"event": "scalp", "subtype": "warmup_complete", "elapsed_sec": 5.1, "champion_found": false, "bars": {"BTC_USD": 99, "SOL_USD": 99, "XRP_USD": 60}, "ts": 1775433990.386}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "SOL_USD", "symbol": "SOL-PERP-INTX", "interval": 15, "new_rows": 0, "total_in_store": 99, "hours_needed": 57.0, "ts": 1775433990.952}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "interval": 15, "new_rows": 0, "total_in_store": 99, "hours_needed": 57.0, "ts": 1775433991.418}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 8.0, "interval_sec": 900.0, "ts": 1775433991.418}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "BTC_USD", "symbol": "BTC-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.67", "ts": 1775433991.42}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SOL-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.75", "ts": 1775433991.422}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=11.33", "ts": 1775433991.424}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": [], "n_pairs": 3, "ts": 1775433991.424}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 24.0, "holdout_hours": 8.0, "step_hours": 8.0, "interval_sec": 900.0, "ts": 1775433991.426}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "BTC_USD", "symbol": "BTC-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.67", "ts": 1775433991.428}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "SOL_USD", "symbol": "SOL-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=8.75", "ts": 1775433991.429}
+{"event": "scalp", "subtype": "wfo_pair_result", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "interval": 15, "outcome": "no_change", "skip_reason": "insufficient_windows:n=0,bars=99,span_h=11.33", "ts": 1775433991.431}
+{"event": "scalp", "subtype": "wfo_pass_complete", "champion_pairs": [], "n_pairs": 3, "ts": 1775433991.431}
+{"event": "scalp", "subtype": "entry_placed", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "mode": "SIM", "qty": 1.0, "entry_price": 1.2982, "stop": 1.3183, "tp": 1.2781, "notional": 649.1, "cl_ord_id": "scalp_entry_d3f482aa", "sim": true, "ts": 1775434065.773}
+{"event": "scalp", "subtype": "position_closed", "pair_key": "XRP_USD", "symbol": "XRP-PERP-INTX", "reason": "stop", "entry_price": 1.2982, "exit_price": 1.3183, "qty": 1.0, "pnl": -10.05, "daily_pnl": -10.05, "simulated": true, "ts": 1775434205.306}

@@ -1,0 +1,2 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775433672.481}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["SOL_USD", "XRP_USD"], "venue": "kraken_spot", "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 24.0, "wfo_holdout_hours": 8.0, "wfo_step_hours": 8.0, "ts": 1775433675.146}

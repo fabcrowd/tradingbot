@@ -1,0 +1,692 @@
+{
+  "lookbacks": "wfo,full",
+  "pairs": {
+    "BTC_USD": {
+      "symbol": "BIP-20DEC30-CDE",
+      "champion_mode": "macd_scalp",
+      "baseline_tp": 5.0,
+      "lookback_wfo": {
+        "n_bars": 665,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.19086090495644303,
+          "full_pnl_usd": -4.886149425153563,
+          "full_sharpe": -1.5307078267944645,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.348889020679577,
+          "min_pnl_usd_segments": -3.440383125005028,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.28629135743466455,
+          "full_pnl_usd": 2.4479251210966324,
+          "full_sharpe": 0.6635189599644746,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -1.3627821937690272,
+          "min_pnl_usd_segments": -1.191283270029817,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.38172180991288607,
+          "full_pnl_usd": 16.597955436435733,
+          "full_sharpe": 3.9435379558807147,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -8.355045873633241,
+          "min_pnl_usd_segments": -7.181046347671217,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.4771522623911076,
+          "full_pnl_usd": 17.572342525626883,
+          "full_sharpe": 4.619431314499399,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.28510031175547,
+          "min_pnl_usd_segments": -7.1980189826390415,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 0.5725827148693291,
+          "full_pnl_usd": 25.00523239524875,
+          "full_sharpe": 6.189513650557313,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.546463561939398,
+          "min_pnl_usd_segments": -8.151369958533033,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 0.6680131673475506,
+          "full_pnl_usd": 35.56108651091738,
+          "full_sharpe": 8.853437156904427,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.540700780576184,
+          "min_pnl_usd_segments": -6.280087923735409,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 0.7634436198257721,
+          "full_pnl_usd": 42.18623226327778,
+          "full_sharpe": 8.586015149471386,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.3549252636618965,
+          "min_pnl_usd_segments": -6.445819411368429,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 0.9543045247822152,
+          "full_pnl_usd": 53.49567884227043,
+          "full_sharpe": 9.624957993508957,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.2042039577117114,
+          "min_pnl_usd_segments": -4.532619288139686,
+          "robust_all_segments_positive": false
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 1.1451654297386582,
+          "full_pnl_usd": 23.32993391515629,
+          "full_sharpe": 4.53454308869192,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -7.241616067201581,
+          "min_pnl_usd_segments": -9.148395371542867,
+          "robust_all_segments_positive": false
+        },
+        "validation": {
+          "disk_atr_tp_mult": 5.0,
+          "pick_atr_tp_mult": 5.0,
+          "pick_kind": "best_effort_profitable",
+          "robust_any": false,
+          "verdict_markdown": "**No fully robust tp.** Best effort (>=2 segments with min trades, full window profitable): `atr_tp_mult=5.0` (full pnl_USD=53.49567884227043, full Sharpe=9.624957993508957). Still **not validated** on all early/mid/late segments.\n- Disk champion **atr_tp_mult=5.0** matches or is consistent with validation pick.",
+          "pick_full_pnl_usd": 53.49567884227043,
+          "pick_full_sharpe": 9.624957993508957
+        }
+      },
+      "lookback_full": {
+        "n_bars": 3383,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.31334246770527113,
+          "full_pnl_usd": -16.912371363249694,
+          "full_sharpe": -0.714011116029914,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.415282724150822,
+          "min_pnl_usd_segments": -29.051071970157793,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.47001370155790667,
+          "full_pnl_usd": 35.28577162608053,
+          "full_sharpe": 1.3154004534426111,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -1.455708423600792,
+          "min_pnl_usd_segments": -13.352541450162244,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.6266849354105423,
+          "full_pnl_usd": -21.2911102538243,
+          "full_sharpe": -0.7346992427981875,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.2973875172253666,
+          "min_pnl_usd_segments": -31.505807124996796,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.7833561692631777,
+          "full_pnl_usd": -10.190792644728209,
+          "full_sharpe": -0.33548242609361234,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -2.299226824645762,
+          "min_pnl_usd_segments": -24.328940250421002,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 0.9400274031158133,
+          "full_pnl_usd": -12.226491946949245,
+          "full_sharpe": -0.3794221757475773,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -2.3127461537916854,
+          "min_pnl_usd_segments": -31.22870456009012,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 1.096698636968449,
+          "full_pnl_usd": 43.379772962233694,
+          "full_sharpe": 1.272862607662541,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -1.0200745487248966,
+          "min_pnl_usd_segments": -14.684131490109431,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 1.2533698708210845,
+          "full_pnl_usd": 75.54506442379498,
+          "full_sharpe": 2.0754751379325054,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -0.15435138678608437,
+          "min_pnl_usd_segments": -2.389585385935643,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 1.5667123385263555,
+          "full_pnl_usd": 122.98781548647676,
+          "full_sharpe": 3.335512962723379,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": 0.2026139112602656,
+          "min_pnl_usd_segments": 3.214721420508577,
+          "robust_all_segments_positive": true
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 1.8800548062316267,
+          "full_pnl_usd": 102.16127362465618,
+          "full_sharpe": 2.6994118797242,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": 2.314464446352722,
+          "min_pnl_usd_segments": 24.80309062694432,
+          "robust_all_segments_positive": true
+        },
+        "validation": {
+          "disk_atr_tp_mult": 5.0,
+          "pick_atr_tp_mult": 6.0,
+          "pick_kind": "robust",
+          "robust_any": true,
+          "verdict_markdown": "**Robust pick:** `atr_tp_mult=6.0` (min segment Sharpe > 0, min segment pnl_USD > 0, all segments meet min trades).\n- Disk champion uses **atr_tp_mult=5.0** - validation suggests **6.0** on this tape.",
+          "pick_full_pnl_usd": 102.16127362465618,
+          "pick_full_sharpe": 2.6994118797242
+        }
+      }
+    },
+    "SOL_USD": {
+      "symbol": "SLP-20DEC30-CDE",
+      "champion_mode": "ema_momentum",
+      "baseline_tp": 5.0,
+      "lookback_wfo": {
+        "n_bars": 647,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.21208232054527473,
+          "full_pnl_usd": 6.157868980609038,
+          "full_sharpe": 2.203151552603834,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -9.044809861000024,
+          "min_pnl_usd_segments": -9.13717971513563,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.3181234808179121,
+          "full_pnl_usd": 0.5611035472627179,
+          "full_sharpe": 0.19342862379476433,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -16.698585483259357,
+          "min_pnl_usd_segments": -12.6180622134396,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.42416464109054947,
+          "full_pnl_usd": 8.90385146411049,
+          "full_sharpe": 2.9606022228269326,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -16.630245816628065,
+          "min_pnl_usd_segments": -13.40137358204835,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.5302058013631868,
+          "full_pnl_usd": 12.95086600587915,
+          "full_sharpe": 3.829504940396225,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -18.259832264778442,
+          "min_pnl_usd_segments": -15.579370847426333,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 0.6362469616358242,
+          "full_pnl_usd": 6.918371969555964,
+          "full_sharpe": 2.1344213107500263,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -16.405365968944153,
+          "min_pnl_usd_segments": -14.728408435061198,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 0.7422881219084615,
+          "full_pnl_usd": 8.182515281218699,
+          "full_sharpe": 2.465797711604764,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -14.20802591912101,
+          "min_pnl_usd_segments": -13.514489787241217,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 0.8483292821810989,
+          "full_pnl_usd": 1.9978476336686413,
+          "full_sharpe": 0.5771905492961968,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -13.024831011292962,
+          "min_pnl_usd_segments": -12.865998806964427,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 1.0604116027263737,
+          "full_pnl_usd": 23.515543739784235,
+          "full_sharpe": 6.142381095672814,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -10.336880723462107,
+          "min_pnl_usd_segments": -10.783870984124633,
+          "robust_all_segments_positive": false
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 1.2724939232716483,
+          "full_pnl_usd": 15.619793259642378,
+          "full_sharpe": 4.065329689189141,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -8.241178378746236,
+          "min_pnl_usd_segments": -9.928502471306047,
+          "robust_all_segments_positive": false
+        },
+        "validation": {
+          "disk_atr_tp_mult": 5.0,
+          "pick_atr_tp_mult": 5.0,
+          "pick_kind": "best_effort_profitable",
+          "robust_any": false,
+          "verdict_markdown": "**No fully robust tp.** Best effort (>=2 segments with min trades, full window profitable): `atr_tp_mult=5.0` (full pnl_USD=23.515543739784235, full Sharpe=6.142381095672814). Still **not validated** on all early/mid/late segments.\n- Disk champion **atr_tp_mult=5.0** matches or is consistent with validation pick.",
+          "pick_full_pnl_usd": 23.515543739784235,
+          "pick_full_sharpe": 6.142381095672814
+        }
+      },
+      "lookback_full": {
+        "n_bars": 3334,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.38763287975829774,
+          "full_pnl_usd": -31.30615069698877,
+          "full_sharpe": -1.354749886427344,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -2.266194841023625,
+          "min_pnl_usd_segments": -11.73798755964043,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.5814493196374466,
+          "full_pnl_usd": -23.93447641055708,
+          "full_sharpe": -0.9392858331519238,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.384561454011711,
+          "min_pnl_usd_segments": -24.12698399754639,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.7752657595165955,
+          "full_pnl_usd": -31.313073826082416,
+          "full_sharpe": -1.1924916922920483,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -2.9707094753338885,
+          "min_pnl_usd_segments": -29.839270498273653,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.9690821993957442,
+          "full_pnl_usd": -32.17132331026242,
+          "full_sharpe": -1.143870037655952,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.74042327048296,
+          "min_pnl_usd_segments": -59.61237114701873,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 1.1628986392748932,
+          "full_pnl_usd": -39.76696626868006,
+          "full_sharpe": -1.3865135984422166,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -6.7762473455376995,
+          "min_pnl_usd_segments": -71.72535708596797,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 1.356715079154042,
+          "full_pnl_usd": -22.108716631510106,
+          "full_sharpe": -0.7488558265955383,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -6.2250490319821115,
+          "min_pnl_usd_segments": -66.82707338148191,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 1.550531519033191,
+          "full_pnl_usd": -48.64338915229766,
+          "full_sharpe": -1.5836335833573831,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -6.072188380171167,
+          "min_pnl_usd_segments": -69.14396977793032,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 1.9381643987914885,
+          "full_pnl_usd": -7.728558854177265,
+          "full_sharpe": -0.24160395498147189,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.842826072436791,
+          "min_pnl_usd_segments": -66.84498784951082,
+          "robust_all_segments_positive": false
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 2.3257972785497865,
+          "full_pnl_usd": -4.092016614937889,
+          "full_sharpe": -0.12487441298423826,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.731116383918137,
+          "min_pnl_usd_segments": -66.19209164514963,
+          "robust_all_segments_positive": false
+        },
+        "validation": {
+          "disk_atr_tp_mult": 5.0,
+          "pick_atr_tp_mult": 6.0,
+          "pick_kind": "no_profitable_full",
+          "robust_any": false,
+          "verdict_markdown": "**No robust tp and no profitable full-window candidate** in the grid (largest full Sharpe was `atr_tp_mult=6.0` with full pnl_USD=-4.092016614937889). Extend lookback, widen grid, or treat TP as unsettled.\n- **No** profitable full-window `atr_tp_mult` in this grid; do not treat diagnostics as a promotion (disk **atr_tp_mult=5.0**).",
+          "pick_full_pnl_usd": -4.092016614937889,
+          "pick_full_sharpe": -0.12487441298423826
+        }
+      }
+    },
+    "XRP_USD": {
+      "symbol": "XPP-20DEC30-CDE",
+      "champion_mode": "ema_momentum",
+      "baseline_tp": 3.0,
+      "lookback_wfo": {
+        "n_bars": 626,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.16692902983653307,
+          "full_pnl_usd": -8.388535122570872,
+          "full_sharpe": -2.5925406086201614,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -12.953995589927732,
+          "min_pnl_usd_segments": -11.12223486389019,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.2503935447547996,
+          "full_pnl_usd": 15.968050923460208,
+          "full_sharpe": 4.3426572154611724,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -6.475021951992827,
+          "min_pnl_usd_segments": -5.830542211387679,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.33385805967306614,
+          "full_pnl_usd": 12.834601261481172,
+          "full_sharpe": 3.100025474879356,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -8.604116551830478,
+          "min_pnl_usd_segments": -8.86492692125007,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.4173225745913327,
+          "full_pnl_usd": 26.520016140136214,
+          "full_sharpe": 6.448735053988029,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -7.5764254373458035,
+          "min_pnl_usd_segments": -8.049600951982594,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 0.5007870895095992,
+          "full_pnl_usd": 36.28676505731276,
+          "full_sharpe": 8.11527689689216,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.637158872013975,
+          "min_pnl_usd_segments": -5.606896710367848,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 0.5842516044278657,
+          "full_pnl_usd": 27.025699228435563,
+          "full_sharpe": 5.711856373986254,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.550466363989033,
+          "min_pnl_usd_segments": -5.613839568482049,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 0.6677161193461323,
+          "full_pnl_usd": 31.413563286332156,
+          "full_sharpe": 6.534421305984828,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.404895366943831,
+          "min_pnl_usd_segments": -7.536883888344502,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 0.8346451491826654,
+          "full_pnl_usd": 18.159914543311007,
+          "full_sharpe": 3.819692389766975,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.901219320075545,
+          "min_pnl_usd_segments": -9.394925061254167,
+          "robust_all_segments_positive": false
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 1.0015741790191983,
+          "full_pnl_usd": 20.542046538315596,
+          "full_sharpe": 4.194486857677042,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.172028160255045,
+          "min_pnl_usd_segments": -7.77630042628541,
+          "robust_all_segments_positive": false
+        },
+        "validation": {
+          "disk_atr_tp_mult": 3.0,
+          "pick_atr_tp_mult": 3.0,
+          "pick_kind": "best_effort_profitable",
+          "robust_any": false,
+          "verdict_markdown": "**No fully robust tp.** Best effort (>=2 segments with min trades, full window profitable): `atr_tp_mult=3.0` (full pnl_USD=36.28676505731276, full Sharpe=8.11527689689216). Still **not validated** on all early/mid/late segments.\n- Disk champion **atr_tp_mult=3.0** matches or is consistent with validation pick.",
+          "pick_full_pnl_usd": 36.28676505731276,
+          "pick_full_sharpe": 8.11527689689216
+        }
+      },
+      "lookback_full": {
+        "n_bars": 3262,
+        "windows": {},
+        "tp_1.0": {
+          "atr_tp_mult": 1.0,
+          "approx_tp_pct_median_atr": 0.31213554559377454,
+          "full_pnl_usd": -101.90849400134073,
+          "full_sharpe": -3.459252830139129,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -7.437854262673209,
+          "min_pnl_usd_segments": -73.2148803866165,
+          "robust_all_segments_positive": false
+        },
+        "tp_1.5": {
+          "atr_tp_mult": 1.5,
+          "approx_tp_pct_median_atr": 0.46820331839066176,
+          "full_pnl_usd": -91.43937497099263,
+          "full_sharpe": -2.816563524804317,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -5.286137438106537,
+          "min_pnl_usd_segments": -54.63332246299901,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.0": {
+          "atr_tp_mult": 2.0,
+          "approx_tp_pct_median_atr": 0.6242710911875491,
+          "full_pnl_usd": -41.189032195316,
+          "full_sharpe": -1.1482172495235765,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -4.321579306033094,
+          "min_pnl_usd_segments": -48.34905475856221,
+          "robust_all_segments_positive": false
+        },
+        "tp_2.5": {
+          "atr_tp_mult": 2.5,
+          "approx_tp_pct_median_atr": 0.7803388639844363,
+          "full_pnl_usd": -26.38860509981322,
+          "full_sharpe": -0.7213257020641147,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.496234735956865,
+          "min_pnl_usd_segments": -40.489594031808515,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.0": {
+          "atr_tp_mult": 3.0,
+          "approx_tp_pct_median_atr": 0.9364066367813235,
+          "full_pnl_usd": -0.5079184325306185,
+          "full_sharpe": -0.013330891436350663,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.0283357039456593,
+          "min_pnl_usd_segments": -37.228075596194564,
+          "robust_all_segments_positive": false
+        },
+        "tp_3.5": {
+          "atr_tp_mult": 3.5,
+          "approx_tp_pct_median_atr": 1.0924744095782108,
+          "full_pnl_usd": 1.6422586035224063,
+          "full_sharpe": 0.0401285176270999,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -1.8844840224460606,
+          "min_pnl_usd_segments": -25.69937018218105,
+          "robust_all_segments_positive": false
+        },
+        "tp_4.0": {
+          "atr_tp_mult": 4.0,
+          "approx_tp_pct_median_atr": 1.2485421823750982,
+          "full_pnl_usd": 18.877144490469956,
+          "full_sharpe": 0.4555991907918912,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -1.8379950603573298,
+          "min_pnl_usd_segments": -31.033745753635596,
+          "robust_all_segments_positive": false
+        },
+        "tp_5.0": {
+          "atr_tp_mult": 5.0,
+          "approx_tp_pct_median_atr": 1.5606777279688726,
+          "full_pnl_usd": -5.679652845071548,
+          "full_sharpe": -0.1365335706751403,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -2.3180826818097864,
+          "min_pnl_usd_segments": -38.7593653690419,
+          "robust_all_segments_positive": false
+        },
+        "tp_6.0": {
+          "atr_tp_mult": 6.0,
+          "approx_tp_pct_median_atr": 1.872813273562647,
+          "full_pnl_usd": -13.543059891447662,
+          "full_sharpe": -0.32657607737350897,
+          "segments_with_min_trades": 3,
+          "segments_total": 3,
+          "min_sharpe_segments": -3.0681266595105012,
+          "min_pnl_usd_segments": -42.13863505160364,
+          "robust_all_segments_positive": false
+        },
+        "validation": {
+          "disk_atr_tp_mult": 3.0,
+          "pick_atr_tp_mult": 4.0,
+          "pick_kind": "best_effort_profitable",
+          "robust_any": false,
+          "verdict_markdown": "**No fully robust tp.** Best effort (>=2 segments with min trades, full window profitable): `atr_tp_mult=4.0` (full pnl_USD=18.877144490469956, full Sharpe=0.4555991907918912). Still **not validated** on all early/mid/late segments.\n- Disk champion uses **atr_tp_mult=3.0** - validation suggests **4.0** on this tape.",
+          "pick_full_pnl_usd": 18.877144490469956,
+          "pick_full_sharpe": 0.4555991907918912
+        }
+      }
+    }
+  }
+}

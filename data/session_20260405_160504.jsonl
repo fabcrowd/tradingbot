@@ -1,0 +1,1 @@
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["SOL_USD", "XRP_USD"], "wfo_enabled": true, "sim_mode": true, "warmup_enabled": true, "wfo_train_hours": 24.0, "wfo_holdout_hours": 8.0, "wfo_step_hours": 8.0, "ts": 1775405105.035}

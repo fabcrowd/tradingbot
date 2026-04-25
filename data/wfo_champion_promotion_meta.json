@@ -1,0 +1,14 @@
+{
+  "BIP-20DEC30-CDE": {
+    "last_promoted_ts": 1776798660.0501273,
+    "last_saved_fingerprint": "1ce939d0ae645bb8d8cf19b5383d216695272361861946f04c0e574785acacbf"
+  },
+  "SLP-20DEC30-CDE": {
+    "last_promoted_ts": 1776792142.5167248,
+    "last_saved_fingerprint": "2db4d1531838b33646c86d5b2bc8cd6474f572e9ee275025790c31321e6b7eed"
+  },
+  "XPP-20DEC30-CDE": {
+    "last_promoted_ts": 1776802559.8189318,
+    "last_saved_fingerprint": "ddd96078ee604b2cd4f97ef411d5f13fb38f474e3c3fc53cdd8cc1eb10b93dff"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "revision": 0,
+  "fee_bps_per_leg": 0.0,
+  "fee_bps_taker_per_leg": 7.0,
+  "fee_usd_per_contract_per_leg": 0.0,
+  "order_type": "limit",
+  "fee_tier_30d_volume_usd": null,
+  "updated_ts": 1777041610.4122164
+}

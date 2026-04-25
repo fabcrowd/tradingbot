@@ -1,0 +1,14 @@
+{
+  "run_id": "20260408_034429_i1",
+  "iteration": 1,
+  "session_id": "20260408_034429",
+  "cmd": [
+    "C:\\Python314\\python.exe",
+    "C:\\Users\\daroo\\Desktop\\Repos\\tradingbot-1\\.optimization\\pnl-feedback-lab\\scripts\\run_multiwindow_lab.py"
+  ],
+  "exit_code": 0,
+  "elapsed_sec": 1.01,
+  "jsonl": ".optimization\\pnl-feedback-lab\\runs\\lab_run_20260408_034429_i1.jsonl",
+  "stderr": ".optimization\\pnl-feedback-lab\\runs\\lab_run_20260408_034429_i1.stderr.txt",
+  "intervals": null
+}

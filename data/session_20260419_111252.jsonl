@@ -1,0 +1,6 @@
+{"event": "session_start", "mode": "live", "ts": 1776597172.615}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": false, "warmup_enabled": true, "wfo_train_hours": 168.0, "wfo_holdout_hours": 48.0, "wfo_step_hours": 24.0, "ts": 1776597174.471}
+{"event": "scalp", "subtype": "scalp_fee_tier_refresh", "trigger": "auto_poll", "success": true, "detail": "ok", "maker_bps": 6.5, "taker_bps": 7.0, "prev_maker_bps": 6.5, "prev_taker_bps": 7.0, "rates_changed": false, "total_volume_30d_usd": 0.0, "ts": 1776597184.211}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 5, "new_rows": 102, "total_in_store": 9297, "hours_needed": 721.0, "ts": 1776597212.36}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 5, "new_rows": 68, "total_in_store": 8542, "hours_needed": 721.0, "ts": 1776597223.828}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 5, "new_rows": 83, "total_in_store": 8302, "hours_needed": 721.0, "ts": 1776597235.757}
