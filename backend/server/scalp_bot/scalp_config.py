@@ -282,6 +282,7 @@ class ScalpBotConfig:
     wfo_forward_min_trades: int = 10          # minimum live trades before demotion check activates
     wfo_forward_demotion_threshold: float = -0.5  # demote if forward_pnl / expected_pnl < this ratio
     wfo_forward_outperform_factor: float = 1.5  # Gate 2: replacement expectancy vs champion live expectancy
+    wfo_no_candidates_demotion_passes: int = 0  # consecutive no_candidates passes before wfo_champion demoted to bootstrap (0 = disabled)
     # WFO holdout quality gates (configurable; loose defaults let "best available" through)
     wfo_min_mean_score: float = -999.0        # minimum mean holdout score; -999 = no gate (best-available)
     wfo_min_stability_ratio: float = -999.0   # mean/std across windows; -999 = no stability gate
@@ -681,6 +682,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_forward_min_trades=int(scalp_raw.get("wfo_forward_min_trades", 10)),
         wfo_forward_demotion_threshold=float(scalp_raw.get("wfo_forward_demotion_threshold", -0.5)),
         wfo_forward_outperform_factor=float(scalp_raw.get("wfo_forward_outperform_factor", 1.5)),
+        wfo_no_candidates_demotion_passes=int(scalp_raw.get("wfo_no_candidates_demotion_passes", 0)),
         param_tuner_allow_mode_override_champion=bool(
             scalp_raw.get("param_tuner_allow_mode_override_champion", False)
         ),

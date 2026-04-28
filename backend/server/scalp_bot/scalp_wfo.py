@@ -1596,6 +1596,7 @@ class ScalpWalkForwardOptimizer:
         interval_sec_resolver: Callable[[], float] | None = None,
         wfo_pass_cfg_resolver: Callable[[], WFOConfig] | None = None,
         slippage_bps_resolver: Callable[[], float] | None = None,
+        results_callback: "Callable[[dict[str, dict | None]], None] | None" = None,
         champion_path: Path | None = None,
         promotion_log_path: Path | None = None,
         promotion_meta_path: Path | None = None,
@@ -1606,6 +1607,7 @@ class ScalpWalkForwardOptimizer:
         self._interval_sec_resolver = interval_sec_resolver
         self._wfo_pass_cfg_resolver = wfo_pass_cfg_resolver
         self._slippage_bps_resolver = slippage_bps_resolver
+        self._results_callback = results_callback
         self._champion_path = Path(champion_path) if champion_path is not None else CHAMPION_PATH
         self._promotion_log_path = (
             Path(promotion_log_path) if promotion_log_path is not None else PROMOTION_LOG_PATH
@@ -2039,8 +2041,13 @@ class ScalpWalkForwardOptimizer:
 
         try:
             LOG.info("ScalpWFO: running initial pass (in thread)...")
-            await asyncio.to_thread(self.run_once)
+            _results = await asyncio.to_thread(self.run_once)
             self._last_run_ts = time.time()
+            if self._results_callback is not None:
+                try:
+                    self._results_callback(_results)
+                except Exception:
+                    LOG.warning("ScalpWFO: results_callback raised on initial pass", exc_info=True)
             _next = self._sleep_interval_sec()
             LOG.info(
                 "ScalpWFO: initial pass finished at %s, next in %.0fs",
@@ -2053,8 +2060,13 @@ class ScalpWalkForwardOptimizer:
         while True:
             try:
                 await asyncio.sleep(self._sleep_interval_sec())
-                await asyncio.to_thread(self.run_once)
+                _results = await asyncio.to_thread(self.run_once)
                 self._last_run_ts = time.time()
+                if self._results_callback is not None:
+                    try:
+                        self._results_callback(_results)
+                    except Exception:
+                        LOG.warning("ScalpWFO: results_callback raised on scheduled pass", exc_info=True)
                 _next = self._sleep_interval_sec()
                 LOG.info(
                     "ScalpWFO: scheduled pass finished at %s, next in %.0fs",

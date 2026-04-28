@@ -1,17 +1,32 @@
-# Cursor project assets (committed)
+# Cursor project assets
 
-This folder holds **repo-local** Cursor configuration that is safe to commit and clone:
+## Canonical catalog (GitHub)
 
-| Path | Purpose |
-|------|---------|
-| `skills/` | Agent Skills (`SKILL.md` per skill folder). Cursor loads project skills when this workspace is open. |
-| `rules/` | Project rules (`.mdc`). |
-| `agents/` | Custom agent definitions (markdown front matter). |
-| `references/` | Long-form reference docs for agents/skills. |
+**Source of truth for shared skills, agents, and rules:**  
+[https://github.com/fabcrowd/skills](https://github.com/fabcrowd/skills)
 
-## Another machine
+That repository should use this layout (mirrors what Cursor expects under `.cursor/`):
 
-1. `git clone` this repository (or `git pull`).
-2. Open the repo folder in **Cursor**. Skills and rules apply to this workspace automatically.
+| Path in `fabcrowd/skills` | Copies to |
+|---------------------------|-----------|
+| `skills/<skill-id>/SKILL.md` | `.cursor/skills/<skill-id>/SKILL.md` |
+| `agents/*.md` | `.cursor/agents/` |
+| `rules/*.mdc` | `.cursor/rules/` |
+| `references/*` | `.cursor/references/` |
 
-Skills you install only under your **user** Cursor directory (global) are not in this repo—copy those into `.cursor/skills/<skill-name>/SKILL.md` here if you want them versioned with the project.
+## New machine (recommended)
+
+1. Clone the trading bot repo (this project).
+2. Clone [fabcrowd/skills](https://github.com/fabcrowd/skills) anywhere on disk.
+3. From this repo root, sync into `.cursor/`:
+   - **Windows (PowerShell):** set `FABSKILLS_REPO` to your skills clone path, then run `.\scripts\sync_fabcrowd_skills.ps1`
+   - **macOS / Linux:** `FABSKILLS_REPO=/path/to/skills ./scripts/sync_fabcrowd_skills.sh`
+4. Open this folder in **Cursor** so project skills and rules load.
+
+## Without sync
+
+If skills are already committed under `.cursor/` in this repo, a plain `git clone` of the bot is enough until you adopt the shared catalog.
+
+## Global-only skills
+
+Skills installed only in your **user** Cursor directory are not on GitHub unless they live in [fabcrowd/skills](https://github.com/fabcrowd/skills) (or are copied here after sync).

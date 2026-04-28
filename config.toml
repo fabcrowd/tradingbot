@@ -378,7 +378,7 @@ wfo_allow_promotion_relaxation = false  # no fallback tiers — must meet primar
 wfo_top_k = 80                        # more train survivors re-tested on each holdout (default was 50)
 wfo_train_same_calendar_day_boost = 0.0  # disabled — rolling windows already capture recency; boost distorts total_pnl
 wfo_min_trades = 3                    # minimum closed trades per train slice to score a grid point
-wfo_min_holdout_trades = 3            # minimum closed trades on holdout — requires meaningful evidence before promotion
+wfo_min_holdout_trades = 1            # minimum closed trades on holdout — lowered from 3; current market too choppy for 3 trades/day threshold
 # Fine layer: perturb params within WFO mode. Min 30s enforced in runtime; higher = less knob drift vs bar cadence.
 param_tuner_interval_sec = 900.0
 # Optional throttles (0 = off): min closed bars between tuner passes per pair; cooldown after a successful apply.
@@ -404,10 +404,14 @@ wfo_objective = "total_pnl"
 wfo_forward_min_trades = 10          # live trades required before demotion check activates
 wfo_forward_demotion_threshold = -0.5 # Gate 1: live PnL ratio floor (forward_pnl / holdout_expectancy×trades)
 wfo_forward_outperform_factor = 1.5  # Gate 2: replacement must have ≥1.5× the champion's live expectancy/trade (and positive PF≥1.0)
+# Stale-champion demotion: if WFO returns no_candidates this many consecutive passes for a
+# pair with an active wfo_champion, demote it to bootstrap so the best recent strategy trades
+# while WFO keeps searching. A fresh promotion resets the streak. 0 = disabled.
+wfo_no_candidates_demotion_passes = 5
 # Holdout quality gates — loosened to allow "best available" strategy to run
 wfo_min_mean_score = 0.0              # reject any champion with negative mean holdout PnL
 wfo_require_positive_holdout = true   # require positive holdout PnL before promotion
-wfo_min_holdout_pf = 0.3             # very loose PF floor; real protection comes from daily loss limit + require_champion_to_trade
+wfo_min_holdout_pf = 0.3             # very loose PF floor; real protection comes from daily loss limit + staleness demotion
 # Champion stability gates — prevent thrashing and score regressions
 wfo_require_holdout_beat_prior = true   # new champion must strictly outscore prior — prevents chop from marginal fluctuations
 wfo_champion_cooldown_sec = 3600.0      # 1h min gap between champion replacements; switch also waits for open positions to close
@@ -484,9 +488,10 @@ warmup_require_champion = false    # trade immediately on restart; WFO runs in b
 warmup_max_hours = 0.5             # safety valve: 30 min max wait (WFO normally finishes in <1 min)
 # When true, process starts in operator STANDBY — no new entries until Settings → Go live.
 require_manual_go_live = false
-# When true, entries are blocked for any pair still in bootstrap (no WFO champion).
-# The pair waits silently until WFO crowns a champion — then the chosen indicator trades freely.
-require_champion_to_trade = true   # block entries until a qualified WFO champion is crowned
+# When false (recommended), bootstrap trades while WFO searches for a champion.
+# Bootstrap selects the best mode from the last 2h by return_pct; daily loss limit ($25)
+# provides the downside safety net. Set true only for complete silence until WFO promotes.
+require_champion_to_trade = false
 
 # CDE nano BTC perpetual (FCM): BIP — Dec 2030 expiry name; contract_size from get_product future_product_details.
 # contract_size=0.01: each contract = 0.01 BTC (~$730 notional @ $73k/BTC for 1 contract).

@@ -59,6 +59,7 @@ python -m backend.server.main
 2. **Kraken MM (if ever revived):** `spread_engine.py`, `live_order_manager.py`, `[bot].enabled_pairs`
 3. Confirm Coinbase credentials and PEM formatting (`.env` / `_normalize_coinbase_pem` in `config.py`)
 4. Start bot and verify clean startup logs (Coinbase feed, bar store, scalp) before making changes
+5. **Cursor skills (optional):** shared catalog [fabcrowd/skills](https://github.com/fabcrowd/skills) — clone it, set `FABSKILLS_REPO` to that path, run `scripts/sync_fabcrowd_skills.ps1` or `scripts/sync_fabcrowd_skills.sh` (see `.cursor/README.md`).
 
 ---
 
