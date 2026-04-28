@@ -588,7 +588,7 @@ python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py
 python .optimization/pnl-feedback-lab/scripts/run_multiwindow_lab.py --intervals 5,15,60
 ```
 
-**Cursor skills (optional):** a **`pnl-feedback-lab`** skill describes a **Nemesis-style dual lens** (theory + tape) with **deep-research** for Lens B; a **`deep-research`** skill section links to this lab layout. **Project** skills committed with the repo live under **`.cursor/skills/`** (see **`.cursor/README.md`**). Global skills in your user Cursor directory are separate. See **`lessons.md` §32** when present locally.
+**Cursor skills (optional):** a **`pnl-feedback-lab`** skill describes a **Nemesis-style dual lens** (theory + tape) with **deep-research** for Lens B; a **`deep-research`** skill section links to this lab layout. **Shared catalog:** [fabcrowd/skills](https://github.com/fabcrowd/skills) — sync into **`.cursor/`** with **`scripts/sync_fabcrowd_skills.ps1`** or **`scripts/sync_fabcrowd_skills.sh`** (see **`.cursor/README.md`**). Skills may also be committed under **`.cursor/`** in this repo. See **`lessons.md` §32** when present locally.
 
 ### Scalp: correlation sizing — design intent, replay, and session overlap
 

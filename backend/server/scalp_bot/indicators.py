@@ -46,7 +46,7 @@ class IndicatorValues:
     rsi_bullish: bool = False       # 50 < RSI < 70 (EMA momentum zone)
     rsi_oversold: bool = False      # RSI below buy threshold (RSI reversion entry)
     rsi_sell_trigger: bool = False  # RSI crossed above sell threshold (RSI reversion exit)
-    vwap_bullish: bool = False
+    vwap_bullish: bool = False  # display-only — surfaced in MONITOR/WS snapshots; never read by signal_engine
     volume_confirmed: bool = False
     # EMA scalp (Tony's strategy)
     ema_scalp: float = 0.0          # single EMA value (e.g. 20 EMA)
@@ -552,7 +552,7 @@ class IndicatorSet:
             self._prev_rsi < self._cfg.rsi_sell_threshold
             and rsi_val >= self._cfg.rsi_sell_threshold
         )
-        vwap_bullish = candle.close > vwap
+        vwap_bullish = candle.close > vwap  # DISPLAY ONLY — not used to gate any entry in signal_engine
         volume_confirmed = (
             vol_ma > 0 and candle.volume >= vol_ma * self._cfg.volume_mult
         )

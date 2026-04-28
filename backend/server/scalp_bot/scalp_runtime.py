@@ -299,6 +299,12 @@ class ScalpRuntime:
         self._mode_source: dict[str, str] = {
             k: "config" for k in cfg.pairs
         }
+        # WFO no_candidates streak tracking — counts consecutive passes per pair with no champion.
+        # When streak hits wfo_no_candidates_demotion_passes, active wfo_champion is demoted to bootstrap.
+        self._wfo_no_candidates_streak: dict[str, int] = {}
+        # Symbols demoted by the staleness gate — _try_load_champion skips re-applying the old
+        # champion file entry until a fresh WFO promotion clears the symbol from this set.
+        self._wfo_staleness_demoted: set[str] = set()
         # NM-013: mode locked to the mode active when a position was opened.
         # Prevents WFO champion switch from changing exit logic mid-trade.
         self._pair_entry_mode: dict[str, str] = {}
@@ -334,6 +340,7 @@ class ScalpRuntime:
             interval_sec_resolver=lambda: float(self._effective_wfo_sleep_sec()),
             wfo_pass_cfg_resolver=lambda: self._wfo_pass_config(),
             slippage_bps_resolver=lambda: float(self.effective_slippage_bps_for_sim()),
+            results_callback=self._on_wfo_loop_results,
         )
         self._champion_mtime: float = -1.0
         self._champion_data: dict[str, dict] | None = None
@@ -2141,6 +2148,7 @@ class ScalpRuntime:
                             LOG.info("ScalpRuntime: startup WFO champion for %s: mode=%s", pk, r.get("mode"))
                         else:
                             LOG.info("ScalpRuntime: startup WFO — no champion for %s", pk)
+                        self._handle_wfo_result_pair(pk, r)
                     wfo_success = True
                     break
                 except Exception as exc:
@@ -3042,6 +3050,7 @@ class ScalpRuntime:
                 if r is not None:
                     self._warmup_champion_found = True
                     LOG.info("ScalpRuntime: warmup WFO found champion for %s", pk)
+                self._handle_wfo_result_pair(pk, r)
             self._startup_wfo_succeeded = True
         except Exception:
             LOG.exception("ScalpRuntime: warmup WFO pass failed")
@@ -3762,9 +3771,10 @@ class ScalpRuntime:
                     if self._cfg.wfo_enabled:
                         try:
                             results = await asyncio.to_thread(self._wfo.run_once)
-                            for _pk, r in results.items():
+                            for pk, r in results.items():
                                 if r is not None:
                                     self._warmup_champion_found = True
+                                self._handle_wfo_result_pair(pk, r)
                             self._startup_wfo_succeeded = True
                         except Exception:
                             LOG.exception("ScalpRuntime: prep WFO failed (warmup disabled)")
@@ -3812,9 +3822,10 @@ class ScalpRuntime:
                     LOG.info("ScalpRuntime: prep session — running WFO (operator)")
                     try:
                         results = await asyncio.to_thread(self._wfo.run_once)
-                        for _pk, r in results.items():
+                        for pk, r in results.items():
                             if r is not None:
                                 self._warmup_champion_found = True
+                            self._handle_wfo_result_pair(pk, r)
                         self._startup_wfo_succeeded = True
                     except Exception:
                         LOG.exception("ScalpRuntime: prep WFO pass failed")
@@ -3902,6 +3913,10 @@ class ScalpRuntime:
         for pair_key, pair_cfg in self._cfg.pairs.items():
             entry = champ_store.get(pair_cfg.symbol)
             if not isinstance(entry, dict):
+                continue
+            # Staleness-demotion guard: skip re-applying the old champion file entry until a
+            # fresh WFO promotion clears this symbol (via _handle_wfo_result_pair on success).
+            if pair_cfg.symbol in self._wfo_staleness_demoted:
                 continue
             if not champion_row_matches_pair_interval(entry, pair_cfg.interval):
                 LOG.warning(
@@ -4049,6 +4064,64 @@ class ScalpRuntime:
             elif self._mode_source.get(pk) == "config":
                 self._mode_source[pk] = "bootstrap"
 
+    def _on_wfo_loop_results(self, results: "dict[str, dict | None]") -> None:
+        """Callback fired by ScalpWFO._loop after each live pass (initial and scheduled).
+
+        Called from the WFO background thread via the event loop; the callback itself is
+        synchronous and must not await. Delegates per-pair handling to _handle_wfo_result_pair.
+        """
+        for pk, r in results.items():
+            self._handle_wfo_result_pair(pk, r)
+
+    def _handle_wfo_result_pair(self, pair_key: str, result: dict | None) -> None:
+        """Update no_candidates streak and apply staleness demotion when threshold is hit.
+
+        Called once per pair after every WFO ``run_once`` pass (warmup, prep, and live loop).
+        On a fresh champion (result is not None) the streak resets and any staleness-demotion
+        flag is cleared. On no_candidates the streak increments; if it reaches
+        ``wfo_no_candidates_demotion_passes`` and the pair is currently running as
+        ``wfo_champion``, the pair is demoted to bootstrap so it can keep trading while WFO
+        continues searching.
+        """
+        threshold = int(getattr(self._cfg, "wfo_no_candidates_demotion_passes", 0))
+
+        if result is not None:
+            # Fresh champion promoted — reset streak and lift staleness block
+            self._wfo_no_candidates_streak[pair_key] = 0
+            pc = self._cfg.pairs.get(pair_key)
+            if pc:
+                self._wfo_staleness_demoted.discard(pc.symbol)
+            return
+
+        # No champion this pass — increment streak
+        streak = self._wfo_no_candidates_streak.get(pair_key, 0) + 1
+        self._wfo_no_candidates_streak[pair_key] = streak
+
+        if threshold <= 0 or streak < threshold:
+            return
+        if self._mode_source.get(pair_key) != "wfo_champion":
+            return  # already on bootstrap or other non-champion source — nothing to demote
+
+        # Streak hit threshold: demote wfo_champion to bootstrap
+        pc = self._cfg.pairs.get(pair_key)
+        if pc is None:
+            return
+        self._wfo_staleness_demoted.add(pc.symbol)
+        try:
+            boot_mode = best_mode_bootstrap_no_champion(
+                pc, self._cfg, lookback_hours=self._effective_bootstrap_hours(),
+            )
+        except Exception:
+            boot_mode = str(getattr(self._cfg, "auto_mode_fallback", "sar_chop"))
+        LOG.warning(
+            "ScalpRuntime %s: WFO returned no_candidates for %d consecutive passes — "
+            "demoting wfo_champion to bootstrap mode=%s",
+            pair_key, streak, boot_mode,
+        )
+        self._active_mode[pair_key] = boot_mode
+        self._mode_source[pair_key] = "bootstrap"
+        self._wfo_no_candidates_streak[pair_key] = 0
+
     def _nemesis_refresh_champion_advisory(self, champ_store: dict | None = None) -> None:
         """Nemesis Step A/B: surface WFO champion vs short-window bootstrap when both exist.
 
@@ -4108,6 +4181,7 @@ class ScalpRuntime:
                 )
                 continue
             if iv.ready:
+                # vwap= field is display-only diagnostic; it is NOT an entry gate for any strategy
                 LOG.info(
                     "ScalpRuntime MONITOR %s [%s via %s]: rsi=%.1f ema=%s vwap=%s vol=%s | "
                     "open_pos=%d | daily_pnl=%.4f",
