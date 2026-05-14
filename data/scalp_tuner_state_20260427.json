@@ -1,0 +1,44 @@
+{
+  "BTC_USD": {
+    "best_mode": "sar_chop",
+    "best_win_rate": 0.15094644470987906,
+    "best_pnl": -0.3979855510366854,
+    "best_trades": 4,
+    "frozen": false,
+    "aggressiveness": "slow",
+    "adjustments": [],
+    "all_modes": {
+      "sar_chop": {
+        "win_rate": 0.1509,
+        "pnl": -0.397986,
+        "expectancy": -0.099496,
+        "trades": 4,
+        "profit_factor": 1.6916,
+        "aggressiveness": "slow",
+        "adjustments": []
+      }
+    },
+    "timestamp": 1777289159.532403
+  },
+  "SOL_USD": {
+    "best_mode": "sar_chop",
+    "best_win_rate": 0.16461470900743427,
+    "best_pnl": -4.556468066289395,
+    "best_trades": 4,
+    "frozen": false,
+    "aggressiveness": "aggressive",
+    "adjustments": [],
+    "all_modes": {
+      "sar_chop": {
+        "win_rate": 0.1646,
+        "pnl": -4.556468,
+        "expectancy": -1.139117,
+        "trades": 4,
+        "profit_factor": 0.0403,
+        "aggressiveness": "aggressive",
+        "adjustments": []
+      }
+    },
+    "timestamp": 1777289162.413406
+  }
+}

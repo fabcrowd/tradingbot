@@ -2034,7 +2034,7 @@ def _sar_chop_fill_masks(
                 if (not use_lucid_sar or lucid_bull[i] == 1) and (not use_utbot_trail or ut_dir[i] == 1):
                     long_mask[i] = True
         elif psar_short_flip[i]:
-            if c < ma_fast[i] and c < ma_long[i] and ma_short[i] <= ma_long[i] and macd_h[i] < 0:
+            if c < ma_fast[i] and c < ma_long[i] and c < ma_short[i] and macd_h[i] < 0:
                 if (not use_lucid_sar or lucid_bull[i] == -1) and (not use_utbot_trail or ut_dir[i] == -1):
                     short_mask[i] = True
     return long_mask, short_mask

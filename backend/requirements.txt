@@ -5,3 +5,5 @@ hexital>=1.5.0
 coinbase-advanced-py>=1.8.0
 # coinbase-advanced-py may pin websockets loosely; CDE WS benefits from a current websockets release.
 websockets>=14.1,<17
+# News front-run: DuckDuckGo search, no API key required (package renamed duckduckgo-search → ddgs)
+ddgs>=9.0.0

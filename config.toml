@@ -431,22 +431,49 @@ wfo_max_train_drawdown_pct = 100.0       # disabled — wider stops (atr_stop_mu
 # when no pair is stressed (see risk_on_relax_after_calm_sec). Any pair can trigger; hold is a cap.
 # Enabled: relaxes WFO interval + bootstrap window during volume/volatility spikes.
 regime_risk_on_enabled = true
-regime_volume_spike_mult = 2.5        # bar volume ≥ this × volume MA
+regime_volume_spike_mult = 3.0        # bar volume ≥ 3× volume MA — fires only on high-volatility events (~top 2–3% of bars)
 regime_price_move_atr_mult = 1.75     # |close − prev_close| ≥ ATR × this
 # regime_price_move_min_pct = 0.35    # optional extra trigger on |Δ|%% (0 = off)
+regime_rsi_oversold = 20.0            # RSI ≤ this → extreme oversold → risk-on
+regime_rsi_overbought = 80.0          # RSI ≥ this → extreme overbought → risk-on
 # Live regime (WS ticks / ohlc updates) — same risk-on window, no wait for bar close
 regime_live_vol_enabled = true
 regime_live_use_volume = true         # forming-bar volume vs last closed-bar volume MA × regime_volume_spike_mult
 regime_live_range_atr_mult = 1.75     # (high − low) on open bar ≥ ATR × this
 regime_live_velocity_window_sec = 45.0  # 0 = disable velocity trigger
 regime_live_velocity_min_bps = 20.0   # max-min range / mid in window (bps); 0 = off
-risk_on_hold_sec = 120.0              # max tail if ticks stop; refreshed on each trigger
-risk_on_relax_after_calm_sec = 30.0   # end risk-on after this many seconds with all pairs calm (0 = off)
+risk_on_hold_sec = 3600.0             # hold risk-on for up to 1 hour after any trigger; refreshed on each new trigger
+risk_on_relax_after_calm_sec = 60.0   # once all triggers clear (RSI back inside 20–80, vol/ATR calm), wait this long before releasing
 risk_on_wfo_interval_scale = 0.25     # multiply wfo_interval_sec while active (e.g. 900 → 225s)
 risk_on_wfo_min_interval_sec = 60.0   # floor between WFO passes (loop still enforces ≥60s)
-risk_on_bootstrap_hours = 1.0         # cap no-champion bootstrap window vs default 2h
+risk_on_bootstrap_hours = 168.0       # cap no-champion bootstrap window (7-day flat window)
 risk_on_nemesis_expectancy_slack = 0.0  # tuner wins if t_exp > b_exp − slack (0 = unchanged)
 risk_on_nemesis_min_pf = 0.95         # min tuner PF while risk-on (1.0 = same as calm regime)
+risk_on_size_mult = 1.5               # position size multiplier while risk-on (1.5 = 50% larger)
+risk_on_signal_cooldown_scale = 0.5   # multiply signal + tick cooldowns by this factor (0.5 = half the wait; fires 2× more often)
+
+# News-event regime risk-on (Forex Factory economic calendar)
+# Same data source as the toodegrees "Live Economic Calendar" TradingView indicator.
+# Fetches thisweek + nextweek JSON feeds; triggers regime risk-on pre/post high-impact events.
+news_risk_on_enabled = true
+news_pre_event_minutes = 15.0         # arm risk-on this many minutes before a qualifying event
+news_post_event_minutes = 30.0        # look-behind window: re-arm if event was < N min ago (complements risk_on_hold_sec)
+news_min_impact = "High"              # "High", "Medium", or "Low" — only events at or above this level
+news_currencies = "USD"               # comma-separated currency codes; USD dominates crypto; empty = all currencies
+news_calendar_refresh_sec = 3600.0    # re-fetch calendar once per hour
+
+# ── News front-run trade (DDG keyword scorer — no API key required) ──────────
+# Searches DuckDuckGo News for analyst commentary on upcoming High-impact events.
+# Keyword inventory scores USD-bullish vs USD-bearish signals → crypto direction.
+# Refreshes every news_advisor_refresh_min minutes so coverage updates throughout day.
+news_front_run_enabled = true
+news_watch_window_min = 60.0          # start watching event when within N minutes
+news_front_run_entry_min = 10.0       # enter position N minutes before event fires
+news_front_run_cutoff_min = 2.0       # skip entry if < N minutes to event (slippage risk)
+news_ai_confidence_threshold = 65     # minimum keyword score (0-100) required to trade
+news_advisor_refresh_min = 20.0       # re-query DuckDuckGo every N minutes per event
+news_front_run_sl_atr_mult = 0.4      # stop-loss = ATR × this (tight — wrong guess = fast cut)
+news_front_run_tp_atr_mult = 1.5      # take-profit = ATR × this
 
 # Volatility filter (execution risk-on — separate from regime / WFO risk-on above).
 # Prime: closed bar must pass volume_confirmed AND volume ≥ spike_mult × vol MA (strict).
@@ -467,7 +494,7 @@ risk_on_nemesis_min_pf = 0.95         # min tuner PF while risk-on (1.0 = same a
 # volatility_armed_signal_cooldown_scale = 0.5   # × pair signal_cooldown_sec (bar + tick)
 # volatility_armed_cooldown_floor_sec = 1.0
 
-strategy_lookback_hours = 24.0         # BACKTEST_BY_STRATEGY window (entries in last N h); full bars for warmup
+strategy_lookback_hours = 168.0        # BACKTEST_BY_STRATEGY window (entries in last N h); 7-day flat window
 
 # ── Backtest fidelity ─────────────────────────────────────────────────────────
 # "next_open" fills entries at open[i+1] instead of close[i] — matches how live
