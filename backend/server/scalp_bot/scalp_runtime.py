@@ -76,13 +76,15 @@ from .param_tuner import (
 )
 from .scalp_mode_resolution import normalize_auto_mode_fallback, resolve_auto_mode
 from .scalp_parity_fingerprint import build_scalp_parity_fingerprint, per_pair_parity_row
-from .signal_engine import SignalEngine
+from .news_trader import NewsTradeManager
+from .signal_engine import ScalpSignal, SignalEngine
 
 if TYPE_CHECKING:
     from ..coinbase_order_manager import CoinbaseOrderManager
     from ..live_order_manager import LiveOrderManager
     from ..session_logger import SessionLogger
     from ..state import BotState
+    from .news_trader import NewsAction
 
 LOG = logging.getLogger(__name__)
 
@@ -322,6 +324,11 @@ class ScalpRuntime:
         self._regime_last_vel_bps: dict[str, float] = {}
         self._regime_calm_since: float | None = None
         self._regime_relax_log_at: float = 0.0
+        # News-event regime risk-on (Forex Factory calendar)
+        self._news_risk_on_last_refresh: float = 0.0
+        self._news_risk_on_last_log: float = 0.0
+        # News trade manager (front-running economic events)
+        self._news_trader = NewsTradeManager(cfg)
 
         # Volatility filter (execution sizing) — prime + next-bar confirm; see volatility_filter.py
         self._vol_filt_pending: dict[str, Candle] = {}
@@ -485,6 +492,125 @@ class ScalpRuntime:
                 "ScalpRuntime: regime risk-on RELAX after %.0fs calm (all pairs below triggers)",
                 relax_sec,
             )
+
+    def _news_filter_params(self) -> tuple[str, list[str]]:
+        """Return (min_impact, currencies) parsed from config — shared by news risk-on and news trader."""
+        min_impact = str(getattr(self._cfg, "news_min_impact", "High"))
+        cur_raw = str(getattr(self._cfg, "news_currencies", "USD")).strip()
+        currencies = [c.strip() for c in cur_raw.split(",") if c.strip()] if cur_raw else []
+        return min_impact, currencies
+
+    async def _refresh_news_calendar(self) -> None:
+        """Refresh Forex Factory calendar if stale; rate-limited by news_calendar_refresh_sec."""
+        from . import news_calendar
+        now = time.time()
+        refresh_iv = float(getattr(self._cfg, "news_calendar_refresh_sec", 3600.0))
+        if now - self._news_risk_on_last_refresh >= refresh_iv:
+            self._news_risk_on_last_refresh = now
+            await news_calendar._refresh_if_stale()
+
+    async def _check_news_risk_on(self, events: list[dict]) -> None:
+        """Trigger regime risk-on when a high-impact economic event is imminent or just occurred."""
+        if not bool(getattr(self._cfg, "regime_risk_on_enabled", True)):
+            return
+        if not bool(getattr(self._cfg, "news_risk_on_enabled", True)):
+            return
+
+        now = time.time()
+        pre_sec = float(getattr(self._cfg, "news_pre_event_minutes", 15.0)) * 60.0
+        post_sec = float(getattr(self._cfg, "news_post_event_minutes", 30.0)) * 60.0
+        # Filter to this method's narrower look-ahead window from the shared events list
+        in_window = [ev for ev in events if now - post_sec <= float(ev["_ts"]) <= now + pre_sec]
+        if not in_window:
+            return
+
+        reasons = [
+            f"news:{ev.get('country','?')}:{ev.get('title','?')[:30]}:{ev.get('impact','?')}"
+            for ev in in_window
+        ]
+        for pk in self._cfg.pairs:
+            self._apply_regime_risk_on(pk, reasons)
+
+        if now - self._news_risk_on_last_log >= 300.0:
+            self._news_risk_on_last_log = now
+            LOG.info(
+                "ScalpRuntime: news regime risk-on — %d event(s): %s",
+                len(in_window),
+                [{
+                    "title": ev.get("title"),
+                    "country": ev.get("country"),
+                    "impact": ev.get("impact"),
+                    "minutes_away": round((float(ev["_ts"]) - now) / 60.0, 1),
+                } for ev in in_window],
+            )
+
+    async def _check_news_trades(self, events: list[dict]) -> None:
+        """Front-run high-impact economic events using keyword-scored news advice."""
+        if not bool(getattr(self._cfg, "news_front_run_enabled", True)):
+            return
+        if not events:
+            return
+
+        now = time.time()
+        open_pairs: set[str] = {
+            pk for pk in self._cfg.pairs if self._trader.has_position(pk)
+        }
+        all_pairs = list(self._cfg.pairs.keys())
+
+        actions = await self._news_trader.tick(now, events, open_pairs, all_pairs)
+        for action in actions:
+            try:
+                await self._execute_news_action(action)
+            except Exception:
+                LOG.warning(
+                    "ScalpRuntime: news trade action failed for %s", action.pair_key,
+                    exc_info=True,
+                )
+
+    async def _execute_news_action(self, action: "NewsAction") -> None:
+        """Synthesise a ScalpSignal from a NewsAction and open the position."""
+        pair_key = action.pair_key
+        pair_cfg = self._cfg.pairs.get(pair_key)
+        if pair_cfg is None:
+            return
+
+        iv = self._latest_iv.get(pair_key)
+        if iv is None or iv.atr <= 0.0 or iv.close <= 0.0:
+            LOG.debug(
+                "ScalpRuntime: news trade skipped %s — indicators not ready", pair_key
+            )
+            return
+
+        entry_price = iv.close
+        atr = iv.atr
+        sl = action.sl_atr_mult
+        tp = action.tp_atr_mult
+
+        if action.direction == "long":
+            stop_price = entry_price - atr * sl
+            tp_price = entry_price + atr * tp
+        else:
+            stop_price = entry_price + atr * sl
+            tp_price = entry_price - atr * tp
+
+        signal = ScalpSignal(
+            pair_key=pair_key,
+            symbol=pair_cfg.symbol,
+            direction=action.direction,
+            entry_price=entry_price,
+            stop_price=stop_price,
+            tp_price=tp_price,
+            atr=atr,
+            signals_hit=[f"news:{action.event_title[:30]}"],
+            confidence=action.confidence / 100.0,
+            mode="news_trade",
+        )
+        LOG.info(
+            "ScalpRuntime: news trade entry — %s %s @ %.4f sl=%.4f tp=%.4f conf=%d%% (%s)",
+            pair_key, action.direction, entry_price, stop_price, tp_price,
+            action.confidence, action.event_title[:40],
+        )
+        await self._open_position(signal, pair_cfg)
 
     def _update_regime_live_velocity_bps(self, pair_key: str, price: float) -> float:
         window = float(getattr(self._cfg, "regime_live_velocity_window_sec", 45.0))
@@ -891,7 +1017,7 @@ class ScalpRuntime:
             return
         self._tuner_last_run = now
 
-        lookback_h = float(self._cfg.wfo_train_hours) + float(self._cfg.wfo_holdout_hours)
+        lookback_h = float(self._cfg.wfo_train_hours)  # 7-day flat window (no holdout overhead)
         champ = champ_store if champ_store is not None else self._champion_data
         if champ is None:
             champ = load_champion()
@@ -2250,6 +2376,23 @@ class ScalpRuntime:
                 await self._maybe_refresh_fee_tier_volume()
             except Exception:
                 LOG.debug("ScalpRuntime: fee tier poll failed", exc_info=True)
+            try:
+                from . import news_calendar
+                await self._refresh_news_calendar()
+                min_impact, currencies = self._news_filter_params()
+                watch_min = float(getattr(self._cfg, "news_watch_window_min", 60.0))
+                post_min = float(getattr(self._cfg, "news_post_event_minutes", 30.0))
+                _news_events = news_calendar.upcoming_events(
+                    time.time(),
+                    lookahead_sec=watch_min * 60.0,
+                    lookbehind_sec=post_min * 60.0,
+                    min_impact=min_impact,
+                    currencies=currencies or None,
+                )
+                await self._check_news_risk_on(_news_events)
+                await self._check_news_trades(_news_events)
+            except Exception:
+                LOG.debug("ScalpRuntime: news checks failed", exc_info=True)
             self._log_status()
 
     def _resolved_active_mode(self, pair_key: str) -> str:
@@ -2856,28 +2999,38 @@ class ScalpRuntime:
         return time.time() < float(self._vol_filt_armed_until.get(pair_key, 0.0))
 
     def _volatility_exec_risk_mult(self, pair_key: str) -> float:
-        """Position sizing multiplier while volatility filter is armed (else 1.0)."""
-        if not self._volatility_filter_armed(pair_key):
-            return 1.0
-        return max(1.0, float(getattr(self._cfg, "volatility_exec_risk_mult", 1.25)))
+        """Position sizing multiplier: regime risk-on and/or volatility filter, whichever is larger."""
+        vol_mult = 1.0
+        if self._volatility_filter_armed(pair_key):
+            vol_mult = max(1.0, float(getattr(self._cfg, "volatility_exec_risk_mult", 1.25)))
+        regime_mult = 1.0
+        if self._regime_risk_on_global():
+            regime_mult = max(1.0, float(getattr(self._cfg, "risk_on_size_mult", 1.5)))
+        return max(vol_mult, regime_mult)
 
     def _effective_signal_cooldown_sec(self, pair_key: str, pair_cfg: ScalpPairConfig) -> float:
-        """Bar-close path signal cooldown; scaled down while volatility filter armed."""
+        """Bar-close signal cooldown; scaled down during volatility filter or regime risk-on."""
         base = float(pair_cfg.signal_cooldown_sec)
-        if not self._volatility_filter_armed(pair_key):
-            return base
-        scale = float(getattr(self._cfg, "volatility_armed_signal_cooldown_scale", 0.5))
         floor = float(getattr(self._cfg, "volatility_armed_cooldown_floor_sec", 1.0))
-        return max(floor, base * scale)
+        if self._volatility_filter_armed(pair_key):
+            scale = float(getattr(self._cfg, "volatility_armed_signal_cooldown_scale", 0.5))
+            base = max(floor, base * scale)
+        if self._regime_risk_on_global():
+            scale = float(getattr(self._cfg, "risk_on_signal_cooldown_scale", 0.5))
+            base = max(floor, base * scale)
+        return base
 
     def _effective_tick_signal_cooldown_sec(self, pair_key: str) -> float:
-        """Tick-entry throttle; scaled down while volatility filter armed."""
+        """Tick-entry throttle; scaled down during volatility filter or regime risk-on."""
         base = float(getattr(self._cfg, "tick_signal_cooldown_sec", 300.0))
-        if not self._volatility_filter_armed(pair_key):
-            return base
-        scale = float(getattr(self._cfg, "volatility_armed_tick_cooldown_scale", 0.5))
         floor = float(getattr(self._cfg, "volatility_armed_cooldown_floor_sec", 1.0))
-        return max(floor, base * scale)
+        if self._volatility_filter_armed(pair_key):
+            scale = float(getattr(self._cfg, "volatility_armed_tick_cooldown_scale", 0.5))
+            base = max(floor, base * scale)
+        if self._regime_risk_on_global():
+            scale = float(getattr(self._cfg, "risk_on_signal_cooldown_scale", 0.5))
+            base = max(floor, base * scale)
+        return base
 
     def _volatility_filter_snapshot(self) -> dict:
         if not bool(getattr(self._cfg, "volatility_filter_enabled", False)):

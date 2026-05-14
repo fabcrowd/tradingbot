@@ -39,7 +39,7 @@ STRATEGY_MODES = (
 EXPECTANCY_MIN_TRADES = 2
 
 # Fixed window for mode selection when no WFO champion exists for the pair's symbol.
-NO_CHAMPION_BOOTSTRAP_HOURS = 2.0
+NO_CHAMPION_BOOTSTRAP_HOURS = 168.0
 
 
 def _return_pct_vs_capital(total_pnl: float, allocated_usd: float) -> float:

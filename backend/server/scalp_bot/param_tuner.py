@@ -521,9 +521,6 @@ def run_tuner_cycle(
         return None
     bars = {k: v[mask] for k, v in bars.items()}
 
-    n_bars = len(bars["close"])
-    half_life = max(10.0, n_bars / 3.0)
-
     all_modes: dict[str, dict] = {}
     scored_rows: list[tuple[str, "BacktestMetrics"]] = []  # mode, tuned_m
     all_adjustments: list[str] = []
@@ -534,14 +531,14 @@ def run_tuner_cycle(
         base = _params_from_pair_config(
             pair_cfg, bot_cfg, mode, slippage_bps=slippage_bps,
         )
-        baseline_m = evaluate_params(bars, base, recency_half_life_bars=half_life)
+        baseline_m = evaluate_params(bars, base)
 
         agg = _aggressiveness_from_pf(baseline_m.profit_factor, baseline_m.trade_count)
         if agg != "frozen":
             overall_frozen = False
 
-        tuned, adjustments = tune_strategy_params(bars, base, mode, agg, recency_half_life_bars=half_life)
-        tuned_m = evaluate_params(bars, tuned, recency_half_life_bars=half_life)
+        tuned, adjustments = tune_strategy_params(bars, base, mode, agg)
+        tuned_m = evaluate_params(bars, tuned)
         tuned_pf = tuned_m.profit_factor if tuned_m.profit_factor != float("inf") else 999.0
 
         mode_info: dict = {

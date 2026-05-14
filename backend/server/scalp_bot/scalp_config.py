@@ -237,9 +237,11 @@ class ScalpBotConfig:
     tick_signal_cooldown_sec: float = 300.0
     # ── Regime risk-on (volume / vol-adjusted moves → faster WFO, shorter bootstrap) ──
     regime_risk_on_enabled: bool = True
-    regime_volume_spike_mult: float = 2.5       # bar volume ≥ this × volume MA
+    regime_volume_spike_mult: float = 3.0       # bar volume ≥ this × volume MA (3× = high-volatility event)
     regime_price_move_atr_mult: float = 1.75  # |close−prev_close| ≥ ATR × this
     regime_price_move_min_pct: float = 0.0    # optional min |Δ|% ; 0 = disabled
+    regime_rsi_oversold: float = 20.0         # RSI ≤ this triggers risk-on (extreme oversold)
+    regime_rsi_overbought: float = 80.0       # RSI ≥ this triggers risk-on (extreme overbought)
     # Live / tick-path regime (Coinbase ticker + candle WS) — same risk-on window
     regime_live_vol_enabled: bool = True
     regime_live_use_volume: bool = True       # forming-bar vol ≥ volume_ma × regime_volume_spike_mult
@@ -247,14 +249,32 @@ class ScalpBotConfig:
     regime_live_velocity_window_sec: float = 45.0  # rolling window for velocity (0 = disable velocity leg)
     regime_live_velocity_min_bps: float = 20.0   # (max−min)/mid in window, bps; 0 = off
     # Max time risk-on stays on if calm detection never runs (e.g. no ticks); refreshed per trigger.
-    risk_on_hold_sec: float = 120.0
-    # After this many seconds with no bar/live stress on any pair, end risk-on early (0 = off).
-    risk_on_relax_after_calm_sec: float = 30.0
+    risk_on_hold_sec: float = 3600.0
+    # Once all triggers clear (RSI back inside band, vol/ATR calm), wait this long before releasing (0 = disabled).
+    risk_on_relax_after_calm_sec: float = 60.0
     risk_on_wfo_interval_scale: float = 0.25    # multiply wfo_interval_sec while risk-on
     risk_on_wfo_min_interval_sec: float = 60.0   # floor between WFO passes (still ≥60 in loop)
     risk_on_bootstrap_hours: float = 1.0        # no-champion bootstrap window (capped vs 2h default)
     risk_on_nemesis_expectancy_slack: float = 0.0   # tuner wins if t_exp > b_exp − slack
     risk_on_nemesis_min_pf: float = 0.95      # min tuner PF while risk-on (default 1.0 off)
+    risk_on_size_mult: float = 1.5            # position size multiplier while regime risk-on is active
+    risk_on_signal_cooldown_scale: float = 0.5  # shrink signal + tick cooldowns by this factor during risk-on
+    # News-event regime risk-on (Forex Factory calendar)
+    news_risk_on_enabled: bool = True
+    news_pre_event_minutes: float = 15.0     # trigger risk-on this many minutes before a qualifying event
+    news_post_event_minutes: float = 30.0    # minimum hold after the event time (often < risk_on_hold_sec)
+    news_min_impact: str = "High"            # minimum impact level: "High", "Medium", "Low"
+    news_currencies: str = "USD"             # comma-separated currency codes; empty = all
+    news_calendar_refresh_sec: float = 3600.0  # how often to re-fetch the calendar
+    # News front-run trade (DDG keyword scorer — no API key required)
+    news_front_run_enabled: bool = True
+    news_watch_window_min: float = 60.0      # start watching when event is within N minutes
+    news_front_run_entry_min: float = 10.0   # enter position when event is within N minutes
+    news_front_run_cutoff_min: float = 2.0   # abort if < N minutes to event (slippage risk)
+    news_ai_confidence_threshold: int = 65   # minimum keyword confidence score (0-100) to trade
+    news_advisor_refresh_min: float = 20.0   # re-query DDG every N minutes per event
+    news_front_run_sl_atr_mult: float = 0.4  # stop-loss distance: ATR × this (tight pre-event)
+    news_front_run_tp_atr_mult: float = 1.5  # take-profit distance: ATR × this
     # ── Volatility filter (execution risk-on — separate from regime / WFO risk-on) ──
     # Two-step: prime on a high-threshold volume spike (must pass volume_confirmed), then
     # confirm on the next closed bar. Arms temporary larger position risk (see volatility_exec_*).
@@ -629,21 +649,39 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         tick_entries_enabled=bool(scalp_raw.get("tick_entries_enabled", False)),
         tick_signal_cooldown_sec=float(scalp_raw.get("tick_signal_cooldown_sec", 300.0)),
         regime_risk_on_enabled=bool(scalp_raw.get("regime_risk_on_enabled", True)),
-        regime_volume_spike_mult=float(scalp_raw.get("regime_volume_spike_mult", 2.5)),
+        regime_volume_spike_mult=float(scalp_raw.get("regime_volume_spike_mult", 3.0)),
         regime_price_move_atr_mult=float(scalp_raw.get("regime_price_move_atr_mult", 1.75)),
         regime_price_move_min_pct=float(scalp_raw.get("regime_price_move_min_pct", 0.0)),
+        regime_rsi_oversold=float(scalp_raw.get("regime_rsi_oversold", 20.0)),
+        regime_rsi_overbought=float(scalp_raw.get("regime_rsi_overbought", 80.0)),
         regime_live_vol_enabled=bool(scalp_raw.get("regime_live_vol_enabled", True)),
         regime_live_use_volume=bool(scalp_raw.get("regime_live_use_volume", True)),
         regime_live_range_atr_mult=float(scalp_raw.get("regime_live_range_atr_mult", 1.75)),
         regime_live_velocity_window_sec=float(scalp_raw.get("regime_live_velocity_window_sec", 45.0)),
         regime_live_velocity_min_bps=float(scalp_raw.get("regime_live_velocity_min_bps", 20.0)),
-        risk_on_hold_sec=float(scalp_raw.get("risk_on_hold_sec", 120.0)),
-        risk_on_relax_after_calm_sec=float(scalp_raw.get("risk_on_relax_after_calm_sec", 30.0)),
+        risk_on_hold_sec=float(scalp_raw.get("risk_on_hold_sec", 3600.0)),
+        risk_on_relax_after_calm_sec=float(scalp_raw.get("risk_on_relax_after_calm_sec", 60.0)),
         risk_on_wfo_interval_scale=float(scalp_raw.get("risk_on_wfo_interval_scale", 0.25)),
         risk_on_wfo_min_interval_sec=float(scalp_raw.get("risk_on_wfo_min_interval_sec", 60.0)),
         risk_on_bootstrap_hours=float(scalp_raw.get("risk_on_bootstrap_hours", 1.0)),
         risk_on_nemesis_expectancy_slack=float(scalp_raw.get("risk_on_nemesis_expectancy_slack", 0.0)),
         risk_on_nemesis_min_pf=float(scalp_raw.get("risk_on_nemesis_min_pf", 0.95)),
+        risk_on_size_mult=float(scalp_raw.get("risk_on_size_mult", 1.5)),
+        risk_on_signal_cooldown_scale=float(scalp_raw.get("risk_on_signal_cooldown_scale", 0.5)),
+        news_risk_on_enabled=bool(scalp_raw.get("news_risk_on_enabled", True)),
+        news_pre_event_minutes=float(scalp_raw.get("news_pre_event_minutes", 15.0)),
+        news_post_event_minutes=float(scalp_raw.get("news_post_event_minutes", 30.0)),
+        news_min_impact=str(scalp_raw.get("news_min_impact", "High")),
+        news_currencies=str(scalp_raw.get("news_currencies", "USD")),
+        news_calendar_refresh_sec=float(scalp_raw.get("news_calendar_refresh_sec", 3600.0)),
+        news_front_run_enabled=bool(scalp_raw.get("news_front_run_enabled", True)),
+        news_watch_window_min=float(scalp_raw.get("news_watch_window_min", 60.0)),
+        news_front_run_entry_min=float(scalp_raw.get("news_front_run_entry_min", 10.0)),
+        news_front_run_cutoff_min=float(scalp_raw.get("news_front_run_cutoff_min", 2.0)),
+        news_ai_confidence_threshold=int(scalp_raw.get("news_ai_confidence_threshold", 65)),
+        news_advisor_refresh_min=float(scalp_raw.get("news_advisor_refresh_min", 20.0)),
+        news_front_run_sl_atr_mult=float(scalp_raw.get("news_front_run_sl_atr_mult", 0.4)),
+        news_front_run_tp_atr_mult=float(scalp_raw.get("news_front_run_tp_atr_mult", 1.5)),
         volatility_filter_enabled=bool(scalp_raw.get("volatility_filter_enabled", False)),
         volatility_spike_volume_mult=float(scalp_raw.get("volatility_spike_volume_mult", 4.0)),
         volatility_confirm_min_volume_mult=float(
