@@ -1,5 +1,5 @@
 # ── Environment / Secrets ──
-.env
+# .env is tracked intentionally (private repo) — keep *.env.local out of git
 *.env.local
 
 # ── Python ──
