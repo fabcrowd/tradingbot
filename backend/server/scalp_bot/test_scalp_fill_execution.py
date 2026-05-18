@@ -107,3 +107,86 @@ def test_pending_market_exit_fill_log(bot_state) -> None:
     assert row["fee_usd"] == 0.01
     assert row["reference_price"] == 100.25
     assert row["close_reason"] == "time_stop"
+
+
+def test_orphan_venue_fill_closes_short_and_logs_exchange_ids(bot_state) -> None:
+    mock_log = _MockSessionLog()
+    cfg = ScalpBotConfig(
+        enabled=True,
+        venue="coinbase_perps",
+        pairs={"p1": ScalpPairConfig(symbol="T-ORPH", interval=5)},
+    )
+    trader = ScalpTrader(bot_state, cfg, SignalEngine(), SimpleNamespace(), mock_log)
+
+    from scalp_bot.scalp_trader import ScalpPosition
+
+    p = ScalpPosition(
+        pair_key="p1",
+        symbol="T-ORPH",
+        direction="short",
+        entry_price=84.76,
+        stop_price=86.0,
+        tp_price=83.0,
+        qty=2.0,
+        entry_cl_ord_id="scalp_entry_orphan",
+        contract_size=1.0,
+        status="open",
+        entry_signal_price=84.76,
+        entry_order_type="limit",
+    )
+    trader._positions["scalp_entry_orphan"] = p
+    ok = trader.close_open_leg_from_orphan_venue_fill(
+        p,
+        85.18,
+        2.0,
+        fill_side="buy",
+        fee_usd=0.02,
+        exchange_trade_id="cb-trade-uuid-1",
+        exchange_order_id="cb-order-uuid-1",
+    )
+    assert ok is True
+    assert p.status == "closed"
+    fe = [c for c in mock_log.calls if c[0] == "scalp_fill_execution"]
+    assert len(fe) == 1
+    assert fe[0][1]["leg"] == "exit"
+    assert fe[0][1]["close_reason"] == "exchange_orphan_fill"
+    assert fe[0][1]["exchange_trade_id"] == "cb-trade-uuid-1"
+    assert fe[0][1]["exchange_order_id"] == "cb-order-uuid-1"
+
+
+def test_market_exit_fill_includes_exchange_ids(bot_state) -> None:
+    mock_log = _MockSessionLog()
+    cfg = ScalpBotConfig(
+        enabled=True,
+        venue="coinbase_perps",
+        pairs={"p1": ScalpPairConfig(symbol="T-MKT2", interval=5)},
+    )
+    trader = ScalpTrader(bot_state, cfg, SignalEngine(), None, mock_log)
+
+    from scalp_bot.scalp_trader import ScalpPosition
+
+    p = ScalpPosition(
+        pair_key="p1",
+        symbol="T-MKT2",
+        direction="long",
+        entry_price=100.0,
+        stop_price=99.0,
+        tp_price=102.0,
+        qty=1.0,
+        entry_cl_ord_id="scalp_entry_x2",
+        contract_size=1.0,
+        status="open",
+        entry_signal_price=100.0,
+        entry_order_type="limit",
+    )
+    trader.register_pending_market_exit("scalp_prot_xyz", p, "protective", 100.0)
+    trader.on_market_exit_fill(
+        "scalp_prot_xyz",
+        99.5,
+        1.0,
+        exchange_trade_id="t-99",
+        exchange_order_id="o-99",
+    )
+    fe = [c for c in mock_log.calls if c[0] == "scalp_fill_execution"][0][1]
+    assert fe["exchange_trade_id"] == "t-99"
+    assert fe["exchange_order_id"] == "o-99"

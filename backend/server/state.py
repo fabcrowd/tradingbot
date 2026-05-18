@@ -137,6 +137,8 @@ class BotState:
         self.order_reject_count: int = 0
         self.insufficient_funds_until: float = 0.0
         self.order_reject_pause_until: float = 0.0
+        # Set from ScalpRuntime / config — when False, venue rejects do not time-block new entries.
+        self.exchange_entry_cooldown_enabled: bool = True
         self.last_fill_ts: dict[str, float] = {}
         self.oco_pairs: dict[str, OCOPair] = {}
         self._alert_fn: Any = None
@@ -252,6 +254,8 @@ class BotState:
 
     def exchange_entries_throttled(self) -> bool:
         """True during cooldown after consecutive venue rejects or insufficient-funds errors."""
+        if not getattr(self, "exchange_entry_cooldown_enabled", True):
+            return False
         now = time.time()
         return now < self.order_reject_pause_until or now < self.insufficient_funds_until
 
@@ -267,6 +271,8 @@ class BotState:
         self.last_order_reject_ts = time.time()
         self.last_order_reject_reason = (reason or "")[:500]
         self.order_reject_count += 1
+        if not getattr(self, "exchange_entry_cooldown_enabled", True):
+            return
         ur = self.last_order_reject_reason.upper()
         if "INSUFFICIENT" in ur and "FUND" in ur:
             self.insufficient_funds_until = max(
@@ -285,7 +291,7 @@ class BotState:
         self.order_reject_count = 0
 
     def scalp_entries_blocked(self) -> bool:
-        """True when new scalp entries must not fire (scalp halt or MM risk halt)."""
+        """True when new scalp entries must not fire (scalp halt, MM+spread halt, or venue cooldown)."""
         if self.scalp_risk_halted:
             return True
         if self.mm_spread_bot_enabled and self.risk_halted:
@@ -293,6 +299,23 @@ class BotState:
         if self.exchange_entries_throttled():
             return True
         return False
+
+    def scalp_exchange_throttle_diag(self) -> dict[str, Any]:
+        """Venue cooldown fields for ``portfolio_risk`` when entries are exchange-throttled."""
+        now = time.time()
+        pause_rem = max(0.0, float(self.order_reject_pause_until) - now)
+        funds_rem = max(0.0, float(self.insufficient_funds_until) - now)
+        return {
+            "exchange_entry_cooldown_enabled": bool(
+                getattr(self, "exchange_entry_cooldown_enabled", True),
+            ),
+            "exchange_entries_throttled": self.exchange_entries_throttled(),
+            "order_reject_pause_until": float(self.order_reject_pause_until),
+            "insufficient_funds_until": float(self.insufficient_funds_until),
+            "exchange_throttle_reject_remain_sec": round(pause_rem, 1),
+            "exchange_throttle_insufficient_remain_sec": round(funds_rem, 1),
+            "last_order_reject_reason": (self.last_order_reject_reason or "")[:300],
+        }
 
     def snapshot(self) -> dict[str, Any]:
         orders = [

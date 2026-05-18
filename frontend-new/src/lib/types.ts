@@ -213,8 +213,11 @@ export type IndicatorOverlayPoint = {
 
 export type ScalpTrade = {
   pair_key: string;
+  symbol?: string;
   direction?: string;
   strategy_mode?: string;
+  /** Present when saved from live closes — used for durable store dedupe. */
+  entry_cl_ord_id?: string;
   entry_ts: number;
   exit_ts: number;
   entry_price: number;
@@ -223,6 +226,16 @@ export type ScalpTrade = {
   pnl: number;
   reason: string;
   simulated: boolean;
+  /** Per-strategy sequential index (chronological by exit). */
+  strategy_trade_index?: number;
+  cumulative_pnl_after?: number;
+  entry_notional_usd?: number;
+  mfe_usd?: number;
+  mfe_pct?: number;
+  mae_usd?: number;
+  mae_pct?: number;
+  net_pnl_pct?: number;
+  cumulative_pnl_pct?: number;
 };
 
 export type WarmupStepData = {
@@ -365,6 +378,8 @@ export type ScalpSessionPolicy = {
   empirical_market_promotion_cooldown_sec?: number;
   /** First daily loss breach also sets scalp portfolio halt (snapshot + JSONL). */
   daily_loss_set_scalp_halt?: boolean;
+  /** When true, venue rejects trigger entry cooldown timers (see order_reject_* / insufficient_funds_*). */
+  exchange_entry_cooldown_enabled?: boolean;
   slip_calibration_enabled?: boolean;
   slip_calibration_ema_alpha?: number;
   slip_calibration_min_samples?: number;
@@ -381,6 +396,15 @@ export type ScalpPortfolioRisk = {
   scalp_entries_blocked: boolean;
   mm_spread_bot_enabled?: boolean;
   mm_risk_halted?: boolean;
+  /** Mirror of config: when false, venue rejects do not block entries via timers. */
+  exchange_entry_cooldown_enabled?: boolean;
+  /** True during venue-driven entry cooldown (reject streak or insufficient-funds window). */
+  exchange_entries_throttled?: boolean;
+  order_reject_pause_until?: number;
+  insufficient_funds_until?: number;
+  exchange_throttle_reject_remain_sec?: number;
+  exchange_throttle_insufficient_remain_sec?: number;
+  last_order_reject_reason?: string;
 };
 
 export type ChampionSummary = {

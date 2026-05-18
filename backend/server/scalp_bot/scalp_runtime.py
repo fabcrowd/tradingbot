@@ -74,6 +74,7 @@ from .param_tuner import (
     load_tuner_state,
     TunerResult,
 )
+from .forward_reconciliation import reconciliation_from_champion_row
 from .scalp_mode_resolution import normalize_auto_mode_fallback, resolve_auto_mode
 from .scalp_parity_fingerprint import build_scalp_parity_fingerprint, per_pair_parity_row
 from .news_trader import NewsTradeManager
@@ -176,7 +177,7 @@ def _wfo_config_from_scalp_cfg(cfg: ScalpBotConfig) -> WFOConfig:
         holdout_score_epsilon=float(getattr(cfg, "wfo_holdout_score_epsilon", 0.0) or 0.0),
     )
     if bool(getattr(cfg, "wfo_pnl_first_promotion", False)):
-        # Maximize simulated USD on rolling holdouts; drop auxiliary gates that often block promotion.
+        # Maximize simulated USD on rolling holdouts; rank by period total OOS $ (not fold-count bar).
         wfo = dataclasses.replace(
             wfo,
             objective="total_pnl",
@@ -189,6 +190,14 @@ def _wfo_config_from_scalp_cfg(cfg: ScalpBotConfig) -> WFOConfig:
             max_param_delta_hold=10_000,
             max_param_delta_stop=1_000.0,
             max_param_delta_tp=1_000.0,
+            holdout_rank_by_period=True,
+            exhaustive_grid_holdout=bool(
+                getattr(cfg, "wfo_exhaustive_grid_holdout", True),
+            ),
+            min_window_fraction=0.0,
+            min_period_holdout_trades=max(
+                0, int(getattr(cfg, "wfo_min_period_holdout_trades", 3) or 0),
+            ),
         )
     return wfo
 
@@ -264,6 +273,12 @@ class ScalpRuntime:
             state, cfg, self._signal_engine, live_mgr, session_logger=session_logger,
         )
         self._trader.sim_mode = cfg.sim_mode
+        self._state.exchange_entry_cooldown_enabled = bool(
+            getattr(cfg, "exchange_entry_cooldown_enabled", False),
+        )
+        if not self._state.exchange_entry_cooldown_enabled:
+            self._state.order_reject_pause_until = 0.0
+            self._state.insufficient_funds_until = 0.0
         # Operator go-live gate: blocks try_open / reversals while True.
         self._operator_standby: bool = bool(getattr(cfg, "require_manual_go_live", False))
         self._prep_session_busy: bool = False
@@ -353,6 +368,8 @@ class ScalpRuntime:
         self._champion_data: dict[str, dict] | None = None
         self._champion_period_start: dict[str, float] = {}
         self._champion_apply_sig: dict[str, tuple] = {}
+        self._forward_reconciliation: dict[str, dict] = {}
+        self._forward_reconciliation_log_ts: dict[str, float] = {}
         # Pending champion: queued when promotion fires while a position is open.
         # Applied on the next bar-close where the pair is flat.
         self._pending_champion: dict[str, dict] = {}  # pair_key -> champion entry dict
@@ -1269,14 +1286,15 @@ class ScalpRuntime:
         if parsed is None:
             return
         mk, tk = parsed
-        # Coinbase **spot** Advanced ~12.5 / 25 bps; CDE perps ladder tops out ~9.5 / 10 bps on the
-        # lowest volume band. If we see spot-scale numbers, the wrong transaction_summary branch may
-        # be winning — log loudly (poll still applies what the API returned).
+        # Coinbase **spot** Advanced 2 is ~12.5 / 25 bps maker/taker; CDE **derivatives** ladder is much lower
+        # (see config.toml [scalp] fee ladder: ~0.5–9.5 / 1–10 bps maker/taker by 30d vol). If we see spot-scale
+        # numbers, the wrong transaction_summary branch may be winning — log loudly (poll still applies API).
         if mk >= 11.0 or tk > 12.0:
             LOG.warning(
-                "ScalpRuntime: fee_tier maker=%.4f taker=%.4f bps look like **spot** scale, not typical "
-                "CDE perps (often ~6.5–9.5 / 7–10 bps). Confirm Coinbase is returning **derivatives** "
-                "fees (see CoinbaseOrderManager.get_futures_transaction_summary variants).",
+                "ScalpRuntime: fee_tier maker=%.4f taker=%.4f bps look like **spot** scale, not CDE "
+                "derivatives (see config.toml derivatives ladder; typical perps ~0.5–9.5 / 1–10 bps). "
+                "Confirm Coinbase returns **derivatives** fees "
+                "(CoinbaseOrderManager.get_futures_transaction_summary variants).",
                 mk,
                 tk,
             )
@@ -1661,6 +1679,7 @@ class ScalpRuntime:
         exchange_open_orders: list[dict] = []
         exchange_open_orders_all: list[dict] = []
         exchange_open_orders_outside_pairs: list[dict] = []
+        exchange_positions: list[dict] = []
         if self._live_mgr is not None:
             if hasattr(self._live_mgr, "scalp_open_orders_snapshot"):
                 try:
@@ -1677,6 +1696,11 @@ class ScalpRuntime:
                     exchange_open_orders_outside_pairs = (
                         self._live_mgr.scalp_open_orders_outside_config_snapshot()
                     )
+                except Exception:
+                    pass
+            if hasattr(self._live_mgr, "exchange_positions_snapshot"):
+                try:
+                    exchange_positions = self._live_mgr.exchange_positions_snapshot()
                 except Exception:
                     pass
 
@@ -1770,6 +1794,12 @@ class ScalpRuntime:
                 "wfo_forward_outperform_factor": float(
                     getattr(self._cfg, "wfo_forward_outperform_factor", 1.5) or 1.5
                 ),
+                "wfo_forward_reconciliation_alert_pct": float(
+                    getattr(self._cfg, "wfo_forward_reconciliation_alert_pct", 0.30) or 0.30
+                ),
+                "wfo_live_circuit_breaker_enabled": bool(
+                    getattr(self._cfg, "wfo_live_circuit_breaker_enabled", False)
+                ),
                 "volatility_armed_param_tuner_interval_mult": float(
                     getattr(self._cfg, "volatility_armed_param_tuner_interval_mult", 1.0) or 1.0
                 ),
@@ -1825,6 +1855,9 @@ class ScalpRuntime:
                 "daily_loss_set_scalp_halt": bool(
                     getattr(self._cfg, "daily_loss_set_scalp_halt", True),
                 ),
+                "exchange_entry_cooldown_enabled": bool(
+                    getattr(self._cfg, "exchange_entry_cooldown_enabled", False),
+                ),
                 "slip_calibration_enabled": bool(
                     getattr(self._cfg, "slip_calibration_enabled", False),
                 ),
@@ -1866,6 +1899,7 @@ class ScalpRuntime:
                 "scalp_entries_blocked": self._state.scalp_entries_blocked(),
                 "mm_spread_bot_enabled": self._state.mm_spread_bot_enabled,
                 "mm_risk_halted": self._state.risk_halted,
+                **self._state.scalp_exchange_throttle_diag(),
             },
             "warmup": warmup,
             "trader": self._trader.snapshot(),
@@ -1875,6 +1909,7 @@ class ScalpRuntime:
             ),
             "active_modes": dict(self._active_mode),
             "mode_sources": dict(self._mode_source),
+            "forward_reconciliation": dict(self._forward_reconciliation),
             "champion": champion_summary,
             "champions": champions_map if champions_map else None,
             "strategy_lookback": self._strategy_lookback_snapshot,
@@ -1905,6 +1940,7 @@ class ScalpRuntime:
             "exchange_open_orders": exchange_open_orders,
             "exchange_open_orders_all": exchange_open_orders_all,
             "exchange_open_orders_outside_pairs": exchange_open_orders_outside_pairs,
+            "exchange_positions": exchange_positions,
             "indicators": {
                 k: {
                     "candles": self._indicators[k].candle_count,
@@ -2052,6 +2088,12 @@ class ScalpRuntime:
             LOG.info("ScalpRuntime: parity fingerprint %s", self._parity_fingerprint_payload())
         except Exception:
             LOG.debug("ScalpRuntime: parity fingerprint build failed", exc_info=True)
+
+        if self._live_mgr is not None and hasattr(self._live_mgr, "reconcile_scalp_intx_positions"):
+            try:
+                await self._live_mgr.reconcile_scalp_intx_positions()
+            except Exception:
+                LOG.exception("ScalpRuntime: startup FCM position reconcile failed")
 
         # Register callback for live closed candles
         self._feed.register_callback(self._on_closed_candle)
@@ -2372,6 +2414,8 @@ class ScalpRuntime:
             self._nemesis_refresh_champion_advisory(self._champion_data)
             self._maybe_run_tuner(self._champion_data)
             self._check_champion_forward_validation()
+            self._refresh_forward_reconciliation()
+            self._check_live_circuit_breaker()
             try:
                 await self._maybe_refresh_fee_tier_volume()
             except Exception:
@@ -2859,6 +2903,98 @@ class ScalpRuntime:
                 )
             remove_champion_for_symbol(pair_cfg.symbol)
 
+    def _refresh_forward_reconciliation(self) -> None:
+        """P0: per-pair live forward PnL vs holdout expectancy (snapshot + throttled session log)."""
+        alert_pct = float(getattr(self._cfg, "wfo_forward_reconciliation_alert_pct", 0.30) or 0.30)
+        champ_store = self._champion_data or {}
+        now = time.time()
+        for pair_key, pair_cfg in self._cfg.pairs.items():
+            sym = pair_cfg.symbol
+            champ_row = champ_store.get(sym) if isinstance(champ_store, dict) else None
+            period_start = self._champion_period_start.get(pair_key, 0.0)
+            fwd_pnl = self._trader.forward_pnl_since(pair_key, period_start)
+            fwd_trades = self._trader.forward_trades_since(pair_key, period_start)
+            rec = reconciliation_from_champion_row(
+                champ_row,
+                forward_pnl=fwd_pnl,
+                forward_trades=fwd_trades,
+                period_start=period_start,
+                alert_pct=alert_pct,
+            )
+            rec["pair_key"] = pair_key
+            rec["mode_source"] = str(self._mode_source.get(pair_key, ""))
+            self._forward_reconciliation[pair_key] = rec
+            should_log = bool(rec.get("alert"))
+            last = self._forward_reconciliation_log_ts.get(pair_key, 0.0)
+            if not should_log and (now - last) < 3600.0:
+                continue
+            if fwd_trades < 1 and not rec.get("alert"):
+                continue
+            self._forward_reconciliation_log_ts[pair_key] = now
+            if self._session_log is not None:
+                self._session_log.log_scalp("forward_reconciliation", **rec)
+            if rec.get("alert"):
+                LOG.warning(
+                    "ScalpRuntime %s: forward reconciliation ALERT ratio=%s div=%s "
+                    "(fwd_pnl=%.4f trades=%d holdout_exp=%.4f)",
+                    pair_key,
+                    rec.get("forward_ratio"),
+                    rec.get("divergence_pct"),
+                    fwd_pnl,
+                    fwd_trades,
+                    rec.get("holdout_expectancy", 0.0),
+                )
+
+    def _check_live_circuit_breaker(self) -> None:
+        """P3: optional demote to bootstrap/fallback when forward loss exceeds holdout DD scale."""
+        if not bool(getattr(self._cfg, "wfo_live_circuit_breaker_enabled", False)):
+            return
+        dd_mult = float(getattr(self._cfg, "wfo_live_circuit_breaker_dd_mult", 2.0) or 2.0)
+        min_trades = int(getattr(self._cfg, "wfo_forward_min_trades", 10))
+        champ_store = self._champion_data or {}
+        fallback = normalize_auto_mode_fallback(
+            getattr(self._cfg, "auto_mode_fallback", "sar_chop") or "sar_chop",
+        )
+        for pair_key, pair_cfg in self._cfg.pairs.items():
+            if self._mode_source.get(pair_key) != "wfo_champion":
+                continue
+            period_start = self._champion_period_start.get(pair_key, 0.0)
+            if period_start <= 0:
+                continue
+            forward_trades = self._trader.forward_trades_since(pair_key, period_start)
+            if forward_trades < min_trades:
+                continue
+            forward_pnl = self._trader.forward_pnl_since(pair_key, period_start)
+            champ_row = champ_store.get(pair_cfg.symbol) if isinstance(champ_store, dict) else None
+            hm = (champ_row or {}).get("holdout_metrics") or {}
+            holdout_dd = float(hm.get("max_drawdown", 0.0) or 0.0)
+            if holdout_dd <= 0:
+                holdout_dd = abs(float(hm.get("total_pnl", 0.0) or 0.0))
+            if holdout_dd <= 0:
+                continue
+            threshold = -dd_mult * holdout_dd
+            if forward_pnl >= threshold:
+                continue
+            LOG.warning(
+                "ScalpRuntime %s: LIVE CIRCUIT BREAKER — forward_pnl=%.4f < threshold=%.4f "
+                "(dd_mult=%.2f holdout_dd=%.4f) → bootstrap mode %s",
+                pair_key, forward_pnl, threshold, dd_mult, holdout_dd, fallback,
+            )
+            self._active_mode[pair_key] = fallback
+            self._mode_source[pair_key] = "live_circuit_breaker"
+            self._champion_period_start.pop(pair_key, None)
+            if self._session_log is not None:
+                self._session_log.log_scalp(
+                    "live_circuit_breaker",
+                    pair_key=pair_key,
+                    symbol=pair_cfg.symbol,
+                    forward_pnl=round(forward_pnl, 6),
+                    threshold=round(threshold, 6),
+                    forward_trades=forward_trades,
+                    fallback_mode=fallback,
+                )
+            remove_champion_for_symbol(pair_cfg.symbol)
+
     # ── CDE expiry guard ──────────────────────────────────────────────────────
 
     _EXPIRY_MONTH_MAP: dict[str, int] = {
@@ -2988,8 +3124,11 @@ class ScalpRuntime:
         if not isinstance(fut, dict):
             return cap
         bp = float(fut.get("buying_power") or 0.0)
+        avail = float(fut.get("available_margin") or 0.0)
         buf = float(getattr(self._cfg, "buying_power_buffer_usd", 0.0) or 0.0)
         eff = max(0.0, bp - buf)
+        if avail > 0:
+            eff = min(eff, max(0.0, avail - buf))
         return min(cap, eff)
 
     def _volatility_filter_armed(self, pair_key: str) -> bool:
@@ -3507,6 +3646,21 @@ class ScalpRuntime:
             "scalp_operator",
         )
         LOG.info("ScalpRuntime: operator_go_live — entries armed, phase=LIVE")
+        asyncio.create_task(
+            self._reconcile_after_go_live(),
+            name="scalp_go_live_reconcile",
+        )
+
+    async def _reconcile_after_go_live(self) -> None:
+        """Reconcile venue vs bot after operator arms live (clears ghost open legs)."""
+        mgr = self._live_mgr
+        fn = getattr(mgr, "reconcile_scalp_intx_positions", None) if mgr is not None else None
+        if not callable(fn):
+            return
+        try:
+            await fn()
+        except Exception:
+            LOG.exception("ScalpRuntime: go-live FCM position reconcile failed")
 
     def _on_daily_loss_breach(self) -> None:
         """Operator-config policy when realized daily PnL crosses the loss limit (one-shot per UTC day)."""
@@ -3601,6 +3755,126 @@ class ScalpRuntime:
             "scalp_risk",
         )
         LOG.info("ScalpRuntime: scalp_risk_halt cleared source=%s", source)
+
+    async def apply_intx_position_reconciliation(self, venue_snap) -> None:
+        """Merge Coinbase FCM positions into ScalpTrader (adopt orphans, clear ghosts)."""
+        from ..coinbase_intx_reconcile import VenuePerpLeg, VenueReconcileSnapshot
+
+        if isinstance(venue_snap, VenueReconcileSnapshot):
+            snap = venue_snap
+            venue_legs = list(snap.legs)
+            flat_pids = set(snap.flat_product_ids)
+            venue_ok = snap.venue_ok
+        else:
+            venue_legs = list(venue_snap or [])
+            flat_pids = set()
+            venue_ok = bool(venue_legs)
+
+        sym_to_pk = {
+            str(getattr(pc, "symbol", "") or "").strip().upper(): pk
+            for pk, pc in self._cfg.pairs.items()
+            if str(getattr(pc, "symbol", "") or "").strip()
+        }
+        venue_by_pk: dict[str, VenuePerpLeg] = {}
+        for leg in venue_legs:
+            if not isinstance(leg, VenuePerpLeg):
+                continue
+            if leg.pair_key:
+                venue_by_pk[leg.pair_key] = leg
+            elif leg.qty > 0:
+                LOG.warning(
+                    "ScalpRuntime: exchange position on unconfigured product %s (%s x%.4f)",
+                    leg.product_id,
+                    leg.direction,
+                    leg.qty,
+                )
+                self._state.push_alert(
+                    "warning",
+                    "Exchange unmapped position",
+                    f"{leg.product_id}: {leg.direction} {leg.qty:.4f} contracts — not in [scalp.pairs]",
+                    "scalp_reconcile",
+                )
+
+        place_protectives = bool(self._cfg.enabled) and not bool(self._trader.sim_mode)
+
+        def _pair_is_flat(pk: str, pc: ScalpPairConfig) -> bool:
+            sym = str(getattr(pc, "symbol", "") or "").strip().upper()
+            return sym in flat_pids
+
+        for pair_key, pair_cfg in self._cfg.pairs.items():
+            venue = venue_by_pk.get(pair_key)
+            exchange_flat = _pair_is_flat(pair_key, pair_cfg)
+
+            for pos in list(self._trader.positions_for_pair(pair_key)):
+                if pos.status != "open":
+                    continue
+                if venue is None and (exchange_flat or venue_ok):
+                    mark = float(pos.mark_price or pos.entry_price)
+                    exit_px: float | None = None
+                    mgr = self._live_mgr
+                    if mgr is not None:
+                        fn = getattr(mgr, "last_venue_fill_price", None)
+                        if callable(fn):
+                            close_side = "sell" if pos.direction == "long" else "buy"
+                            sym = str(getattr(pair_cfg, "symbol", "") or "").strip().upper()
+                            if sym:
+                                exit_px = fn(sym, close_side)
+                    self._trader.reconcile_close_ghost_leg(pos, mark, exit_price=exit_px)
+                    continue
+                if venue is not None and venue.qty >= 1e-12:
+                    if pos.direction != venue.direction or abs(float(pos.qty) - float(venue.qty)) > 0.01:
+                        LOG.warning(
+                            "ScalpRuntime %s: syncing bot leg to exchange (%s x%.4f → %s x%.4f)",
+                            pair_key,
+                            pos.direction,
+                            pos.qty,
+                            venue.direction,
+                            venue.qty,
+                        )
+                        pos.direction = venue.direction
+                        pos.qty = float(max(1, int(round(venue.qty)))) if self._cfg.venue == "coinbase_perps" else venue.qty
+                        if venue.entry_price > 0:
+                            pos.entry_price = venue.entry_price
+
+            if venue is None or venue.qty < 1e-12:
+                continue
+            if self._trader.has_open_position(pair_key):
+                continue
+
+            iv = self._latest_iv.get(pair_key)
+            atr = float(iv.atr) if iv is not None and iv.atr > 0 else 0.0
+            ref = float(venue.entry_price) if venue.entry_price > 0 else 0.0
+            if ref <= 0 and iv is not None and iv.close > 0:
+                ref = float(iv.close)
+            if ref <= 0:
+                LOG.warning(
+                    "ScalpRuntime %s: cannot adopt — no entry_vwap or mark (product=%s)",
+                    pair_key,
+                    venue.product_id,
+                )
+                continue
+            if atr <= 0:
+                atr = max(ref * 0.005, 1e-8)
+            stop_m = float(getattr(pair_cfg, "atr_stop_mult", 1.0) or 1.0)
+            tp_m = float(getattr(pair_cfg, "atr_tp_mult", 1.5) or 1.5)
+            if venue.direction == "long":
+                stop_px = ref - atr * stop_m
+                tp_px = ref + atr * tp_m
+            else:
+                stop_px = ref + atr * stop_m
+                tp_px = ref - atr * tp_m
+
+            await self._trader.adopt_exchange_position(
+                pair_key=pair_key,
+                symbol=venue.product_id,
+                direction=venue.direction,
+                qty=venue.qty,
+                entry_price=ref,
+                stop_price=stop_px,
+                tp_price=tp_px,
+                pair_cfg=pair_cfg,
+                place_protectives=place_protectives,
+            )
 
     async def emergency_flatten_all_positions(self, reason: str, *, source: str) -> int:
         """Halt new entries, cancel resting scalp orders, market-close all legs (reduce-only on perps).
@@ -3745,46 +4019,19 @@ class ScalpRuntime:
                             LOG.debug("%s: cancel protective failed", log_tag, exc_info=True)
                 close_side = "sell" if pos.direction == "long" else "buy"
                 close_id = f"{prefix}{uuid.uuid4().hex[:8]}"
-                self._trader._link_market_exit_order(close_id, pos.entry_cl_ord_id)
-                self._trader.register_pending_market_exit(
-                    close_id, pos, close_reason, float(pos.entry_price),
-                )
-                oq = max(1, int(round(pos.qty))) if str(self._cfg.venue).lower() == "coinbase_perps" else round(
-                    pos.qty, 8,
-                )
                 try:
-                    flat_fn = getattr(mgr, "flatten_scalp_leg_market", None)
-                    if callable(flat_fn):
-                        res = await flat_fn(
-                            symbol=pos.symbol,
-                            side=close_side,
-                            order_qty=float(oq),
-                            cl_ord_id=close_id,
-                            reduce_only=True,
-                        )
-                    else:
-                        res = await mgr.add_order(
-                            {
-                                "symbol": pos.symbol,
-                                "side": close_side,
-                                "order_type": "market",
-                                "order_qty": oq,
-                                "cl_ord_id": close_id,
-                                "reduce_only": True,
-                            },
-                        )
-                    if res:
+                    ok = await self._trader._submit_live_market_exit(
+                        pos,
+                        close_id=close_id,
+                        reason=close_reason,
+                        ref_price=float(pos.mark_price or pos.entry_price),
+                        reduce_only=True,
+                    )
+                    if ok:
                         n_markets += 1
                 except Exception:
                     LOG.exception("ScalpRuntime: %s market order failed for %s", log_tag, pos.pair_key)
                     continue
-                mult = float(pos.contract_size or 1.0) if self._cfg.venue == "coinbase_perps" else 1.0
-                close_px = float(pos.entry_price)
-                if pos.direction == "long":
-                    pnl = (close_px - pos.entry_price) * pos.qty * mult
-                else:
-                    pnl = (pos.entry_price - close_px) * pos.qty * mult
-                self._trader._close_position(pos, pnl, close_reason, close_px)
 
         if self._session_log is not None:
             self._session_log.log_scalp(
@@ -4359,6 +4606,66 @@ class ScalpRuntime:
 
     # ── Fill routing — call these from LiveOrderManager.on_message ────────────
 
+    async def _try_orphan_venue_fill_close(
+        self,
+        pair_key: str,
+        fill_price: float,
+        fill_qty: float,
+        *,
+        fill_side: str | None,
+        fee_usd: float | None,
+        exchange_trade_id: str | None,
+        exchange_order_id: str | None,
+    ) -> bool:
+        """Close a single open leg when the fill has no matching ``scalp_*`` client id."""
+        side = str(fill_side or "").strip().lower()
+        if side not in ("buy", "sell"):
+            return False
+        open_legs = [p for p in self._trader.positions_for_pair(pair_key) if p.status == "open"]
+        if len(open_legs) != 1:
+            return False
+        pos = open_legs[0]
+        closed = self._trader.close_open_leg_from_orphan_venue_fill(
+            pos,
+            fill_price,
+            fill_qty,
+            fill_side=side,
+            fee_usd=fee_usd,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
+        )
+        if closed:
+            LOG.warning(
+                "ScalpRuntime %s: closed open leg via orphan venue fill side=%s @ %.8f trade=%s",
+                pair_key,
+                side,
+                fill_price,
+                (exchange_trade_id or "")[:16],
+            )
+        return closed
+
+    async def on_orphan_venue_fill(
+        self,
+        pair_key: str,
+        fill_side: str,
+        fill_price: float,
+        fill_qty: float,
+        *,
+        fee_usd: float | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
+    ) -> None:
+        """Entry point for venue fills without a ``scalp_*`` client order id."""
+        await self._try_orphan_venue_fill_close(
+            pair_key,
+            fill_price,
+            fill_qty,
+            fill_side=fill_side,
+            fee_usd=fee_usd,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
+        )
+
     async def on_entry_fill_authoritative(
         self,
         pair_key: str,
@@ -4387,6 +4694,9 @@ class ScalpRuntime:
         fill_qty: float,
         *,
         fee_usd: float | None = None,
+        fill_side: str | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
     ) -> None:
         """Route a fill event to the appropriate position handler."""
         pos = self._trader.position_for_client_order(pair_key, cl_ord_id)
@@ -4398,6 +4708,16 @@ class ScalpRuntime:
             if eid:
                 pos = self._trader.position_by_entry(eid)
         if pos is None or pos.pair_key != pair_key:
+            if await self._try_orphan_venue_fill_close(
+                pair_key,
+                fill_price,
+                fill_qty,
+                fill_side=fill_side,
+                fee_usd=fee_usd,
+                exchange_trade_id=exchange_trade_id,
+                exchange_order_id=exchange_order_id,
+            ):
+                return
             if market_exit:
                 LOG.debug(
                     "ScalpRuntime on_fill: market exit with no tracked leg pair=%s id=%s",
@@ -4438,27 +4758,67 @@ class ScalpRuntime:
                 )
                 return
             vwap = pos.entry_fill_cost / max(pos.entry_fill_qty, 1e-12)
-            await self._trader.on_entry_filled(pos.entry_cl_ord_id, vwap, pos.entry_fill_qty)
+            await self._trader.on_entry_filled(
+                pos.entry_cl_ord_id,
+                vwap,
+                pos.entry_fill_qty,
+                exchange_trade_id=exchange_trade_id,
+                exchange_order_id=exchange_order_id,
+            )
         elif cl_ord_id in (pos.stop_cl_ord_id, pos.tp_cl_ord_id):
             await self._trader.on_exit_filled(
-                pair_key, cl_ord_id, fill_price, fee_usd=fee_usd,
+                pair_key,
+                cl_ord_id,
+                fill_price,
+                fee_usd=fee_usd,
+                exchange_trade_id=exchange_trade_id,
+                exchange_order_id=exchange_order_id,
             )
         elif cl_ord_id.startswith(
             ("scalp_tstop_", "scalp_rsi_", "scalp_ctr_", "scalp_eflat_", "scalp_mclose_", "scalp_prot_"),
         ):
-            self._trader.on_market_exit_fill(
-                cl_ord_id, fill_price, fill_qty, fee_usd=fee_usd,
+            meta = self._trader.on_market_exit_fill(
+                cl_ord_id,
+                fill_price,
+                fill_qty,
+                fee_usd=fee_usd,
+                exchange_trade_id=exchange_trade_id,
+                exchange_order_id=exchange_order_id,
             )
-            # Time/RSI/counter exit uses a separate market client id; position may already be closed
-            # synchronously in check_* — log if we still see an open leg.
-            if pos.status == "open":
-                LOG.info(
-                    "ScalpRuntime on_fill: market exit fill pair=%s id=%s @ %.8f",
-                    pair_key, cl_ord_id[:24], fill_price,
+            if pos.status == "open" and meta is not None:
+                self._trader.close_position_from_market_exit(
+                    pos, fill_price, meta.reason,
                 )
-            else:
+                LOG.info(
+                    "ScalpRuntime on_fill: market exit closed pair=%s id=%s @ %.8f reason=%s",
+                    pair_key, cl_ord_id[:24], fill_price, meta.reason,
+                )
+                rev = self._trader.pop_pending_counter_reversal(cl_ord_id)
+                if rev is not None:
+                    pk = str(rev.get("pair_key") or pair_key)
+                    rev_paused = self._trader._entries_paused_fn
+                    if callable(rev_paused) and rev_paused():
+                        LOG.warning(
+                            "ScalpRuntime %s: reversal after fill suppressed — standby",
+                            pk,
+                        )
+                    elif not rev.get("allow_reversal", True):
+                        LOG.debug(
+                            "ScalpRuntime %s: reversal after fill suppressed — champion gate",
+                            pk,
+                        )
+                    else:
+                        sig = rev.get("signal")
+                        pc = rev.get("pair_cfg")
+                        cap = float(rev.get("available_capital") or 0.0)
+                        erm = float(rev.get("execution_risk_mult") or 1.0)
+                        if sig is not None and pc is not None:
+                            await self._trader.try_open(
+                                sig, pc, cap, execution_risk_mult=erm,
+                            )
+            elif pos.status != "open":
                 LOG.debug(
-                    "ScalpRuntime on_fill: ignoring post-close market fill pair=%s id=%s",
+                    "ScalpRuntime on_fill: market fill for already-closed leg pair=%s id=%s",
                     pair_key, cl_ord_id[:24],
                 )
         elif cl_ord_id.startswith("scalp_"):

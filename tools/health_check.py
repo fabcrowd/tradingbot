@@ -71,15 +71,27 @@ async def main():
 
             # Trader
             tr = sc.get("trader", {})
-            print(f"\n[TRADER] open_count={tr.get('open_count')} daily_pnl={tr.get('daily_pnl')} "
-                  f"sim_mode={tr.get('sim_mode')} reserved={tr.get('reserved_capital')}")
+            print(f"\n[TRADER] open_count={tr.get('open_count')} pending={tr.get('pending_count', 0)} "
+                  f"daily_pnl={tr.get('daily_pnl')} sim_mode={tr.get('sim_mode')} "
+                  f"reserved={tr.get('reserved_capital')}")
             positions = tr.get("open_positions", {})
             if positions:
                 for pk, p in positions.items():
-                    print(f"  OPEN: {pk} dir={p.get('direction')} entry={p.get('entry_price')} "
+                    print(f"  OPEN: {p.get('pair_key')} dir={p.get('direction')} entry={p.get('entry')} "
                           f"stop={p.get('stop')} tp={p.get('tp')} pnl={p.get('unrealized_pnl')}")
             else:
-                print("  No open positions")
+                print("  No open positions (filled legs)")
+            pending = tr.get("pending_entries", {})
+            if pending:
+                for pk, p in pending.items():
+                    print(f"  PENDING: {p.get('pair_key')} dir={p.get('direction')} entry={p.get('entry')}")
+            ex_pos = sc.get("exchange_positions", [])
+            if ex_pos:
+                print(f"  [EXCHANGE FCM] {len(ex_pos)} leg(s):")
+                for row in ex_pos:
+                    print(f"    {row.get('product_id')} {row.get('direction')} x{row.get('qty')} @ {row.get('entry_price')}")
+            elif sc.get("venue") == "coinbase_perps":
+                print("  [EXCHANGE FCM] flat (no configured symbols with size)")
 
             history = tr.get("trade_history", [])
             print(f"  Trade history: {len(history)} trades this session")

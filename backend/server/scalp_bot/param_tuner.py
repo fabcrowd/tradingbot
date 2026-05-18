@@ -302,7 +302,7 @@ def _params_from_pair_config(
         sar_chop_ma_long_period=int(getattr(pair_cfg, "sar_chop_ma_long_period", 200)),
         sar_chop_ma_short_period=int(getattr(pair_cfg, "sar_chop_ma_short_period", 50)),
         sar_chop_chop_period=int(getattr(pair_cfg, "sar_chop_chop_period", 14)),
-        sar_chop_chop_threshold=float(getattr(pair_cfg, "sar_chop_chop_threshold", 38.2)),
+        sar_chop_chop_threshold=float(getattr(pair_cfg, "sar_chop_chop_threshold", 68.0)),
         sar_chop_macd_fast=int(getattr(pair_cfg, "sar_chop_macd_fast", 12)),
         sar_chop_macd_slow=int(getattr(pair_cfg, "sar_chop_macd_slow", 26)),
         sar_chop_macd_signal=int(getattr(pair_cfg, "sar_chop_macd_signal", 9)),

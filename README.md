@@ -97,12 +97,15 @@ LiveOrderManager sends add_order via Kraken WS v2
 
 | File | Purpose |
 |------|---------|
-| `config.toml` | `[scalp]`, venue, pairs; also Kraken MM keys if MM revived |
+| `config.toml` | `[scalp]`, venue, `[scalp.pairs.*]` CDE symbols + indicator params |
 | `backend/server/scalp_bot/scalp_runtime.py` | Scalp coordinator (feed, WFO, snapshots) |
 | `backend/server/scalp_bot/scalp_config.py` | Parsed scalp configuration |
 | `backend/server/coinbase_order_manager.py` | Coinbase / CDE order execution |
 | `backend/server/scalp_bot/signal_engine.py` | Signal evaluation and modes |
 | `backend/server/scalp_bot/bar_store.py` | Historical bars / backfill |
+| `backend/server/scalp_bot/coinbase_candle_feed.py` | CDE candle WS + REST (buffers keyed by `pair_key`) |
+| `backend/server/scalp_bot/scalp_vec_backtest.py` | Bar-vector backtest (same modes/fees as WFO) |
+| `backend/server/scalp_bot/scalp_wfo.py` | Walk-forward champion selection per CDE `symbol` |
 | `backend/server/ws_server.py` | Dashboard HTTP + WebSocket (scalp actions, snapshots) |
 
 **Kraken spot MM (shuttered — paths below are not in the default `backend/server` tree):**
@@ -121,7 +124,7 @@ LiveOrderManager sends add_order via Kraken WS v2
 | `backend/server/threat_detector.py` | Velocity, imbalance, spread blowout, realized vol |
 | `backend/server/cex_bot_detector.py` | Order book microstructure: quote flickering, phantom liquidity, symmetric quoting |
 | `backend/server/bot_classifier.py` | Combines CEX signals into regime classification (clean/elevated/competitive/toxic) |
-| `backend/server/fee_schedule.py` | Kraken fee tier tables (spot, stablecoin, maker_rebate, USDG) |
+| *(removed)* `fee_schedule.py` | **Was** Kraken MM tier tables — **not in this tree**. CDE fees live under **`[scalp]`** (`fee_bps_per_leg`, poll, `fee_usd_per_contract_per_leg`). Legacy MM replay: `sim_runner` reads **`[pairs.*].fee_bps`** only. |
 | `backend/server/pnl.py` | P&L tracking, JSONL persistence, 30-day volume |
 | `backend/server/session_logger.py` | JSONL session telemetry (fills, learner, halts, momentum) |
 | `backend/server/rate_limiter.py` | Token-bucket rate limiter for Kraken API calls |
@@ -184,11 +187,7 @@ Fees are charged per fill leg. You need `2 × spread_bps > 2 × fee_bps` for a p
 Key insight: **your spread must also be competitive with the market spread**. If the natural market
 spread is 1 bps and you quote at 20 bps, you'll never get filled regardless of fee math. For **Kraken** pairs, check the live ticker (example): `https://api.kraken.com/0/public/Ticker?pair=USDGUSDT`.
 
-Fee schedules vary by pair type:
-- **USDG pairs**: 0% maker (use `fee_schedule = "usdg"`)
-- **Maker rebate pairs** (TEL): 23 bps at lowest tier, negative at high volume
-- **Spot crypto** (XRP, BTC, ETH): 25 bps at lowest tier, drops with volume
-- **USDe promo**: 0% maker/taker
+**Kraken MM archive (not CDE scalp):** old docs listed USDG zero-maker, maker-rebate alts, spot tiers on **`[pairs.*]`** via removed `fee_schedule` keys. **Nano perps** use only **`[scalp]`** maker/taker bps, flat **`fee_usd_per_contract_per_leg`**, and the Coinbase **`transaction_summary`** poll — see `scalp_fee_assumptions.py` and Current Lessons in `lessons.md`.
 
 #### Learner behavior (Kraken `StrategyLearner`)
 
@@ -373,16 +372,11 @@ tracked barriers and wallet balance are automatically reconciled with a blended-
 | `data/fill_barriers.json` | MM fill-barrier pricing | **MM only** |
 | Kraken `TradeVolume` volume sync | Fee tier input for MM | **MM only** |
 
-## Backtesting *(CLI not present in default `backend/server`)*
+## Backtesting and simulation *(what matches nano perps + indicators)*
 
-Session-replay spread sweeps were documented as:
+**Coinbase CDE nano perps (active path):** “Backtest” truth for signals vs PnL is the **same bar tape** the live bot uses: **`coinbase_candle_feed.py`** → **`bar_store`** (per `pair_key`) → **`IndicatorSet`** (`indicators.py`, one set per **`[scalp.pairs.<pair_key>]`**) → **`signal_engine.py`** (mode from WFO champion / `strategy_mode`) → **`scalp_vec_backtest.py`** + **`scalp_wfo.py`** (holdout scoring, `contract_size`, `[scalp]` fee model). Use **`.optimization/pnl-feedback-lab/`** for structured harnesses around that stack.
 
-```bash
-python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl --spread-bps 4
-python -m backend.server.backtest --session data/session_YYYYMMDD_HHMMSS.jsonl --spread-bps 4 --compare 8
-```
-
-**Status:** `backend/server/backtest.py` is **not** in the scalp-only checkout. Use **`.optimization/pnl-feedback-lab/`** and `scalp_vec_backtest` / WFO for tape work, or restore the MM backtest module from git history if you need this CLI.
+**Legacy Kraken MM fill replay (not TEL / not your perps path):** `backend/server/backtest.py` + `python -m backend.server.sim_runner` re-score **`data/trades_{paper|live}.jsonl`** (old spot-MM JSONL). That CLI does **not** load CDE products or `IndicatorSet`; do not use it to validate nano perp indicators.
 
 ## Scalp bot (Coinbase CDE) — primary trading system
 
@@ -391,36 +385,27 @@ The **main** automated strategy in current use: **`main.py` runs scalp in-proces
 ### Architecture
 
 ```
-config.toml [scalp] section
-  enabled, allocated_capital_usd, pairs (XBT/USD, ETH/USD)
+config.toml [scalp] + [scalp.pairs.<pair_key>]  (e.g. BTC_USD → symbol BIP-20DEC30-CDE)
          │
          ▼
 ScalpRuntime (asyncio Task in main.py)
          │
-         ├── Candle feed (venue-specific)
-         │     • **Coinbase:** `coinbase_candle_feed.py` (candles + ticker hooks)
-         │     • **Kraken spot (if configured):** `candle_feed.py` public WS ohlc
-         │     • Seeds history from REST on startup; closed candles for signals
-         │     • Never fires signals on unfinished bars (no repainting)
+         ├── Candle feed — for venue = coinbase_perps this tree uses Coinbase only
+         │     • **CDE nano perps:** `scalp_bot/coinbase_candle_feed.py` (bars keyed by pair_key)
+         │     • REST seed + WS candles; closed bars drive signals (tick path optional)
          │
-         ├── IndicatorSet (per pair, via hexital — O(1) per candle)
-         │     • EMA fast (9) / slow (21)
-         │     • RSI (9)
-         │     • ATR (14) — for stop/tp sizing
-         │     • Session VWAP (resets midnight UTC)
-         │     • Volume rolling average (20-bar)
+         ├── IndicatorSet (per pair_key — `scalp_runtime` ctor: one IndicatorSet per [scalp.pairs.*])
+         │     • Params from that pair’s TOML block (ema_*, rsi_*, atr_*, volume_*, …)
+         │     • Implemented in `scalp_bot/indicators.py` (hexital / optional numpy)
          │
-         ├── SignalEngine
-         │     • **Modes:** `strategy_mode` per pair (`daviddtech_scalp`, `ema_momentum`, …). ``auto`` = WFO champion mode for that symbol, else ``auto_mode_fallback`` (default `ema_momentum`) — see `scalp_mode_resolution.py`
-         │     • Legacy confluence example: EMA, RSI band, VWAP, volume spike with `min_signals`
-         │     • Per-pair cooldowns; shorts gated by `shorts_enabled` / venue (`signal_engine.py`)
+         ├── SignalEngine (`scalp_bot/signal_engine.py`)
+         │     • **Modes:** `strategy_mode` per pair (`daviddtech_scalp`, `macd_scalp`, …).
+         │       ``auto`` = WFO champion **for that pair’s `symbol`** (CDE product id), else `auto_mode_fallback` (repo default `sar_chop`) — `scalp_mode_resolution.py`
+         │     • Uses latest `IndicatorValues` for that pair_key; per-pair cooldowns; shorts if `shorts_enabled`
          │
-         └── ScalpTrader
-               • Sizes position: risk_pct% of allocated_capital / stop_distance
-               • Entry: limit or market via venue order path (Coinbase or Kraken)
-               • On fill: places stop-loss-limit + take-profit-limit
-               • On exit fill: cancels sibling (application-layer OCO)
-               • Tracks daily P&L, halts on daily_loss_limit_pct
+         └── ScalpTrader + CoinbaseOrderManager
+               • Sizes vs `risk_pct`, `contract_size`, buying_power; orders on `[scalp.pairs.*].symbol`
+               • Stops / TP / OCO; daily loss from `[scalp]` — **no Kraken order path in this `main.py`**
 ```
 
 ### Signal logic — one closed candle *(simplified legacy example)*
@@ -457,16 +442,31 @@ ScalpTrader.try_open():
 
 | File | Purpose |
 |------|---------|
-| `backend/server/scalp_bot/candle_feed.py` | WS ohlc subscription + REST seed; `register_tick_callback` for live regime / intra-bar hooks |
+| `backend/server/scalp_bot/coinbase_candle_feed.py` | **CDE path:** WS + REST candles for `[scalp.pairs.*]`, keyed by `pair_key` |
+| `backend/server/scalp_bot/candle_feed.py` | Generic / non-Coinbase candle helper if present in your branch |
 | `backend/server/scalp_bot/indicators.py` | Incremental EMA/RSI/ATR/VWAP/volume (hexital) |
 | `backend/server/scalp_bot/signal_engine.py` | Multi-mode signals, cooldowns, shorts when enabled |
 | `backend/server/scalp_bot/scalp_trader.py` | Position lifecycle, OCO, capital management |
 | `backend/server/scalp_bot/scalp_runtime.py` | asyncio Task, wires all components |
 | `backend/server/scalp_bot/scalp_config.py` | Config dataclass, parsed from `[scalp]` |
 | `backend/server/scalp_bot/regime_risk.py` | Triggers for “WFO risk on” (volume / ATR-scaled move) |
-| `backend/server/scalp_bot/scalp_wfo.py` | WFO loop; optional dynamic sleep via `interval_sec_resolver` |
+| `backend/server/scalp_bot/scalp_wfo.py` | WFO loop (uses `scalp_vec_backtest`); optional dynamic sleep via `interval_sec_resolver` |
 | `frontend-new/src/components/SettingsTab.tsx` | WFO / tuner / fee-tier runtime controls + tooltips |
 | `frontend-new/src/lib/scalpSettingsTooltips.ts` | Hover (`title`) copy for Settings (recommended ranges, risks) |
+
+### Nano perps ↔ indicators (confirmed wiring)
+
+Everything is keyed by **`pair_key`** (the `[scalp.pairs.*]` section name, e.g. `BTC_USD`). The **exchange product** is only `symbol` (e.g. `BIP-20DEC30-CDE`).
+
+| Step | Module | Role |
+|------|--------|------|
+| Config | `[scalp.pairs.BTC_USD]` … | `symbol`, `interval`, `contract_size`, strategy params consumed by `ScalpPairConfig` |
+| Bars | `coinbase_candle_feed.py` + `bar_store` | Candle buffers **per `pair_key`** at `interval` minutes |
+| Indicators | `scalp_runtime` → `IndicatorSet(pair_cfg, …)` in `indicators.py` | Same **`pair_cfg`** TOML block; updates on each **closed** candle |
+| Signals | `signal_engine.py` | Reads **`IndicatorValues` for that `pair_key`** + mode resolution (WFO champion row matches **`symbol`**) |
+| Execution | `scalp_trader.py` + `coinbase_order_manager.py` | Orders use **`symbol`** (CDE nano contract id); PnL uses `contract_size` + scalp fee fields |
+
+**Not wired to CDE:** `[pairs.*]` / `enabled_pairs` / `sim_runner` / `data/trades_*.jsonl` are **legacy Kraken MM** artifacts in this repo layout — ignore them for nano perp + indicator validation.
 
 ### INTX sync, balances, and dashboard
 
@@ -475,32 +475,26 @@ ScalpTrader.try_open():
 - **Analytics tab (Coinbase perps):** **COINBASE_CAPITAL** shows futures **total equity**, **committed** (margin in positions + collateral in open orders), **available margin** / **buying power**, and **spot USDC+USD available**.
 - **Product IDs** in config must **exactly** match Coinbase. Otherwise legs show under **`intx_unmapped_positions`** on the Scalp tab and are not mapped to a pair key.
 
-### Configuration
+### Configuration (CDE nano — match your account)
+
+Authoritative values live in **`config.toml`**. Example shape (see repo `[scalp.pairs.BTC_USD]` / `SOL_USD` / `XRP_USD`):
 
 ```toml
 [scalp]
-enabled = true                   # set false to disable entirely
-allocated_capital_usd = 150.0    # USD budget — separate from MM bot capital
-max_concurrent_positions = 2
-daily_loss_limit_pct = 5.0       # halt after losing 5% of allocated capital in one day
-order_type = "limit"             # "limit" = maker (preferred), "market" = immediate
-# auto_mode_fallback = "ema_momentum"   # when strategy_mode is "auto" and no WFO champion row yet
+venue = "coinbase_perps"
+enabled = true
+allocated_capital_usd = 500.0
+order_type = "hybrid"              # limit / market / hybrid — see scalp_config + Coinbase path
 
 [scalp.pairs.BTC_USD]
-symbol = "XBT/USD"
-interval = 5                     # 5-minute candles
-ema_fast = 9
-ema_slow = 21
-rsi_period = 9
-atr_period = 14
-atr_stop_mult = 1.0              # stop = entry - 1×ATR
-atr_tp_mult = 2.0                # tp   = entry + 2×ATR
-risk_pct = 0.01                  # 1% of allocated_capital at risk per trade
-min_signals = 3                  # require 3 of 4 signals
-signal_cooldown_sec = 60.0
-loss_cooldown_sec = 120.0
-min_candles_required = 30        # warm-up period before first trade
+symbol = "BIP-20DEC30-CDE"        # CDE nano product id from Coinbase (must match exactly)
+contract_size = 0.01              # BTC per 1 contract — from exchange product metadata
+interval = 5                      # bar size (minutes) for this pair_key
+strategy_mode = "auto"            # WFO champion for this symbol, else auto_mode_fallback
+# …ema_*, rsi_*, atr_*, macd_*, etc. — all read by IndicatorSet + signal modes
 ```
+
+**TEL / Kraken spot pairs** in old docs do **not** apply to this path. Do not set scalp `symbol` to Kraken-style `XBT/USD` unless Coinbase actually lists that string for your product.
 
 ### Relationship to the Kraken MM bot (shuttered)
 

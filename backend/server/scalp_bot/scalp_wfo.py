@@ -108,6 +108,43 @@ def _mp_eval_one(
     return (pi, None, m, None)  # score computed in main process (needs WFOConfig)
 
 
+def _mp_holdout_eval_one(
+    args: tuple[int, ParamSet, dict[str, np.ndarray], dict[str, np.ndarray], dict[str, Any], int],
+) -> tuple[int, BacktestMetrics | None, str | None]:
+    """Holdout backtest one grid row (warmup prefix + ``min_entry_bar``)."""
+    pi, params, full_bars, holdout, eval_kw, holdout_trade_floor = args
+    try:
+        warmup_n = effective_min_bars_ready(params.mode, params)
+        holdout_ext, n_prefix = _extend_holdout_with_warmup_prefix(full_bars, holdout, warmup_n)
+        m = evaluate_params(
+            holdout_ext,
+            params,
+            recency_half_life_bars=0,
+            min_entry_bar=n_prefix,
+            **eval_kw,
+        )
+    except Exception:
+        return (pi, None, "eval_exception")
+    if m.trade_count < holdout_trade_floor:
+        return (pi, None, f"holdout_trades({m.trade_count}<{holdout_trade_floor})")
+    return (pi, m, None)
+
+
+def _holdout_grid_indices(
+    wfo_cfg: WFOConfig,
+    train_scores: list[tuple[float, int]],
+    grid_len: int,
+) -> list[int]:
+    """Grid indices to backtest on holdout this fold (full grid or train top-K)."""
+    if bool(getattr(wfo_cfg, "exhaustive_grid_holdout", False)):
+        return list(range(grid_len))
+    if not train_scores:
+        return []
+    k = max(1, int(wfo_cfg.top_k))
+    ordered = sorted(train_scores, key=lambda x: x[0], reverse=True)
+    return [pi for _, pi in ordered[:k]]
+
+
 def _mp_eval_one_with_bars(
     args: tuple[int, ParamSet, float, float, dict[str, np.ndarray], dict[str, Any]],
 ) -> tuple[int, float | None, BacktestMetrics | None, str | None]:
@@ -189,6 +226,14 @@ class WFOConfig:
     )
     # Bucket width on mean holdout score when >0 (ties within ±epsilon use tie-breakers).
     holdout_score_epsilon: float = 0.0
+    # When True with ``objective=total_pnl``: champion pool ranks by **sum** of holdout USD
+    # across OOS slices where the grid point was top-K tested (period performance), not mean
+    # score over slices nor a minimum fraction of folds in the top-K.
+    holdout_rank_by_period: bool = False
+    # Min **total** closed holdout trades summed across those slices (0 = off).
+    min_period_holdout_trades: int = 0
+    # When True: holdout-backtest **every** grid row each fold (no train top-K funnel).
+    exhaustive_grid_holdout: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -241,11 +286,17 @@ def _aggregate_holdout_candidates(
         metrics_list = [m for _, m in window_results]
         mean_score = float(scores.mean())
         std_score = float(scores.std())
+        rank_score = _holdout_rank_score(wfo_cfg, scores, metrics_list)
+        min_pt = int(getattr(wfo_cfg, "min_period_holdout_trades", 0) or 0)
+        if min_pt > 0 and bool(getattr(wfo_cfg, "holdout_rank_by_period", False)):
+            period_trades = int(sum(int(m.trade_count) for m in metrics_list))
+            if period_trades < min_pt:
+                continue
 
         if std_score > 0 and mean_score / std_score < wfo_cfg.min_stability_ratio:
             continue
 
-        if mean_score <= wfo_cfg.min_mean_score:
+        if rank_score <= wfo_cfg.min_mean_score:
             continue
 
         capped_dd_pcts = []
@@ -257,7 +308,7 @@ def _aggregate_holdout_candidates(
             continue
 
         stability = mean_score / std_score if std_score > 0 else float("inf")
-        candidates.append((mean_score, stability, pi, metrics_list))
+        candidates.append((rank_score, stability, pi, metrics_list))
     return candidates
 
 
@@ -357,11 +408,16 @@ def _wfo_mode_holdout_scoreboard_rows(
         scores = np.array([s for s, _ in wrs])
         mlist = [m for _, m in wrs]
         mean_score = float(scores.mean())
+        rank_score = _holdout_rank_score(wfo_cfg, scores, mlist)
         std_score = float(scores.std())
         qualified = True
+        min_pt = int(getattr(wfo_cfg, "min_period_holdout_trades", 0) or 0)
+        if min_pt > 0 and bool(getattr(wfo_cfg, "holdout_rank_by_period", False)):
+            if int(sum(int(m.trade_count) for m in mlist)) < min_pt:
+                qualified = False
         if std_score > 0 and mean_score / std_score < wfo_cfg.min_stability_ratio:
             qualified = False
-        if mean_score <= wfo_cfg.min_mean_score:
+        if rank_score <= wfo_cfg.min_mean_score:
             qualified = False
         capped_dd_pcts = []
         for m in mlist:
@@ -382,6 +438,7 @@ def _wfo_mode_holdout_scoreboard_rows(
             "mode": mode,
             "holdout_windows": int(nwin),
             "mean_holdout_score": round(mean_score, 6),
+            "holdout_rank_score": round(rank_score, 6),
             "stability": st_out,
             "mean_holdout_total_pnl": round(float(np.mean([m.total_pnl for m in mlist])), 6),
             "sum_holdout_total_pnl": round(float(sum(float(m.total_pnl) for m in mlist)), 6),
@@ -395,7 +452,8 @@ def _wfo_mode_holdout_scoreboard_rows(
 
     def _rank_key(r: dict[str, Any]) -> tuple[int, float, float, int]:
         q = 1 if r["qualified_champion_pool"] else 0
-        return (q, float(r["mean_holdout_score"]), float(r["sum_holdout_total_pnl"]), -int(r["pi"]))
+        primary = float(r.get("holdout_rank_score", r["mean_holdout_score"]))
+        return (q, primary, float(r["sum_holdout_total_pnl"]), -int(r["pi"]))
 
     by_mode: dict[str, dict[str, Any]] = {}
     for row in per_pi.values():
@@ -428,9 +486,22 @@ def _wfo_mode_holdout_scoreboard_rows(
 
 
 def _min_holdout_windows_from_fraction(n_windows: int, wfo_cfg: WFOConfig) -> int:
+    if bool(getattr(wfo_cfg, "holdout_rank_by_period", False)):
+        return 1
     frac = float(getattr(wfo_cfg, "min_window_fraction", 0.48) or 0.48)
     frac = max(0.05, min(frac, 1.0))
     return max(1, int(n_windows * frac))
+
+
+def _holdout_rank_score(
+    wfo_cfg: WFOConfig,
+    scores: np.ndarray,
+    metrics_list: list[BacktestMetrics],
+) -> float:
+    """Primary sort key for champion pool: period total PnL or mean per-fold objective."""
+    if bool(getattr(wfo_cfg, "holdout_rank_by_period", False)) and str(wfo_cfg.objective) == "total_pnl":
+        return float(sum(float(m.total_pnl) for m in metrics_list))
+    return float(scores.mean())
 
 
 def _slice_bars_to_roll_span(
@@ -823,10 +894,10 @@ def optimize_pair(
     ``diagnostics`` is always a JSON-friendly dict (bar counts, windows, train gate tallies, etc.).
 
     1. Generate rolling train/holdout windows
-    2. For each window: train grid -> top-K by objective score on train -> validate on holdout
-    3. Aggregate scores across all windows per strategy
-    4. Apply stability filter and hard gates
-    5. Select the top candidate that passes the param-delta safety gate
+    2. For each window: holdout-backtest grid (all rows if ``exhaustive_grid_holdout``,
+       else train -> top-K -> holdout)
+    3. Aggregate holdout scores across windows (period total PnL when configured)
+    4. Select the top candidate that passes safety / promotion gates
     """
     roll_hours = wfo_effective_roll_span_hours(wfo_cfg)
     load_days = roll_hours / 24.0 + 1.0  # margin for DST / sparse bars
@@ -897,6 +968,7 @@ def optimize_pair(
 
     param_window_scores: dict[int, list[tuple[float, BacktestMetrics]]] = {}
     obj = wfo_cfg.objective
+    exhaustive = bool(getattr(wfo_cfg, "exhaustive_grid_holdout", False))
     day_boost = float(getattr(wfo_cfg, "train_same_calendar_day_boost", 0.0) or 0.0)
     holdout_trade_floor = (
         int(wfo_cfg.min_holdout_trades)
@@ -922,10 +994,16 @@ def optimize_pair(
     n_workers = min(_WFO_WORKER_COUNT, len(grid))
     use_mp = n_workers > 1 and len(grid) >= 20  # don't bother for tiny grids
     if use_mp:
-        LOG.info(
-            "scalp_wfo: %s/%dm — parallel train scoring: %d workers × %d grid combos × %d windows",
-            symbol, interval, n_workers, len(grid), len(windows),
-        )
+        if exhaustive:
+            LOG.info(
+                "scalp_wfo: %s/%dm — exhaustive holdout: %d workers × %d grid × %d windows",
+                symbol, interval, n_workers, len(grid), len(windows),
+            )
+        else:
+            LOG.info(
+                "scalp_wfo: %s/%dm — parallel train scoring: %d workers × %d grid combos × %d windows",
+                symbol, interval, n_workers, len(grid), len(windows),
+            )
 
     for win_idx, (train, holdout) in enumerate(windows):
         # Refresh UI milestone at window start (train+holdout scoring can take minutes).
@@ -943,6 +1021,66 @@ def optimize_pair(
 
         train_scores: list[tuple[float, int]] = []
         gate_diag: dict[str, int] = {}
+        holdout_below_min = 0
+
+        if exhaustive:
+            holdout_indices = _holdout_grid_indices(wfo_cfg, train_scores, len(grid))
+            if use_mp:
+                h_tasks = [
+                    (pi, grid[pi], bars, holdout, _eval_live_kw, holdout_trade_floor)
+                    for pi in holdout_indices
+                ]
+                h_chunksize = max(1, len(h_tasks) // (n_workers * 4))
+                with concurrent.futures.ProcessPoolExecutor(max_workers=n_workers) as pool:
+                    for pi, m, err_key in pool.map(_mp_holdout_eval_one, h_tasks, chunksize=h_chunksize):
+                        if err_key is not None:
+                            if err_key == "eval_exception":
+                                gate_diag["eval_exception"] = gate_diag.get("eval_exception", 0) + 1
+                            else:
+                                holdout_below_min += 1
+                            continue
+                        assert m is not None
+                        s = score_strategy(m, obj)
+                        if pi not in param_window_scores:
+                            param_window_scores[pi] = []
+                        param_window_scores[pi].append((s, m))
+            else:
+                for pi in holdout_indices:
+                    warmup_n = effective_min_bars_ready(grid[pi].mode, grid[pi])
+                    holdout_ext, n_prefix = _extend_holdout_with_warmup_prefix(
+                        bars, holdout, warmup_n,
+                    )
+                    try:
+                        m = evaluate_params(
+                            holdout_ext, grid[pi],
+                            recency_half_life_bars=0,
+                            min_entry_bar=n_prefix,
+                            **_eval_live_kw,
+                        )
+                    except Exception:
+                        gate_diag["eval_exception"] = gate_diag.get("eval_exception", 0) + 1
+                        continue
+                    if m.trade_count < holdout_trade_floor:
+                        holdout_below_min += 1
+                        continue
+                    s = score_strategy(m, obj)
+                    if pi not in param_window_scores:
+                        param_window_scores[pi] = []
+                    param_window_scores[pi].append((s, m))
+            n_holdout_tested = len(holdout_indices)
+            scored_this_win = n_holdout_tested - holdout_below_min - gate_diag.get("eval_exception", 0)
+            _merge_gate_diag(agg_train_gate_diag, gate_diag)
+            LOG.info(
+                "scalp_wfo: %s/%dm window[%d] — exhaustive holdout %d/%d scored "
+                "(below trade floor: %d)",
+                symbol, interval, win_idx, scored_this_win, n_holdout_tested, holdout_below_min,
+            )
+            if progress_hook:
+                try:
+                    progress_hook(win_idx + 1, len(windows))
+                except Exception:
+                    pass
+            continue
 
         if use_mp:
             # --- Parallel train scoring (new pool per window with initializer) ---
@@ -1014,9 +1152,9 @@ def optimize_pair(
             )
 
             train_scores.sort(key=lambda x: x[0], reverse=True)
-            top_k_indices = [pi for _, pi in train_scores[:wfo_cfg.top_k]]
+            top_k_indices = _holdout_grid_indices(wfo_cfg, train_scores, len(grid))
 
-            # Holdout phase: validate top-K on holdout — flat weighting (unbiased)
+            # Holdout phase: validate top-K (or full grid) on holdout — flat weighting (unbiased)
             # Prepend warmup-prefix bars from the full roll-span so stateful
             # indicators (SAR, UT Bot Trail, etc.) initialize correctly, then
             # pass min_entry_bar so only trades inside the actual holdout window
@@ -1056,7 +1194,11 @@ def optimize_pair(
                 pass
 
     if not param_window_scores:
-        msg = f"no_strategies_passed_train_gates:windows={len(windows)}"
+        msg = (
+            f"no_holdout_scores_in_grid:windows={len(windows)}"
+            if exhaustive
+            else f"no_strategies_passed_train_gates:windows={len(windows)}"
+        )
         LOG.info("scalp_wfo: %s/%dm — %s", symbol, interval, msg)
         n_w = len(windows)
         return None, msg, {
@@ -1073,15 +1215,21 @@ def optimize_pair(
         }
 
     n_win = len(windows)
+    period_rank = bool(getattr(wfo_cfg, "holdout_rank_by_period", False))
     min_windows_primary = _min_holdout_windows_from_fraction(n_win, wfo_cfg)
     min_windows_effective = min_windows_primary
-    promotion_tier = "primary"
+    if exhaustive and period_rank:
+        promotion_tier = "exhaustive_period_holdout_total"
+    elif period_rank:
+        promotion_tier = "period_holdout_total"
+    else:
+        promotion_tier = "primary"
     allow_relax = bool(getattr(wfo_cfg, "allow_promotion_relaxation", False))
     candidates = _aggregate_holdout_candidates(
         param_window_scores, wfo_cfg, min_windows_effective,
     )
 
-    if not candidates and allow_relax:
+    if not candidates and allow_relax and not period_rank:
         min_relaxed = max(1, n_win // 4)
         if min_relaxed != min_windows_effective:
             promotion_tier = "relaxed_quarter"
@@ -1097,7 +1245,7 @@ def optimize_pair(
                 param_window_scores, wfo_cfg, min_windows_effective,
             )
 
-    if not candidates and allow_relax:
+    if not candidates and allow_relax and not period_rank:
         promotion_tier = "any_window"
         min_windows_effective = 1
         LOG.warning(
@@ -1109,14 +1257,31 @@ def optimize_pair(
     if not candidates:
         ranked = sorted(
             param_window_scores.items(),
-            key=lambda kv: len(kv[1]),
+            key=lambda kv: (
+                _holdout_rank_score(
+                    wfo_cfg,
+                    np.array([s for s, _ in kv[1]]),
+                    [m for _, m in kv[1]],
+                ),
+                len(kv[1]),
+            ),
             reverse=True,
         )[:12]
+        fail_label = (
+            "no_candidates_after_period_holdout_gates"
+            if period_rank
+            else "no_candidates_after_stability_filters"
+        )
         LOG.info(
-            "scalp_wfo: %s/%dm — no_candidates_after_stability_filters "
-            "(top grid points by holdout window hits: %s)",
-            symbol, interval,
-            ", ".join(f"pi{pi}:{len(wr)}" for pi, wr in ranked) or "(none)",
+            "scalp_wfo: %s/%dm — %s (top grid points: %s)",
+            symbol,
+            interval,
+            fail_label,
+            ", ".join(
+                f"pi{pi}:folds={len(wr)},rank={_holdout_rank_score(wfo_cfg, np.array([s for s, _ in wr]), [m for _, m in wr]):.4f}"
+                for pi, wr in ranked
+            )
+            or "(none)",
         )
         diag_nf = {
             "symbol": symbol,
@@ -1142,9 +1307,13 @@ def optimize_pair(
                 champion_pi=None, objective=obj,
             ),
         }
-        return None, "no_candidates_after_stability_filters", diag_nf
+        return None, fail_label, diag_nf
 
-    if promotion_tier != "primary":
+    if promotion_tier not in (
+        "primary",
+        "period_holdout_total",
+        "exhaustive_period_holdout_total",
+    ):
         LOG.info(
             "scalp_wfo: %s/%dm — promotion tier=%s survivors=%d",
             symbol, interval, promotion_tier, len(candidates),
@@ -1276,6 +1445,9 @@ def optimize_pair(
         "windows_passed": len(param_window_scores.get(best_pi, [])),
         "wfo_promotion_tier": promotion_tier,
         "wfo_min_windows_used": min_windows_effective,
+        "holdout_rank_by_period": bool(getattr(wfo_cfg, "holdout_rank_by_period", False)),
+        "exhaustive_grid_holdout": bool(getattr(wfo_cfg, "exhaustive_grid_holdout", False)),
+        "sum_holdout_total_pnl": round(float(sum(m.total_pnl for m in best_metrics)), 6),
         "params": {
             "mode": params.mode,
             "max_hold_bars": params.max_hold_bars,
@@ -2222,7 +2394,7 @@ def _params_from_config(
         sar_chop_ma_long_period=int(getattr(pair_cfg, "sar_chop_ma_long_period", 200)),
         sar_chop_ma_short_period=int(getattr(pair_cfg, "sar_chop_ma_short_period", 50)),
         sar_chop_chop_period=int(getattr(pair_cfg, "sar_chop_chop_period", 14)),
-        sar_chop_chop_threshold=float(getattr(pair_cfg, "sar_chop_chop_threshold", 38.2)),
+        sar_chop_chop_threshold=float(getattr(pair_cfg, "sar_chop_chop_threshold", 68.0)),
         sar_chop_macd_fast=int(getattr(pair_cfg, "sar_chop_macd_fast", 12)),
         sar_chop_macd_slow=int(getattr(pair_cfg, "sar_chop_macd_slow", 26)),
         sar_chop_macd_signal=int(getattr(pair_cfg, "sar_chop_macd_signal", 9)),

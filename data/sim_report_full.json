@@ -1,0 +1,309 @@
+{
+  "pairs": {
+    "DRIFT_USD": {
+      "pair_key": "DRIFT_USD",
+      "skipped": false,
+      "sell_count": 62,
+      "buy_count": 79,
+      "base_maker_fee_bps": 23.0,
+      "fee_schedule": "23bps_static",
+      "best_spread_bps": 200,
+      "best_pnl": 14.254515516877193,
+      "best_win_rate": 70.96774193548387,
+      "best_sharpe": 2.684689320742319,
+      "plateau": {
+        "start_bps": 185,
+        "end_bps": 200,
+        "width_bps": 15,
+        "peak_pnl": 14.254516,
+        "cutoff_pnl": 11.403612,
+        "count": 16
+      },
+      "quality_score": {
+        "composite": 0.92,
+        "sample_size": 1.0,
+        "expectancy": 1.0,
+        "risk_management": 0.6798,
+        "robustness": 1.0,
+        "execution_realism": 1.0
+      },
+      "top_5_sweep": [
+        {
+          "spread_bps": 200,
+          "realized_pnl": 14.254515516877193,
+          "win_rate": 70.96774193548387,
+          "total_sells": 62,
+          "total_wins": 44,
+          "max_drawdown": 6.989104006901858,
+          "sharpe_ratio": 2.684689320742319,
+          "avg_pnl_per_sell": 0.22991154059479343,
+          "total_win_dollars": 22.2197227873726
+        },
+        {
+          "spread_bps": 199,
+          "realized_pnl": 14.074347565395993,
+          "win_rate": 70.96774193548387,
+          "total_sells": 62,
+          "total_wins": 44,
+          "max_drawdown": 7.023204061781463,
+          "sharpe_ratio": 2.657868661838678,
+          "avg_pnl_per_sell": 0.22700560589348376,
+          "total_win_dollars": 22.087253965171
+        },
+        {
+          "spread_bps": 198,
+          "realized_pnl": 13.894179613914792,
+          "win_rate": 70.96774193548387,
+          "total_sells": 62,
+          "total_wins": 44,
+          "max_drawdown": 7.05730411666106,
+          "sharpe_ratio": 2.6308799055382663,
+          "avg_pnl_per_sell": 0.22409967119217405,
+          "total_win_dollars": 21.954785142969403
+        },
+        {
+          "spread_bps": 197,
+          "realized_pnl": 13.714011662433592,
+          "win_rate": 70.96774193548387,
+          "total_sells": 62,
+          "total_wins": 44,
+          "max_drawdown": 7.09140417154066,
+          "sharpe_ratio": 2.603722239776195,
+          "avg_pnl_per_sell": 0.22119373649086438,
+          "total_win_dollars": 21.8223163207678
+        },
+        {
+          "spread_bps": 196,
+          "realized_pnl": 13.533843710952391,
+          "win_rate": 70.96774193548387,
+          "total_sells": 62,
+          "total_wins": 44,
+          "max_drawdown": 7.125504226420253,
+          "sharpe_ratio": 2.576394859588947,
+          "avg_pnl_per_sell": 0.2182878017895547,
+          "total_win_dollars": 21.689847498566202
+        }
+      ],
+      "fee_stress": [
+        {
+          "spread_bps": 200,
+          "normal_pnl": 14.254515516877193,
+          "stressed_pnl": 14.254515516877193,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 199,
+          "normal_pnl": 14.074347565395993,
+          "stressed_pnl": 14.074347565395993,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 198,
+          "normal_pnl": 13.894179613914792,
+          "stressed_pnl": 13.894179613914792,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 197,
+          "normal_pnl": 13.714011662433592,
+          "stressed_pnl": 13.714011662433592,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 196,
+          "normal_pnl": 13.533843710952391,
+          "stressed_pnl": 13.533843710952391,
+          "pnl_retention": 1.0
+        }
+      ],
+      "walk_forward": [
+        {
+          "fold": 1,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 8.750772097843175,
+          "test_pnl_at_overall_best": 8.750772097843175,
+          "test_sells": 19
+        },
+        {
+          "fold": 2,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": -5.5018388458101795,
+          "test_pnl_at_overall_best": -5.5018388458101795,
+          "test_sells": 26
+        },
+        {
+          "fold": 3,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": -5.5018388458101795,
+          "test_pnl_at_overall_best": -5.5018388458101795,
+          "test_sells": 26
+        }
+      ]
+    },
+    "TEL_USD": {
+      "pair_key": "TEL_USD",
+      "skipped": false,
+      "sell_count": 107,
+      "buy_count": 31,
+      "base_maker_fee_bps": 23.0,
+      "fee_schedule": "23bps_static",
+      "best_spread_bps": 200,
+      "best_pnl": 103.25481353366804,
+      "best_win_rate": 100.0,
+      "best_sharpe": 4.413224742142262,
+      "plateau": {
+        "start_bps": 171,
+        "end_bps": 200,
+        "width_bps": 29,
+        "peak_pnl": 103.254814,
+        "cutoff_pnl": 82.603851,
+        "count": 30
+      },
+      "quality_score": {
+        "composite": 1.0,
+        "sample_size": 1.0,
+        "expectancy": 1.0,
+        "risk_management": 1.0,
+        "robustness": 1.0,
+        "execution_realism": 1.0
+      },
+      "top_5_sweep": [
+        {
+          "spread_bps": 200,
+          "realized_pnl": 103.25481353366804,
+          "win_rate": 100.0,
+          "total_sells": 107,
+          "total_wins": 107,
+          "max_drawdown": 0.0,
+          "sharpe_ratio": 4.413224742142262,
+          "avg_pnl_per_sell": 0.9649982573240004,
+          "total_win_dollars": 103.25481353366804
+        },
+        {
+          "spread_bps": 199,
+          "realized_pnl": 102.56467525609071,
+          "win_rate": 100.0,
+          "total_sells": 107,
+          "total_wins": 107,
+          "max_drawdown": 0.0,
+          "sharpe_ratio": 4.408888206935798,
+          "avg_pnl_per_sell": 0.9585483668793524,
+          "total_win_dollars": 102.56467525609071
+        },
+        {
+          "spread_bps": 198,
+          "realized_pnl": 101.87453697851338,
+          "win_rate": 100.0,
+          "total_sells": 107,
+          "total_wins": 107,
+          "max_drawdown": 0.0,
+          "sharpe_ratio": 4.404496065326907,
+          "avg_pnl_per_sell": 0.9520984764347045,
+          "total_win_dollars": 101.87453697851338
+        },
+        {
+          "spread_bps": 197,
+          "realized_pnl": 101.18439870093604,
+          "win_rate": 100.0,
+          "total_sells": 107,
+          "total_wins": 107,
+          "max_drawdown": 0.0,
+          "sharpe_ratio": 4.400047268680096,
+          "avg_pnl_per_sell": 0.9456485859900565,
+          "total_win_dollars": 101.18439870093604
+        },
+        {
+          "spread_bps": 196,
+          "realized_pnl": 100.49426042335871,
+          "win_rate": 100.0,
+          "total_sells": 107,
+          "total_wins": 107,
+          "max_drawdown": 0.0,
+          "sharpe_ratio": 4.395540742450983,
+          "avg_pnl_per_sell": 0.9391986955454085,
+          "total_win_dollars": 100.49426042335871
+        }
+      ],
+      "fee_stress": [
+        {
+          "spread_bps": 200,
+          "normal_pnl": 103.25481353366804,
+          "stressed_pnl": 103.25481353366804,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 199,
+          "normal_pnl": 102.56467525609071,
+          "stressed_pnl": 102.56467525609071,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 198,
+          "normal_pnl": 101.87453697851338,
+          "stressed_pnl": 101.87453697851338,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 197,
+          "normal_pnl": 101.18439870093604,
+          "stressed_pnl": 101.18439870093604,
+          "pnl_retention": 1.0
+        },
+        {
+          "spread_bps": 196,
+          "normal_pnl": 100.49426042335871,
+          "stressed_pnl": 100.49426042335871,
+          "pnl_retention": 1.0
+        }
+      ],
+      "walk_forward": [
+        {
+          "fold": 1,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 24.441576278964305,
+          "test_pnl_at_overall_best": 24.441576278964305,
+          "test_sells": 33
+        },
+        {
+          "fold": 2,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 39.81607740672026,
+          "test_pnl_at_overall_best": 39.81607740672026,
+          "test_sells": 34
+        },
+        {
+          "fold": 3,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 39.81607740672026,
+          "test_pnl_at_overall_best": 39.81607740672026,
+          "test_sells": 34
+        }
+      ]
+    },
+    "USDE_USDT": {
+      "pair_key": "USDE_USDT",
+      "skipped": true,
+      "reason": "Only 0 sells (need >= 20)",
+      "sell_count": 0
+    },
+    "USDG_USDT": {
+      "pair_key": "USDG_USDT",
+      "skipped": true,
+      "reason": "Only 4 sells (need >= 20)",
+      "sell_count": 4
+    },
+    "XRP_USDT": {
+      "pair_key": "XRP_USDT",
+      "skipped": true,
+      "reason": "Only 0 sells (need >= 20)",
+      "sell_count": 0
+    }
+  },
+  "meta": {
+    "cpu_count_logical": 16,
+    "process_workers": 5,
+    "spread_sweep_engine": "numpy_vectorized",
+    "gpu": "not_used",
+    "note": "MM sim replay is CPU/NumPy only; use a GPU framework if you need CUDA."
+  }
+}

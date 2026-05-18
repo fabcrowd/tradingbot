@@ -11,24 +11,28 @@ signaling parameter stability rather than a fragile optimum.
 
 Only spread_bps is swept because run_backtest(mode="simulated") re-prices existing fills around a
 hypothetical mid-price — it cannot simulate *which* fills would have occurred under different order
-sizes, cycle times, or other execution parameters.
+sizes, cycle times, or other execution parameters. Pair ``fee_bps`` (and optional legacy ``fee_schedule``
+label) come from ``[pairs.*]`` in config.toml for reporting only; recorded event fees drive backtest PnL.
 
 Usage:
   python -m backend.server.sim_runner
   python -m backend.server.sim_runner --file data/trades_live.jsonl --pair TEL_USD
   python -m backend.server.sim_runner --out sim_report.json
+
+Depends on :mod:`backend.server.backtest` for JSONL load + vectorized spread sweep + optional
+multiprocessing across pairs (``--workers``). **GPU is not used** (NumPy CPU only).
 """
 
 from __future__ import annotations
 
 import argparse
 import json
-
+import os
 from collections import defaultdict
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
-from .backtest import _load_events, run_backtest
-from .fee_schedule import maker_fee_bps
+from .backtest import _load_events, mp_sim_runner_pair, run_backtest, sweep_spread_simulated
 
 DEFAULT_DATA = Path(__file__).resolve().parent.parent.parent / "data" / "trades_live.jsonl"
 MIN_SELLS_FOR_SIM = 20
@@ -154,11 +158,11 @@ def _quality_score(result: dict, _total_events: int, stressed_pnl: float | None)
 def _run_pair(
     pair_key: str,
     events: list[dict],
-    fee_schedule: str,
-    volume_30d: float,
+    base_maker_fee_bps: float,
+    fee_label: str,
 ) -> dict:
     """Full 4-phase simulation for a single pair."""
-    sells = [e for e in events if e.get("side") == "sell"]
+    sells = [e for e in events if str(e.get("side", "")).lower() == "sell"]
     if len(sells) < MIN_SELLS_FOR_SIM:
         return {
             "pair_key": pair_key,
@@ -167,25 +171,12 @@ def _run_pair(
             "sell_count": len(sells),
         }
 
-    base_maker_fee = maker_fee_bps(volume_30d, fee_schedule)
+    base_maker_fee = float(base_maker_fee_bps)
 
-    sweep: list[dict] = []
-    for bps in range(SPREAD_FLOOR, SPREAD_CEILING + 1, SPREAD_STEP):
-        r = run_backtest(events, mode="simulated", spread_bps=bps)
-        sweep.append({
-            "spread_bps": bps,
-            "realized_pnl": r["realized_pnl"],
-            "win_rate": r["win_rate"],
-            "total_sells": r["total_sells"],
-            "total_wins": r["total_wins"],
-            "max_drawdown": r["max_drawdown"],
-            "sharpe_ratio": r["sharpe_ratio"],
-            "avg_pnl_per_sell": r["avg_pnl_per_sell"],
-            "total_win_dollars": r["total_win_dollars"],
-        })
-
-    sweep.sort(key=lambda x: x["realized_pnl"], reverse=True)
-    top_n = sweep[:TOP_N_FOR_STRESS]
+    raw_sweep = sweep_spread_simulated(events, SPREAD_FLOOR, SPREAD_CEILING, SPREAD_STEP)
+    sweep_by_bps = raw_sweep
+    sweep_ranked = sorted(raw_sweep, key=lambda x: x["realized_pnl"], reverse=True)
+    top_n = sweep_ranked[:TOP_N_FOR_STRESS]
 
     stressed_events = _fee_stressed_events(events, FEE_STRESS_FACTOR)
     stress_results: list[dict] = []
@@ -200,17 +191,14 @@ def _run_pair(
             if entry["realized_pnl"] > 0 else 0.0,
         })
 
-    sweep_by_bps = sorted(sweep, key=lambda x: x["spread_bps"])
     plateau = _detect_plateau(sweep_by_bps, PLATEAU_THRESHOLD_PCT)
 
     folds = _split_folds(events, WF_FOLDS)
     wf_results: list[dict] = []
     best_bps = top_n[0]["spread_bps"] if top_n else SPREAD_FLOOR
     for i, (train, test) in enumerate(folds):
-        train_sweep: list[dict] = []
-        for bps in range(SPREAD_FLOOR, SPREAD_CEILING + 1, SPREAD_STEP):
-            r = run_backtest(train, mode="simulated", spread_bps=bps)
-            train_sweep.append({"bps": bps, "pnl": r["realized_pnl"]})
+        train_rows = sweep_spread_simulated(train, SPREAD_FLOOR, SPREAD_CEILING, SPREAD_STEP)
+        train_sweep = [{"bps": row["spread_bps"], "pnl": row["realized_pnl"]} for row in train_rows]
         train_sweep.sort(key=lambda x: x["pnl"], reverse=True)
         fold_best_bps = train_sweep[0]["bps"] if train_sweep else best_bps
 
@@ -236,7 +224,7 @@ def _run_pair(
         "sell_count": len(sells),
         "buy_count": len(events) - len(sells),
         "base_maker_fee_bps": base_maker_fee,
-        "fee_schedule": fee_schedule,
+        "fee_schedule": fee_label,
         "best_spread_bps": best_entry["spread_bps"],
         "best_pnl": best_entry["realized_pnl"],
         "best_win_rate": best_entry["win_rate"],
@@ -250,27 +238,80 @@ def _run_pair(
     }
 
 
-def _infer_pair_meta(pair_key: str) -> tuple[str, float]:
-    """Best-effort pair metadata for simulation (fee_schedule, volume_30d)."""
+def _infer_pair_maker_fee_bps(pair_key: str) -> tuple[float, str]:
+    """Load static ``fee_bps`` from ``[pairs.<pair_key>]`` (legacy spread-MM sim harness).
+
+    Kraken-style ``fee_schedule`` tables were removed; sim uses each pair's ``fee_bps`` only.
+    """
     try:
         import tomllib
+
         cfg_path = Path(__file__).resolve().parent.parent.parent / "config.toml"
         if cfg_path.exists():
             with cfg_path.open("rb") as f:
                 cfg = tomllib.load(f)
-            pair_cfg = cfg.get("pairs", {}).get(pair_key, {})
-            return pair_cfg.get("fee_schedule", "spot_crypto"), 0.0
+            pairs = cfg.get("pairs", {})
+            if not isinstance(pairs, dict):
+                return 0.0, "no_pairs_table"
+            raw_pc = pairs.get(pair_key, {})
+            if not isinstance(raw_pc, dict):
+                return 0.0, "unknown_pair"
+            fee = float(raw_pc.get("fee_bps", 0.0) or 0.0)
+            sched = str(raw_pc.get("fee_schedule", "") or "").strip()
+            label = sched if sched else f"{fee:g}bps_static"
+            return fee, label
     except Exception:
         pass
-    return "spot_crypto", 0.0
+    return 0.0, "config_unavailable"
+
+
+def _print_pair_result(pk: str, events: list[dict], result: dict) -> None:
+    maker_bps, fee_label = _infer_pair_maker_fee_bps(pk)
+    print(f"\n{'='*60}")
+    print(f"Simulating {pk} ({len(events)} events, fee={fee_label}, fee_bps={maker_bps})")
+    print(f"{'='*60}")
+    if result.get("skipped"):
+        print(f"  SKIPPED: {result['reason']}")
+        return
+
+    print(f"  Best spread_bps: {result['best_spread_bps']}")
+    print(f"  Best PnL:        ${result['best_pnl']:.6f}")
+    print(f"  Win rate:        {result['best_win_rate']:.1f}%")
+    print(f"  Sharpe:          {result['best_sharpe']:.3f}")
+    if result["plateau"]:
+        p = result["plateau"]
+        print(f"  Plateau:         {p['start_bps']}-{p['end_bps']} bps (width {p['width_bps']})")
+    print(f"  Quality score:   {result['quality_score']['composite']:.4f}")
+    print(f"    Sample:        {result['quality_score']['sample_size']:.4f}")
+    print(f"    Expectancy:    {result['quality_score']['expectancy']:.4f}")
+    print(f"    Risk Mgmt:     {result['quality_score']['risk_management']:.4f}")
+    print(f"    Robustness:    {result['quality_score']['robustness']:.4f}")
+    print(f"    Execution:     {result['quality_score']['execution_realism']:.4f}")
+
+    if result["fee_stress"]:
+        print("  Fee stress (1.5x):")
+        for fs in result["fee_stress"]:
+            print(f"    {fs['spread_bps']}bps: ${fs['normal_pnl']:.6f} -> ${fs['stressed_pnl']:.6f} (retain {fs['pnl_retention']:.0%})")
+
+    if result["walk_forward"]:
+        print("  Walk-forward:")
+        for wf in result["walk_forward"]:
+            print(f"    Fold {wf['fold']}: train_best={wf['train_best_bps']}bps, test_pnl=${wf['test_pnl_at_train_best']:.6f}")
 
 
 def run_simulation(
     data_path: Path | None = None,
     pair_filter: str | None = None,
     out_path: str | None = None,
+    *,
+    workers: int = 0,
 ) -> dict:
-    """Entry point: run full simulation and return report dict."""
+    """Entry point: run full simulation and return report dict.
+
+    ``workers``: process pool size for **per-pair** parallelism. ``0`` = ``min(os.cpu_count(), n_pairs)``.
+    ``1`` = sequential (easier debugging). Spread grids inside each pair use **NumPy vectorization**
+    (CPU); there is **no GPU** path in this harness.
+    """
     path = data_path or DEFAULT_DATA
     if not path.exists():
         return {"error": f"Data file not found: {path}"}
@@ -289,42 +330,48 @@ def run_simulation(
             return {"error": f"Pair {pair_filter} not found in data"}
         pairs_in_data = {pair_filter: pairs_in_data[pair_filter]}
 
-    report: dict = {"pairs": {}}
-    for pk, events in sorted(pairs_in_data.items()):
-        fee_schedule, vol = _infer_pair_meta(pk)
-        print(f"\n{'='*60}")
-        print(f"Simulating {pk} ({len(events)} events, fee_schedule={fee_schedule})")
-        print(f"{'='*60}")
-        result = _run_pair(pk, events, fee_schedule, vol)
-        report["pairs"][pk] = result
+    pairs_sorted = sorted(pairs_in_data.items())
+    n_pairs = len(pairs_sorted)
+    cpu_n = os.cpu_count() or 4
+    if workers <= 0:
+        pool_workers = max(1, min(cpu_n, n_pairs))
+    else:
+        pool_workers = max(1, min(int(workers), n_pairs))
 
-        if result.get("skipped"):
-            print(f"  SKIPPED: {result['reason']}")
-            continue
+    report: dict = {
+        "pairs": {},
+        "meta": {
+            "cpu_count_logical": cpu_n,
+            "process_workers": pool_workers if (pool_workers > 1 and n_pairs > 1) else 1,
+            "spread_sweep_engine": "numpy_vectorized",
+            "gpu": "not_used",
+            "note": "MM sim replay is CPU/NumPy only; use a GPU framework if you need CUDA.",
+        },
+    }
 
-        print(f"  Best spread_bps: {result['best_spread_bps']}")
-        print(f"  Best PnL:        ${result['best_pnl']:.6f}")
-        print(f"  Win rate:        {result['best_win_rate']:.1f}%")
-        print(f"  Sharpe:          {result['best_sharpe']:.3f}")
-        if result["plateau"]:
-            p = result["plateau"]
-            print(f"  Plateau:         {p['start_bps']}-{p['end_bps']} bps (width {p['width_bps']})")
-        print(f"  Quality score:   {result['quality_score']['composite']:.4f}")
-        print(f"    Sample:        {result['quality_score']['sample_size']:.4f}")
-        print(f"    Expectancy:    {result['quality_score']['expectancy']:.4f}")
-        print(f"    Risk Mgmt:     {result['quality_score']['risk_management']:.4f}")
-        print(f"    Robustness:    {result['quality_score']['robustness']:.4f}")
-        print(f"    Execution:     {result['quality_score']['execution_realism']:.4f}")
-
-        if result["fee_stress"]:
-            print("  Fee stress (1.5x):")
-            for fs in result["fee_stress"]:
-                print(f"    {fs['spread_bps']}bps: ${fs['normal_pnl']:.6f} -> ${fs['stressed_pnl']:.6f} (retain {fs['pnl_retention']:.0%})")
-
-        if result["walk_forward"]:
-            print("  Walk-forward:")
-            for wf in result["walk_forward"]:
-                print(f"    Fold {wf['fold']}: train_best={wf['train_best_bps']}bps, test_pnl=${wf['test_pnl_at_train_best']:.6f}")
+    if pool_workers <= 1 or n_pairs <= 1:
+        for pk, events in pairs_sorted:
+            maker_bps, fee_label = _infer_pair_maker_fee_bps(pk)
+            result = _run_pair(pk, events, maker_bps, fee_label)
+            report["pairs"][pk] = result
+            _print_pair_result(pk, events, result)
+    else:
+        for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "VECLIB_MAXIMUM_THREADS"):
+            os.environ.setdefault(_k, "1")
+        print(
+            f"\nParallel mode: {pool_workers} processes + vectorized spread sweep "
+            f"({SPREAD_FLOOR}-{SPREAD_CEILING} bps) on {n_pairs} pair(s). GPU not used.\n"
+        )
+        by_pk: dict[str, dict] = {}
+        with ProcessPoolExecutor(max_workers=pool_workers) as exe:
+            futures = {exe.submit(mp_sim_runner_pair, (pk, ev)): pk for pk, ev in pairs_sorted}
+            for fut in as_completed(futures):
+                pk, result = fut.result()
+                by_pk[pk] = result
+        for pk, events in pairs_sorted:
+            result = by_pk[pk]
+            report["pairs"][pk] = result
+            _print_pair_result(pk, events, result)
 
     if out_path:
         clean = _strip_full_sweep(report)
@@ -350,12 +397,19 @@ def main() -> None:
     parser.add_argument("--file", default=str(DEFAULT_DATA), help="Path to trades JSONL")
     parser.add_argument("--pair", default=None, help="Filter to a single pair")
     parser.add_argument("--out", default=None, help="Write JSON report to this path")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=0,
+        help="Process pool size for per-pair runs (0 = min(CPU count, pair count); 1 = sequential)",
+    )
     args = parser.parse_args()
 
     run_simulation(
         data_path=Path(args.file),
         pair_filter=args.pair,
         out_path=args.out,
+        workers=args.workers,
     )
 
 

@@ -1,14 +1,14 @@
 {
   "BIP-20DEC30-CDE": {
-    "last_promoted_ts": 1776798660.0501273,
-    "last_saved_fingerprint": "1ce939d0ae645bb8d8cf19b5383d216695272361861946f04c0e574785acacbf"
+    "last_promoted_ts": 1779111692.6306312,
+    "last_saved_fingerprint": "f860eae9278873ba22c8d4ba9d20ecc496781690a43692d575ce3f94c38a34fe"
   },
   "SLP-20DEC30-CDE": {
-    "last_promoted_ts": 1776792142.5167248,
-    "last_saved_fingerprint": "2db4d1531838b33646c86d5b2bc8cd6474f572e9ee275025790c31321e6b7eed"
+    "last_promoted_ts": 1778968664.2082505,
+    "last_saved_fingerprint": "354422541c0ab2c68f3a3c19a6ddb746280608bacfba9e9df2402ec80e8897e4"
   },
   "XPP-20DEC30-CDE": {
-    "last_promoted_ts": 1776802559.8189318,
-    "last_saved_fingerprint": "ddd96078ee604b2cd4f97ef411d5f13fb38f474e3c3fc53cdd8cc1eb10b93dff"
+    "last_promoted_ts": 1779142618.753921,
+    "last_saved_fingerprint": "778f8139a510bf5c06be818b78acc09c54ad868a367e11ce169d3aa9cd1e89b8"
   }
 }

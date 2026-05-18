@@ -60,38 +60,29 @@ _PROJECT_DATA = _PROJECT_ROOT / "data"
 def coinbase_rest_client_from_env():
     """Build ``coinbase.rest.RESTClient`` for Advanced Trade.
 
-    If ``COINBASE_API_KEY`` and ``COINBASE_API_SECRET`` are set in ``.env`` (repo root),
-    uses the same authenticated client as live trading — public candle endpoints still
-    apply; auth typically improves rate-limit headroom vs a blank client.
+    If CDP credentials are set in ``.env`` at repo root, uses the same key selection as live
+    trading (``COINBASE_CDP_CREDENTIAL_SLOT=2`` selects ``COINBASE_API_KEY2`` /
+    ``COINBASE_API_SECRET2``); public candle endpoints still apply auth for better rate-limit headroom.
 
-    Raises ``ImportError`` if ``coinbase-advanced-py`` is not installed.
+    Raises ``ImportError`` if ``dotenv`` / config helpers are missing or ``coinbase-advanced-py`` is not installed.
     """
     try:
         from dotenv import load_dotenv
 
         load_dotenv(_PROJECT_ROOT / ".env")
+        from ..config import read_coinbase_creds_from_env
     except ImportError:
-        pass
-    import os
+        raise
 
     from coinbase.rest import RESTClient
 
-    try:
-        from ..config import _normalize_coinbase_pem, _sanitize_coinbase_api_key
-    except Exception:
-        def _normalize_coinbase_pem(secret: str) -> str:
-            s = (secret or "").strip().strip('"').strip("'")
-            return s.replace("\\n", "\n") if "-----BEGIN" in s and "\\n" in s else s
-
-        def _sanitize_coinbase_api_key(key: str) -> str:
-            return (key or "").strip().lstrip("\ufeff").strip('"').strip("'").strip()
-
-    key = _sanitize_coinbase_api_key(os.getenv("COINBASE_API_KEY", ""))
-    secret = _normalize_coinbase_pem(os.getenv("COINBASE_API_SECRET", ""))
+    _, key, secret = read_coinbase_creds_from_env()
     if key and secret:
         LOG.info("bar_store: Coinbase REST using API credentials from environment")
         return RESTClient(api_key=key, api_secret=secret)
-    LOG.info("bar_store: Coinbase REST unauthenticated public client (optional: COINBASE_API_KEY/SECRET in .env)")
+    LOG.info(
+        "bar_store: Coinbase REST unauthenticated public client (optional: COINBASE_API_KEY/SECRET or KEY2 + slot)"
+    )
     return RESTClient()
 _BAR_SUBDIR = "coinbase_bars"
 

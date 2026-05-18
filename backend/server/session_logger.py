@@ -8,6 +8,10 @@ Event types:
   scalp           — scalp bot / WFO / backfill milestones (subtype in payload)
   scalp_snapshot  — periodic scalp summary (every 5 min when scalp enabled)
   session_summary — written at shutdown
+
+Scalp subtypes used for analytics-style review:
+  strategy_report_trade — one closed round-trip per strategy (TV-style list row: entry/exit,
+    net / MFE / MAE / cumulative); emitted with subtype on each leg close.
 """
 
 from __future__ import annotations

@@ -23,22 +23,16 @@ export function FlightDeck({ snapshot, scalp, connected, onOpenLogs }: Props) {
   const sim = scalp?.sim_mode;
   const phaseRaw = scalp?.startup_phase ?? scalp?.operator?.startup_phase ?? "—";
   const phaseLc = String(phaseRaw).toLowerCase();
-  const legRows = Object.values(scalp?.trader?.open_positions ?? {});
-  const legCount = legRows.length;
-  const pendingLegs = legRows.filter((p) => String(p.status ?? "").toLowerCase() === "pending").length;
-  const filledLegs = legRows.filter((p) => String(p.status ?? "").toLowerCase() === "open").length;
-  const legsSubtitle =
-    legCount === 0
-      ? ""
-      : pendingLegs > 0 && filledLegs > 0
-        ? ` · ${pendingLegs} pending · ${filledLegs} filled`
-        : pendingLegs > 0
-          ? ` · ${pendingLegs} pending (not on Coinbase Positions yet)`
-          : ` · ${filledLegs} filled`;
+  const openLegRows = Object.values(scalp?.trader?.open_positions ?? {});
+  const pendingLegRows = Object.values(
+    (scalp?.trader as { pending_entries?: typeof openLegRows } | undefined)?.pending_entries ?? {},
+  );
+  const pendingLegs = pendingLegRows.length;
+  const filledLegs = openLegRows.length;
   const legsTitle =
-    "Scalp internal legs (pending unfilled entries + open/filled positions). " +
-    "Coinbase “Positions” only lists contracts you hold after an entry fills — resting entry limits and working stops/TPs are under Orders. " +
-    "If this count disagrees with the exchange, check for stale pending entries in Terminal open orders or restart after a crash.";
+    "Open = filled contracts the bot tracks (should match Coinbase FCM positions). " +
+    "Pending = unfilled entry limits only (not a position on Coinbase). " +
+    "Reconcile runs every ~12–30s against list_futures_positions.";
   const daily = scalp?.trader?.daily_pnl ?? 0;
   const venue = scalp?.venue ?? "—";
   const venueDisplay =
@@ -92,11 +86,11 @@ export function FlightDeck({ snapshot, scalp, connected, onOpenLogs }: Props) {
           Venue {venueDisplay}
         </span>
         <span
-          className={`fd-chip${legCount > 0 ? " fd-lit-info" : ""}`}
+          className={`fd-chip${filledLegs > 0 || pendingLegs > 0 ? " fd-lit-info" : ""}`}
           title={legsTitle}
         >
-          Legs {legCount}
-          {legsSubtitle ? <span className="fd-chip-sub">{legsSubtitle}</span> : null}
+          Open {filledLegs}
+          {pendingLegs > 0 ? <span className="fd-chip-sub"> · {pendingLegs} pending</span> : null}
         </span>
         <span className={`fd-chip${daily >= 0 ? " fd-pnl-pos" : " fd-pnl-neg"}`}>
           Today {daily >= 0 ? "+" : ""}{daily.toFixed(2)} USD

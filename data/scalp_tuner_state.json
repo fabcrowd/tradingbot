@@ -1,65 +1,65 @@
 {
-  "XRP_USD": {
-    "best_mode": "sar_chop",
-    "best_win_rate": 0.2835472783312033,
-    "best_pnl": -1.0158372900503911,
-    "best_trades": 3,
-    "frozen": false,
-    "aggressiveness": "moderate",
-    "adjustments": [],
-    "all_modes": {
-      "sar_chop": {
-        "win_rate": 0.2835,
-        "pnl": -1.015837,
-        "expectancy": -0.338612,
-        "trades": 3,
-        "profit_factor": 0.945,
-        "aggressiveness": "moderate",
-        "adjustments": []
-      }
-    },
-    "timestamp": 1776815762.3817377
-  },
   "BTC_USD": {
     "best_mode": "sar_chop",
-    "best_win_rate": 0.0,
-    "best_pnl": -2.8231031665559585,
-    "best_trades": 1,
+    "best_win_rate": 0.4,
+    "best_pnl": -10.574650368061207,
+    "best_trades": 25,
     "frozen": false,
     "aggressiveness": "aggressive",
     "adjustments": [],
     "all_modes": {
       "sar_chop": {
-        "win_rate": 0.0,
-        "pnl": -2.823103,
-        "expectancy": -2.823103,
-        "trades": 1,
-        "profit_factor": 0.0,
+        "win_rate": 0.4,
+        "pnl": -10.57465,
+        "expectancy": -0.422986,
+        "trades": 25,
+        "profit_factor": 0.6649,
         "aggressiveness": "aggressive",
         "adjustments": []
       }
     },
-    "timestamp": 1776815753.119196
+    "timestamp": 1779141840.8844483
   },
   "SOL_USD": {
-    "best_mode": "sar_chop",
-    "best_win_rate": 0.3385254346111272,
-    "best_pnl": -6.18505522716487,
-    "best_trades": 6,
+    "best_mode": "squeeze_momentum",
+    "best_win_rate": 0.6,
+    "best_pnl": 6.936964639260026,
+    "best_trades": 5,
     "frozen": false,
-    "aggressiveness": "aggressive",
+    "aggressiveness": "slow",
     "adjustments": [],
     "all_modes": {
-      "sar_chop": {
-        "win_rate": 0.3385,
-        "pnl": -6.185055,
-        "expectancy": -1.030843,
-        "trades": 6,
-        "profit_factor": 0.0794,
-        "aggressiveness": "aggressive",
+      "squeeze_momentum": {
+        "win_rate": 0.6,
+        "pnl": 6.936965,
+        "expectancy": 1.387393,
+        "trades": 5,
+        "profit_factor": 2.4949,
+        "aggressiveness": "slow",
         "adjustments": []
       }
     },
-    "timestamp": 1776815759.1077642
+    "timestamp": 1779141841.3054852
+  },
+  "XRP_USD": {
+    "best_mode": "squeeze_momentum",
+    "best_win_rate": 1.0,
+    "best_pnl": 0.04880948415461006,
+    "best_trades": 1,
+    "frozen": false,
+    "aggressiveness": "slow",
+    "adjustments": [],
+    "all_modes": {
+      "squeeze_momentum": {
+        "win_rate": 1.0,
+        "pnl": 0.048809,
+        "expectancy": 0.048809,
+        "trades": 1,
+        "profit_factor": 999.0,
+        "aggressiveness": "slow",
+        "adjustments": []
+      }
+    },
+    "timestamp": 1779141841.8526413
   }
 }

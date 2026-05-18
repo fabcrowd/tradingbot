@@ -5,11 +5,13 @@ from __future__ import annotations
 import asyncio
 import copy
 import logging
+import os
 import time
 import uuid
 from decimal import ROUND_HALF_UP, Decimal
 from typing import TYPE_CHECKING, NamedTuple
 
+from .coinbase_intx_reconcile import VenuePerpLeg, VenueReconcileSnapshot, venue_legs_by_product
 from .rate_limiter import RateLimiter
 from .state import ActiveOrder
 
@@ -153,6 +155,17 @@ def _retry_price_precision_from_coinbase(err_msg: str) -> bool:
             "INVALID_STOP_PRICE_PRECISION",
         )
     )
+
+
+def _is_insufficient_funds_reason(reason: str) -> bool:
+    u = (reason or "").upper()
+    return "INSUFFICIENT" in u and "FUND" in u
+
+
+def _is_protective_scalp_cl_ord_id(cl_ord_id: str) -> bool:
+    """Stop/TP/flatten client ids — venue IF on these must not block new entries."""
+    cid = str(cl_ord_id or "").strip().lower()
+    return cid.startswith(("scalp_stop_", "scalp_tp_", "scalp_prot_"))
 
 
 def _retry_exit_without_reduce_only(err_msg: str) -> bool:
@@ -557,6 +570,8 @@ class CoinbaseOrderManager:
         self._scalp_runtime: "ScalpRuntime | None" = None
         self._product_to_key: dict[str, str] = {}
         self._seen_fill_keys: set[str] = set()
+        # (product_id upper, buy|sell) → last fill price from poll (for ghost-leg reconcile).
+        self._last_venue_fill_price: dict[tuple[str, str], float] = {}
         self._fill_poll_logged: bool = False
         self._poll_task: asyncio.Task | None = None
         self._protective_poll_cycle: int = 0  # throttle stop/TP status checks
@@ -574,6 +589,12 @@ class CoinbaseOrderManager:
         self._futures_summary_ok_ts: float = 0.0
         self._balance_poll_failures: int = 0
         self._fill_poll_failures: int = 0
+        self._intx_portfolio_uuid: str | None = None
+        self._retail_portfolio_id_hint: str = ""
+        self._intx_portfolio_perm_denied: bool = False
+        self._last_intx_reconcile_sig: str = ""
+        self._intx_reconcile_tick: int = 0
+        self._last_venue_reconcile: VenueReconcileSnapshot | None = None
         self._limiter = RateLimiter(
             rate_per_sec=max(0.5, float(app_config.rate_limit_order_per_sec)),
             burst=max(5, int(app_config.rate_limit_burst)),
@@ -583,7 +604,23 @@ class CoinbaseOrderManager:
         """Monotonic wall time when futures balance summary last succeeded (for buying-power cap)."""
         return float(self._futures_summary_ok_ts or 0.0)
 
-    def _coinbase_note_order_reject(self, reason: str) -> None:
+    def _coinbase_note_order_reject(self, reason: str, *, cl_ord_id: str = "") -> None:
+        """Record venue reject; skip entry throttle timers for protective/exit client ids."""
+        if _is_protective_scalp_cl_ord_id(cl_ord_id):
+            self._state.last_order_reject_ts = time.time()
+            self._state.last_order_reject_reason = (reason or "")[:500]
+            if _is_insufficient_funds_reason(reason):
+                fut = (self.balance_snapshot().get("futures") or {})
+                if isinstance(fut, dict):
+                    LOG.warning(
+                        "CoinbaseOrderManager: protective order IF reject cl=%s | "
+                        "buying_power=%s available_margin=%s open_orders_hold=%s",
+                        str(cl_ord_id)[:20],
+                        fut.get("buying_power"),
+                        fut.get("available_margin"),
+                        fut.get("open_orders_hold_usd"),
+                    )
+            return
         self._state.note_order_reject(
             reason,
             source="coinbase",
@@ -743,6 +780,19 @@ class CoinbaseOrderManager:
         """Latest cached account balances for the dashboard."""
         return dict(self._balances)
 
+    def futures_available_margin_usd(self) -> float | None:
+        """Cached ``available_margin`` from last futures balance poll, or None if unknown."""
+        fut = self.balance_snapshot().get("futures")
+        if not isinstance(fut, dict):
+            return None
+        v = fut.get("available_margin")
+        if v is None:
+            return None
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
     def scalp_open_orders_snapshot(self) -> list[dict]:
         """Last resting Advanced Trade orders for configured scalp products (refreshed on exchange poll)."""
         return list(self._last_scalp_open_orders)
@@ -750,6 +800,22 @@ class CoinbaseOrderManager:
     def scalp_open_orders_all_snapshot(self) -> list[dict]:
         """All OPEN Advanced Trade orders for this key/portfolio (venue truth; refreshed with reconcile)."""
         return list(self._last_all_open_orders)
+
+    def exchange_positions_snapshot(self) -> list[dict]:
+        """Last FCM position reconcile rows for dashboard (Coinbase ground truth)."""
+        snap = self._last_venue_reconcile
+        if snap is None:
+            return []
+        rows: list[dict] = []
+        for leg in snap.legs:
+            rows.append({
+                "product_id": leg.product_id,
+                "pair_key": leg.pair_key,
+                "direction": leg.direction,
+                "qty": leg.qty,
+                "entry_price": leg.entry_price,
+            })
+        return rows
 
     def scalp_open_orders_outside_config_snapshot(self) -> list[dict]:
         """OPEN orders whose product_id is not in ``[scalp.pairs.*].symbol`` (manual legs, other contracts)."""
@@ -1066,7 +1132,7 @@ class CoinbaseOrderManager:
                     self._state.record_exchange_error(
                         "error", "Coinbase order rejected", str(e), "coinbase",
                     )
-                    self._coinbase_note_order_reject(str(e))
+                    self._coinbase_note_order_reject(str(e), cl_ord_id=cl_ord_id)
                     return ""
 
                 raw_out = _unwrap_response(resp) or _as_plain_dict(resp)
@@ -1126,7 +1192,10 @@ class CoinbaseOrderManager:
                         f"{product_id}: {last_err_msg}",
                         "coinbase",
                     )
-                    self._coinbase_note_order_reject(last_err_msg or "create_order success=false")
+                    self._coinbase_note_order_reject(
+                        last_err_msg or "create_order success=false",
+                        cl_ord_id=cl_ord_id,
+                    )
                     return ""
 
                 order_submitted = True
@@ -1793,6 +1862,12 @@ class CoinbaseOrderManager:
             return raw.get("fills") or [], raw
 
         fills, raw_resp = await asyncio.to_thread(_pull)
+        for f in fills:
+            fd = _as_plain_dict(f)
+            rid = str(fd.get("retail_portfolio_id") or fd.get("retailPortfolioId") or "").strip()
+            if rid:
+                self._retail_portfolio_id_hint = rid
+                break
         if not self._fill_poll_logged:
             self._fill_poll_logged = True
             sample = fills[:3] if isinstance(fills, list) else fills
@@ -1824,10 +1899,44 @@ class CoinbaseOrderManager:
             if not cid and exchange_oid in oid_to_cl:
                 cid, _ = oid_to_cl[exchange_oid]
 
+            product_id = str(f.get("product_id", ""))
+            side_raw = str(f.get("side") or f.get("order_side") or "").strip().lower()
+            try:
+                px_side = float(f.get("price", 0) or 0)
+                sz = float(f.get("size", 0) or f.get("base_quantity", 0) or 0)
+            except (TypeError, ValueError):
+                px_side = 0.0
+                sz = 0.0
+            if side_raw in ("buy", "sell") and product_id and px_side > 0:
+                self._last_venue_fill_price[(product_id.strip().upper(), side_raw)] = px_side
+
             if not str(cid).strip().lower().startswith("scalp_"):
+                pair_key_orphan = self._pair_key_for_product(product_id)
+                rt = self._scalp_runtime
+                if (
+                    pair_key_orphan
+                    and rt is not None
+                    and side_raw in ("buy", "sell")
+                    and px_side > 0
+                    and sz > 0
+                ):
+                    self._seen_fill_keys.add(key)
+                    asyncio.create_task(
+                        rt.on_orphan_venue_fill(
+                            pair_key_orphan,
+                            side_raw,
+                            px_side,
+                            sz,
+                            fee_usd=_scalp_fill_fee_usd(f),
+                            exchange_trade_id=trade_id or None,
+                            exchange_order_id=exchange_oid or None,
+                        ),
+                        name=f"coinbase_orphan_fill_{pair_key_orphan}",
+                    )
+                else:
+                    self._seen_fill_keys.add(key)
                 continue
 
-            product_id = str(f.get("product_id", ""))
             pair_key = self._pair_key_for_product(product_id)
             rt = self._scalp_runtime
             if not pair_key and rt is not None and cid:
@@ -1848,24 +1957,37 @@ class CoinbaseOrderManager:
                 self._seen_fill_keys.add(key)
                 continue
 
-            try:
-                px = float(f.get("price", 0) or 0)
-                sz = float(f.get("size", 0) or f.get("base_quantity", 0) or 0)
-            except (TypeError, ValueError):
-                continue
-            if px <= 0 or sz <= 0:
+            if px_side <= 0 or sz <= 0:
                 continue
 
             self._seen_fill_keys.add(key)
             fee_usd = _scalp_fill_fee_usd(f)
             LOG.info(
                 "Coinbase SCALP FILL pair=%s product=%s id=%s oid=%s qty=%.8f @ %.8f",
-                pair_key, product_id, cid[:24], exchange_oid[:16], sz, px,
+                pair_key, product_id, cid[:24], exchange_oid[:16], sz, px_side,
             )
             asyncio.create_task(
-                self._scalp_runtime.on_fill(pair_key, cid, px, sz, fee_usd=fee_usd),
+                self._scalp_runtime.on_fill(
+                    pair_key,
+                    cid,
+                    px_side,
+                    sz,
+                    fee_usd=fee_usd,
+                    fill_side=side_raw if side_raw in ("buy", "sell") else None,
+                    exchange_trade_id=trade_id or None,
+                    exchange_order_id=exchange_oid or None,
+                ),
                 name=f"coinbase_scalp_fill_{pair_key}",
             )
+
+    def last_venue_fill_price(self, symbol: str, side: str) -> float | None:
+        """Last polled fill price for ``symbol`` and venue side (``buy`` / ``sell``)."""
+        sym = str(symbol or "").strip().upper()
+        s = str(side or "").strip().lower()
+        if not sym or s not in ("buy", "sell"):
+            return None
+        px = self._last_venue_fill_price.get((sym, s))
+        return float(px) if px is not None and float(px) > 0 else None
 
     @staticmethod
     def _slim_open_order_for_snapshot(o: dict) -> dict:
@@ -1902,6 +2024,95 @@ class CoinbaseOrderManager:
             "trigger_price": round(tr, 8) if tr > 0 else 0.0,
             "base_size": round(bs, 8) if bs > 0 else 0.0,
         }
+
+    @staticmethod
+    def _resting_order_kind(o: dict) -> str:
+        """Classify a resting order snapshot: ``stop``, ``tp``, ``entry``, or ``other``."""
+        tr = _safe_float(o.get("trigger_price") or 0)
+        if tr > 0:
+            return "stop"
+        cid = str(o.get("client_order_id") or "").lower()
+        if cid.startswith("scalp_tp_"):
+            return "tp"
+        if cid.startswith(("scalp_entry_", "scalp_limit_")):
+            return "entry"
+        ot = str(o.get("order_type") or "").lower()
+        if "stop" in ot:
+            return "stop"
+        if "take" in ot and "profit" in ot:
+            return "tp"
+        return "other"
+
+    @staticmethod
+    def _product_id_matches_configured(configured: str, order_product: str) -> bool:
+        """Match API product_id to config symbol (exact or same underlying, e.g. SLP-*-CDE / SOL-PERP)."""
+        cfg_u = str(configured or "").strip().upper()
+        ord_u = str(order_product or "").strip().upper()
+        if not cfg_u or not ord_u:
+            return False
+        if cfg_u == ord_u:
+            return True
+        if cfg_u.startswith("SLP") and (ord_u.startswith("SLP") or "SOL" in ord_u):
+            return True
+        if cfg_u.startswith("BIP") and (ord_u.startswith("BIP") or "BTC" in ord_u):
+            return True
+        if cfg_u.startswith("XPP") and (ord_u.startswith("XPP") or "XRP" in ord_u):
+            return True
+        return False
+
+    def resting_protectives_for_product(
+        self,
+        product_id: str,
+        close_side: str,
+    ) -> tuple[list[dict], list[dict]]:
+        """Stops and TPs from the latest open-order cache for one product + closing side."""
+        side_u = str(close_side or "").strip().upper()
+        seen_oid: set[str] = set()
+        stops: list[dict] = []
+        tps: list[dict] = []
+        for o in self._last_scalp_open_orders + self._last_all_open_orders:
+            oid = str(o.get("order_id") or "")
+            if oid and oid in seen_oid:
+                continue
+            if not self._product_id_matches_configured(
+                product_id, str(o.get("product_id") or ""),
+            ):
+                continue
+            if str(o.get("side") or "").strip().upper() != side_u:
+                continue
+            if oid:
+                seen_oid.add(oid)
+            kind = self._resting_order_kind(o)
+            if kind == "stop":
+                stops.append(o)
+            elif kind == "tp":
+                tps.append(o)
+        return stops, tps
+
+    async def cancel_exchange_order_id(self, order_id: str) -> bool:
+        """Cancel by venue ``order_id`` (orphan / duplicate protectives)."""
+        oid = str(order_id or "").strip()
+        if not oid:
+            return False
+        client = self._ensure_client()
+        co = getattr(client, "cancel_orders", None)
+        if not callable(co):
+            return False
+        await self._limiter.acquire()
+
+        def _cancel() -> None:
+            co(order_ids=[oid])
+
+        try:
+            await asyncio.to_thread(_cancel)
+            return True
+        except Exception:
+            LOG.warning(
+                "CoinbaseOrderManager: cancel exchange order_id=%s failed",
+                oid[:16],
+                exc_info=True,
+            )
+            return False
 
     async def _fetch_open_orders_scalp(self, client) -> list[dict]:
         """Resting Advanced Trade orders for configured scalp products (entries / protectives)."""
@@ -1966,8 +2177,276 @@ class CoinbaseOrderManager:
             )
             return []
 
+    def _product_to_pair_map(self) -> dict[str, str]:
+        """Uppercase product_id → scalp pair_key (configured symbols + runtime registration)."""
+        m = {str(k).upper(): str(v) for k, v in self._product_to_key.items()}
+        for pk, pc in self._scalp_cfg.pairs.items():
+            sym = str(getattr(pc, "symbol", "") or "").strip().upper()
+            if sym:
+                m[sym] = pk
+        return m
+
+    async def _discover_intx_portfolio_uuid(self, client) -> str | None:
+        override = (os.getenv("COINBASE_INTX_PORTFOLIO_UUID") or "").strip()
+        if override:
+            self._intx_portfolio_uuid = override
+            return override
+        if self._intx_portfolio_uuid:
+            return self._intx_portfolio_uuid
+
+        gp = getattr(client, "get_portfolios", None)
+        lp = getattr(client, "list_perps_positions", None)
+        if not callable(lp):
+            return None
+        scalp_syms = {
+            str(getattr(pc, "symbol", "") or "").strip().upper()
+            for pc in self._scalp_cfg.pairs.values()
+            if str(getattr(pc, "symbol", "") or "").strip()
+        }
+
+        portfolios: list = []
+        if callable(gp):
+            def _portfolios() -> list:
+                raw = _unwrap_response(gp())
+                return raw.get("portfolios") or []
+
+            try:
+                portfolios = await asyncio.to_thread(_portfolios)
+            except Exception as e:
+                err = str(e).upper()
+                if "PERMISSION_DENIED" in err or "403" in err:
+                    self._intx_portfolio_perm_denied = True
+                    if not self._intx_portfolio_uuid:
+                        LOG.warning(
+                            "CoinbaseOrderManager: get_portfolios denied (403) — "
+                            "set COINBASE_INTX_PORTFOLIO_UUID in .env or enable portfolio view on API key",
+                        )
+                else:
+                    LOG.debug("CoinbaseOrderManager: get_portfolios failed", exc_info=True)
+        best_uid: str | None = None
+        best_score = -1
+        for p in portfolios:
+            d = _as_plain_dict(p)
+            uid = str(d.get("uuid") or "").strip()
+            if not uid:
+                continue
+            try:
+                await self._limiter.acquire()
+
+                def _list(u: str = uid) -> dict:
+                    return _unwrap_response(lp(u))
+
+                raw = await asyncio.to_thread(_list)
+                rows = raw.get("positions") or []
+            except Exception:
+                continue
+            score = 0
+            for row in rows:
+                rd = _as_plain_dict(row)
+                pid = str(rd.get("product_id") or rd.get("productId") or "").strip().upper()
+                if pid in scalp_syms:
+                    net = _safe_float(rd.get("net_size") or rd.get("netSize") or rd.get("size") or 0)
+                    if abs(net) > 0:
+                        score += 1
+            if score > best_score:
+                best_score = score
+                best_uid = uid
+        if best_uid:
+            self._intx_portfolio_uuid = best_uid
+            LOG.info(
+                "CoinbaseOrderManager: INTX portfolio uuid %s… (score=%d)",
+                best_uid[:8],
+                best_score,
+            )
+            return best_uid
+
+        # Fills often carry retail_portfolio_id even when get_portfolios is denied.
+        rid = (self._retail_portfolio_id_hint or "").strip()
+        if not rid:
+            rid = (os.getenv("COINBASE_INTX_PORTFOLIO_UUID") or os.getenv("COINBASE_RETAIL_PORTFOLIO_ID") or "").strip()
+        if rid:
+            try:
+                await self._limiter.acquire()
+                await asyncio.to_thread(lambda: _unwrap_response(lp(rid)))
+                self._intx_portfolio_uuid = rid
+                LOG.info(
+                    "CoinbaseOrderManager: INTX portfolio from env/fallback %s…",
+                    rid[:8],
+                )
+                return rid
+            except Exception:
+                pass
+        return None
+
+    async def _fetch_fcm_venue_snapshot(self, client) -> VenueReconcileSnapshot:
+        """Read CDE/FCM positions (``list_futures_positions`` — works on most CDP keys)."""
+        from .coinbase_intx_reconcile import parse_perps_position_row
+
+        product_map = self._product_to_pair_map()
+        configured = [
+            str(getattr(pc, "symbol", "") or "").strip()
+            for pc in self._scalp_cfg.pairs.values()
+            if str(getattr(pc, "symbol", "") or "").strip()
+        ]
+        venue_by_pid: dict[str, VenuePerpLeg] = {}
+        flat_pids: set[str] = set()
+        venue_ok = False
+
+        lfp = getattr(client, "list_futures_positions", None)
+        if callable(lfp):
+            try:
+                await self._limiter.acquire()
+
+                def _list_fcm() -> dict:
+                    return _unwrap_response(lfp())
+
+                raw = await asyncio.to_thread(_list_fcm)
+                rows = raw.get("positions") or []
+                venue_ok = True
+                venue_by_pid.update(venue_legs_by_product(rows, product_map))
+            except Exception as e:
+                LOG.warning("CoinbaseOrderManager: list_futures_positions failed | %s", e)
+
+        gfp = getattr(client, "get_futures_position", None)
+        if callable(gfp):
+            for pid in configured:
+                up = pid.upper()
+                if up in venue_by_pid:
+                    continue
+                try:
+                    await self._limiter.acquire()
+
+                    def _one(p: str = pid) -> dict:
+                        return _unwrap_response(gfp(p))
+
+                    raw = await asyncio.to_thread(_one)
+                    venue_ok = True
+                    row = raw.get("position") if isinstance(raw, dict) else None
+                    if row is None:
+                        flat_pids.add(up)
+                        continue
+                    leg = parse_perps_position_row(row, product_map)
+                    if leg is not None:
+                        venue_by_pid[up] = leg
+                    else:
+                        flat_pids.add(up)
+                except Exception as e:
+                    err = str(e).lower()
+                    if "nonetype" in err or "none" in err or "not found" in err:
+                        venue_ok = True
+                        flat_pids.add(up)
+                    else:
+                        LOG.debug(
+                            "CoinbaseOrderManager: get_futures_position(%s) failed",
+                            pid,
+                            exc_info=True,
+                        )
+
+        # INTX fallback when FCM list failed entirely (some keys only have perps portfolio APIs).
+        if not venue_ok:
+            uid = await self._discover_intx_portfolio_uuid(client)
+            lp = getattr(client, "list_perps_positions", None)
+            if uid and callable(lp):
+                try:
+                    await self._limiter.acquire()
+
+                    def _list_intx(u: str = uid) -> dict:
+                        return _unwrap_response(lp(u))
+
+                    raw = await asyncio.to_thread(_list_intx)
+                    rows = raw.get("positions") or []
+                    venue_ok = True
+                    venue_by_pid.update(venue_legs_by_product(rows, product_map))
+                except Exception as e:
+                    LOG.warning(
+                        "CoinbaseOrderManager: list_perps_positions fallback failed | %s",
+                        e,
+                    )
+
+        for pid in configured:
+            up = pid.upper()
+            if up not in venue_by_pid:
+                flat_pids.add(up)
+
+        return VenueReconcileSnapshot(
+            legs=tuple(venue_by_pid.values()),
+            flat_product_ids=frozenset(flat_pids),
+            venue_ok=venue_ok,
+        )
+
+    async def reconcile_phantom_pending_legs(self) -> None:
+        """Drop pending legs with no matching resting entry on the exchange."""
+        rt = self._scalp_runtime
+        if rt is None or bool(getattr(self._scalp_cfg, "sim_mode", False)):
+            return
+        trader = rt._trader
+        open_cl: set[str] = set()
+        for o in self._last_all_open_orders:
+            cid = str(o.get("client_order_id") or o.get("clientOrderId") or "").strip()
+            if cid:
+                open_cl.add(cid)
+        now = time.time()
+        for pos in list(trader._positions.values()):
+            if pos.status != "pending":
+                continue
+            cid = pos.entry_cl_ord_id
+            if cid in open_cl:
+                continue
+            ao = self._state.active_orders.get(cid)
+            if ao is not None and str(getattr(ao, "exchange_order_id", "") or "").strip():
+                continue
+            age = now - float(pos.opened_at or now)
+            if age < 45.0:
+                continue
+            LOG.warning(
+                "CoinbaseOrderManager: phantom pending %s (no OPEN order on venue, age=%.0fs) — purging",
+                pos.pair_key,
+                age,
+            )
+            trader._release_reserved_for_position(pos)
+            trader._positions.pop(cid, None)
+            self._state.active_orders.pop(cid, None)
+            self._state.push_alert(
+                "warning",
+                f"Scalp pending cleared: {pos.pair_key}",
+                "No resting entry on Coinbase — internal pending leg removed.",
+                "scalp_reconcile",
+            )
+
+    async def reconcile_scalp_intx_positions(self) -> None:
+        """Compare Coinbase FCM positions to ScalpTrader; adopt orphans / clear ghosts."""
+        rt = self._scalp_runtime
+        if rt is None or bool(getattr(self._scalp_cfg, "sim_mode", False)):
+            return
+        if str(getattr(self._scalp_cfg, "venue", "") or "").strip().lower() != "coinbase_perps":
+            return
+
+        client = self._ensure_client()
+        snap = await self._fetch_fcm_venue_snapshot(client)
+        self._last_venue_reconcile = snap
+
+        sig = "|".join(
+            sorted(
+                [f"{lg.product_id}:{lg.direction}:{lg.qty:.4f}" for lg in snap.legs]
+                + [f"flat:{p}" for p in sorted(snap.flat_product_ids)]
+            ),
+        )
+        if sig != self._last_intx_reconcile_sig:
+            self._last_intx_reconcile_sig = sig
+            if snap.legs:
+                LOG.info(
+                    "CoinbaseOrderManager: FCM venue legs: %s",
+                    ", ".join(f"{lg.product_id} {lg.direction} x{lg.qty}" for lg in snap.legs),
+                )
+            elif snap.venue_ok:
+                LOG.info("CoinbaseOrderManager: FCM venue flat (all configured symbols)")
+
+        if snap.venue_ok:
+            await rt.apply_intx_position_reconciliation(snap)
+        await self.reconcile_phantom_pending_legs()
+
     async def refresh_scalp_exchange_snapshots(self) -> None:
-        """Refresh cached open-order lists; re-check resting stop/TP for open legs (no perps-portfolio APIs)."""
+        """Refresh open-order cache, protective reconcile, and INTX position reconcile."""
         if self._scalp_runtime is None:
             return
         if bool(getattr(self._scalp_cfg, "sim_mode", False)):
@@ -2000,16 +2479,21 @@ class CoinbaseOrderManager:
                 )
 
         rt = self._scalp_runtime
-        if rt is not None and bool(rt._cfg.enabled) and not bool(rt._trader.sim_mode):
+        if rt is not None and not bool(rt._trader.sim_mode):
             seen: set[str] = set()
             for pos in list(rt._trader._positions.values()):
                 if pos.status != "open" or pos.pair_key in seen:
                     continue
                 seen.add(pos.pair_key)
-                try:
-                    await rt._trader.ensure_coinbase_protectives_match_exchange(pos.pair_key)
-                except Exception:
-                    LOG.debug(
-                        "CoinbaseOrderManager: ensure_coinbase_protectives_match_exchange failed",
-                        exc_info=True,
-                    )
+                if bool(rt._cfg.enabled):
+                    try:
+                        await rt._trader.ensure_coinbase_protectives_match_exchange(pos.pair_key)
+                    except Exception:
+                        LOG.debug(
+                            "CoinbaseOrderManager: ensure_coinbase_protectives_match_exchange failed",
+                            exc_info=True,
+                        )
+            try:
+                await self.reconcile_scalp_intx_positions()
+            except Exception:
+                LOG.debug("CoinbaseOrderManager: FCM position reconcile failed", exc_info=True)

@@ -7,6 +7,8 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+from scalp_bot.param_tuner import STRATEGY_MODES as TUNER_STRATEGY_MODES
+from scalp_bot.param_tuner import TUNABLE_PARAMS
 from scalp_bot.scalp_vec_backtest import (
     ParamSet,
     WFO_REGISTERED_STRATEGY_MODES,
@@ -14,6 +16,7 @@ from scalp_bot.scalp_vec_backtest import (
     evaluate_params,
 )
 from scalp_bot.scalp_wfo import save_champion
+from scalp_bot.strategy_lookback import STRATEGY_MODES as LOOKBACK_STRATEGY_MODES
 
 
 def _minimal_bars(n: int = 200) -> dict[str, np.ndarray]:
@@ -55,6 +58,13 @@ def test_build_default_grid_modes_are_registered() -> None:
     assert modes <= WFO_REGISTERED_STRATEGY_MODES
 
 
+def test_build_default_grid_covers_all_registered_modes() -> None:
+    """Every WFO-registered mode must compete in the default grid."""
+    grid_modes = {p.mode for p in build_default_grid()}
+    missing = WFO_REGISTERED_STRATEGY_MODES - grid_modes
+    assert not missing, f"build_default_grid missing modes: {sorted(missing)}"
+
+
 def test_registry_contains_all_expected_modes() -> None:
     expected = {
         "daviddtech_scalp", "ema_momentum", "ema_scalp", "macd_scalp",
@@ -70,6 +80,42 @@ def test_sar_chop_has_grid_entries() -> None:
     """sar_chop was added 2026-04-16 — guard against grid regressions."""
     sar_chop_entries = [p for p in build_default_grid() if p.mode == "sar_chop"]
     assert len(sar_chop_entries) > 0, "sar_chop missing from build_default_grid()"
+
+
+def test_utbot_alert_has_grid_entries() -> None:
+    """utbot_alert restored to default grid 2026-05 — guard against regression."""
+    rows = [p for p in build_default_grid() if p.mode == "utbot_alert"]
+    assert len(rows) >= 27, "utbot_alert missing or undersized in build_default_grid()"
+
+
+@pytest.mark.parametrize(
+    "mode,min_rows",
+    [
+        ("ema_scalp", 27),
+        ("squeeze_momentum", 27),
+        ("qqe_mod", 27),
+    ],
+)
+def test_restored_off_grid_modes_have_grid_entries(mode: str, min_rows: int) -> None:
+    rows = [p for p in build_default_grid() if p.mode == mode]
+    assert len(rows) >= min_rows, f"{mode} missing or undersized in build_default_grid()"
+
+
+def test_registered_modes_coverage_invariant() -> None:
+    """Every registered mode: tuner + lookback lists; tuner has TUNABLE_PARAMS."""
+    reg = set(WFO_REGISTERED_STRATEGY_MODES)
+    assert reg == set(TUNER_STRATEGY_MODES)
+    assert reg == set(LOOKBACK_STRATEGY_MODES)
+    for mode in reg:
+        assert mode in TUNABLE_PARAMS, f"{mode} missing from TUNABLE_PARAMS"
+
+
+@pytest.mark.parametrize("mode", sorted(WFO_REGISTERED_STRATEGY_MODES))
+def test_evaluate_params_each_registered_mode(mode: str) -> None:
+    bars = _minimal_bars(n=600)
+    p = replace(ParamSet(), mode=mode)
+    m = evaluate_params(bars, p)
+    assert m.trade_count >= 0
 
 
 def test_sar_chop_evaluate_does_not_raise_on_flat_bars() -> None:

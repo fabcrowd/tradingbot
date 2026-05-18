@@ -52,6 +52,8 @@ class ServerConfig:
 class AppConfig:
     server: ServerConfig = field(default_factory=ServerConfig)
     mode: str = "paper"
+    #: Active CDP pair from ``.env``: ``\"1\"`` = COINBASE_API_KEY / SECRET; ``\"2\"`` = …_KEY2 / …_SECRET2.
+    coinbase_credential_slot: str = "1"
     coinbase_api_key: str = ""
     coinbase_api_secret: str = ""
     # Coinbase REST rate limits (order pacing).
@@ -72,6 +74,30 @@ class AppConfig:
 
     def symbols(self) -> list[str]:
         return []
+
+
+def read_coinbase_creds_from_env() -> tuple[str, str, str]:
+    """Choose CDP API keypair from ``os.environ`` (after ``load_dotenv``).
+
+    Returns ``(credential_slot, api_key, api_secret)`` with slot ``\"1\"`` or ``\"2\"``.
+    Use ``COINBASE_CDP_CREDENTIAL_SLOT=2`` (or ``COINBASE_API_KEY_SLOT``) for the secondary pair.
+    """
+    slot_raw = (
+        os.getenv("COINBASE_CDP_CREDENTIAL_SLOT") or os.getenv("COINBASE_API_KEY_SLOT") or "1"
+    ).strip().lower()
+    credential_slot = "2" if slot_raw in {"2", "secondary", "alt", "b", "key2"} else "1"
+
+    if credential_slot == "2":
+        return (
+            credential_slot,
+            _sanitize_coinbase_api_key(os.getenv("COINBASE_API_KEY2", "")),
+            _normalize_coinbase_pem(os.getenv("COINBASE_API_SECRET2", "")),
+        )
+    return (
+        credential_slot,
+        _sanitize_coinbase_api_key(os.getenv("COINBASE_API_KEY", "")),
+        _normalize_coinbase_pem(os.getenv("COINBASE_API_SECRET", "")),
+    )
 
 
 def load_raw_toml(config_path: Path | None = None) -> dict:
@@ -115,8 +141,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     if mode not in ("paper", "live"):
         raise ValueError(f"Invalid mode: {mode!r} (must be 'paper' or 'live')")
 
-    coinbase_api_key = _sanitize_coinbase_api_key(os.getenv("COINBASE_API_KEY", ""))
-    coinbase_api_secret = _normalize_coinbase_pem(os.getenv("COINBASE_API_SECRET", ""))
+    credential_slot, coinbase_api_key, coinbase_api_secret = read_coinbase_creds_from_env()
     if safe_startup or _env_flag_any("ARCEUS_DISABLE_LIVE_KEYS", "MITCH_DISABLE_LIVE_KEYS"):
         coinbase_api_key = ""
         coinbase_api_secret = ""
@@ -124,6 +149,7 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     return AppConfig(
         server=server,
         mode=mode,
+        coinbase_credential_slot=credential_slot,
         coinbase_api_key=coinbase_api_key,
         coinbase_api_secret=coinbase_api_secret,
         rate_limit_order_per_sec=float(bot.get("rate_limit_order_per_sec", 10)),

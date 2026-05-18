@@ -1812,6 +1812,37 @@ export function SettingsTab({ scalp, send, connected, snapshot, focusPairKey = "
               Reason: {scalp.portfolio_risk.scalp_risk_halt_reason}
             </p>
           )}
+          {scalp?.portfolio_risk?.scalp_entries_blocked === true &&
+            scalp.portfolio_risk.scalp_risk_halted !== true &&
+            scalp.portfolio_risk.exchange_entries_throttled === true && (
+              <p className="settings-warn" style={{ marginTop: 0 }}>
+                Entries blocked by exchange cooldown (not scalp halt).
+                {scalp.portfolio_risk.exchange_throttle_insufficient_remain_sec != null &&
+                  scalp.portfolio_risk.exchange_throttle_insufficient_remain_sec > 0 && (
+                    <>
+                      {" "}
+                      Insufficient-funds window ~{" "}
+                      {scalp.portfolio_risk.exchange_throttle_insufficient_remain_sec}s remaining.
+                    </>
+                  )}
+                {scalp.portfolio_risk.exchange_throttle_reject_remain_sec != null &&
+                  scalp.portfolio_risk.exchange_throttle_reject_remain_sec > 0 && (
+                    <>
+                      {" "}
+                      Reject-pause ~ {scalp.portfolio_risk.exchange_throttle_reject_remain_sec}s remaining.
+                    </>
+                  )}
+                {scalp.portfolio_risk.last_order_reject_reason ? (
+                  <>
+                    {" "}
+                    Last venue message:{" "}
+                    <span style={{ wordBreak: "break-word" }}>
+                      {scalp.portfolio_risk.last_order_reject_reason}
+                    </span>
+                  </>
+                ) : null}
+              </p>
+            )}
           <div className="settings-btn-row">
             <button
               type="button"

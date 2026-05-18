@@ -63,6 +63,14 @@ async def run() -> None:
         and config.coinbase_api_key
         and config.coinbase_api_secret
     ):
+        ks = getattr(config, "coinbase_credential_slot", "1")
+        kk = config.coinbase_api_key.strip()
+        kmask = f"{kk[:28]}…{kk[-8:]}" if len(kk) > 36 else ("(short)" if kk else "(empty)")
+        log.info(
+            "Coinbase REST: credential slot=%s key=%s (set COINBASE_CDP_CREDENTIAL_SLOT=2 to use KEY2)",
+            ks,
+            kmask,
+        )
         coinbase_mgr = CoinbaseOrderManager(state, config, scalp_cfg, session_logger=session_log)
         try:
             await coinbase_mgr.initialize()

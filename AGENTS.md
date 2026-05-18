@@ -247,7 +247,7 @@ per_trade_profitability = true
 | `backend/server/book_client.py` | Kraken WS v2 public L2 order book subscription (depth-25) |
 | `backend/server/inventory.py` | Balance sync from Kraken, `can_buy()`/`can_sell()` with portfolio-level checks |
 | `backend/server/threat_detector.py` | Velocity, imbalance, spread blowout, realized vol |
-| `backend/server/fee_schedule.py` | Kraken fee tier tables (spot, stablecoin, maker_rebate, USDG, USDe) |
+| `backend/server/fee_schedule.py` | **Removed** — was Kraken MM tier tables. CDE: **`[scalp]`** + poll. Legacy MM JSONL replay: **`[pairs.*].fee_bps`** via `sim_runner`. |
 | `backend/server/pnl.py` | P&L tracking, JSONL persistence, 30-day volume |
 | `backend/server/session_logger.py` | JSONL session telemetry (fills, learner, halts, momentum) |
 | `backend/server/ws_server.py` | HTTP server + WebSocket push to dashboard, action dispatch |
@@ -265,8 +265,8 @@ per_trade_profitability = true
 | `backend/server/twap.py` | Time-weighted average price order splitting |
 | `backend/server/btd.py` | Buy-the-dip SMA crossover detection |
 | `backend/server/presets.py` | Pair archetype presets (stablecoin_zero_fee, altcoin_high_fee, conservative_test) |
-| `backend/server/sim_runner.py` | CLI spread_bps sweep simulation harness |
-| `backend/server/backtest.py` | Session-replay backtesting with `--spread-bps` and `--compare` |
+| `backend/server/sim_runner.py` | Legacy **Kraken MM** JSONL spread sweep (`data/trades_*.jsonl`) — not CDE indicator backtests |
+| `backend/server/backtest.py` | Legacy MM JSONL replay helpers used by `sim_runner` (not CDE bar/indicator backtests) |
 
 ### Frontend
 

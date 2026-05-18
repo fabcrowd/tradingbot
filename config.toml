@@ -113,7 +113,8 @@ depeg_threshold_bps = 50
 # per_trade_profitability = true floors the half-spread at (maker_fee + 4 bps)
 # so even spread_bps = 8 gets floored above fees at the current volume tier.
 #
-# Example spot fee ladder (historical MM pairs): fee_bps is a static fallback when schedules apply.
+# Legacy spread-MM pairs below: each ``fee_bps`` is a static maker estimate for that pair only.
+# Coinbase Derivatives (CDE) scalp fees live only under [scalp] (maker/taker bps + exchange poll).
 
 # --- USDG/USDT: 0% maker, 0.01% taker. $510K daily vol, 5bps spread, 9bps range.
 # Inventory: 156 USDG + 217 USDT (shared w/ XRP). Best spread pair.
@@ -126,11 +127,10 @@ spread_bps = 1
 order_size = 10.0
 max_inventory = 0
 fee_bps = 0
-fee_schedule = "usdg"
 spread_floor_bps = 1
 min_order_qty = 5.0
 
-# --- XRP/USDT: 25bps maker (spot_crypto). $1.6M daily vol, 2bps natural spread.
+# --- XRP/USDT: 25 bps maker (static estimate for legacy MM). $1.6M daily vol, 2bps natural spread.
 # Inventory: 60 XRP + 217 USDT (shared w/ USDG). Wide spread but liquid.
 [pairs.XRP_USDT]
 symbol = "XRP/USDT"
@@ -138,7 +138,6 @@ spread_bps = 8
 order_size = 15.0
 max_inventory = 100.0
 fee_bps = 25
-fee_schedule = "spot_crypto"
 spread_floor_bps = 8
 
 # --- TEL/USD: maker_rebate 23bps. $30K daily vol, 4.8bps spread.
@@ -153,10 +152,9 @@ order_size = 2500.0
 max_inventory = 50000.0
 cycle_ms = 3000
 fee_bps = 23
-fee_schedule = "maker_rebate"
 spread_floor_bps = 25
 
-# --- USDe pairs: 0% maker, 0% taker (Kraken promo). Thin books = easy queue.
+# --- USDe pairs: 0% maker, 0% taker (historical promo tier). Thin books = easy queue.
 # USDE/USDT: 3 bps market spread, ~$6K ask / $2K bid at top. Any fill is pure profit.
 [pairs.USDE_USDT]
 symbol = "USDE/USDT"
@@ -164,7 +162,6 @@ spread_bps = 2
 order_size = 15.0
 max_inventory = 0
 fee_bps = 0
-fee_schedule = "usde_promo"
 spread_floor_bps = 1
 min_order_qty = 5.0
 
@@ -175,7 +172,6 @@ spread_bps = 2
 order_size = 15.0
 max_inventory = 0
 fee_bps = 0
-fee_schedule = "usde_promo"
 spread_floor_bps = 1
 min_order_qty = 5.0
 
@@ -195,7 +191,6 @@ order_levels = 3
 level_step_bps = 40
 min_order_qty = 75.0
 fee_bps = 23
-fee_schedule = "maker_rebate"
 inventory_skew_scale = 0.6
 
 # --- USDG/USDC: 0% maker. ~600K daily vol. Stablecoin pair — no inventory risk.
@@ -206,7 +201,6 @@ spread_bps = 1
 order_size = 10.0
 max_inventory = 0
 fee_bps = 0
-fee_schedule = "usdg"
 spread_floor_bps = 1
 min_order_qty = 5.0
 
@@ -218,7 +212,6 @@ spread_bps = 8
 order_size = 30.0
 max_inventory = 300.0
 fee_bps = 25
-fee_schedule = "spot_crypto"
 spread_floor_bps = 8
 
 [pairs.SOL_USD]
@@ -229,7 +222,6 @@ bootstrap_until_sell_trades = 10
 order_size = 0.2
 max_inventory = 2.0
 fee_bps = 25
-fee_schedule = "spot_crypto"
 spread_floor_bps = 26
 
 [pairs.BTC_USDT]
@@ -238,7 +230,6 @@ spread_bps = 40
 order_size = 0.0005
 max_inventory = 0.004
 fee_bps = 25
-fee_schedule = "spot_crypto"
 spread_floor_bps = 20
 
 [pairs.ETH_USDT]
@@ -247,7 +238,6 @@ spread_bps = 40
 order_size = 0.005
 max_inventory = 0.04
 fee_bps = 25
-fee_schedule = "spot_crypto"
 spread_floor_bps = 20
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -265,7 +255,7 @@ spread_floor_bps = 20
 [scalp]
 enabled = true
 # When pair ``strategy_mode`` is "auto" and there is no WFO champion row yet — default to sar_chop
-# (TV "5 min bot scalper" decode: PSAR + Lucid SAR + MACD + MA50/200 + UT Bot trail + CHOP<38.2).
+# (TV "5 min bot scalper" decode: PSAR + Lucid SAR + MACD + MA50/200 + UT Bot trail + CHOP threshold from pair config — default cutoff is documented in strategies.md.)
 # WFO will still promote a different mode as champion if it scores better on that symbol.
 auto_mode_fallback = "sar_chop"
 # Execution + candles: ``coinbase_perps`` only (Coinbase Derivatives Exchange).
@@ -288,10 +278,15 @@ use_exchange_buying_power_cap = true        # min(allocated, Coinbase futures bu
 buying_power_buffer_usd = 50.0              # keep $50 headroom beyond what the bot sizes against
 balance_stale_sec = 120.0                   # ignore buying_power if futures summary older than this
 protective_margin_reserve_mult = 1.5        # extra reserved margin = entry_margin × this after stop+TP OK
-# Reject cooldowns — pause entries after consecutive exchange rejections.
+# When false (default), venue rejects do not pause new entries — sizing + buying_power cap gate entries instead.
+exchange_entry_cooldown_enabled = false
+# Only used when exchange_entry_cooldown_enabled = true — pause entries after consecutive rejects / IF messages.
 order_reject_max_consecutive = 3
 order_reject_cooldown_sec = 120.0
 insufficient_funds_cooldown_sec = 300.0
+# Closed-leg summaries: persist across backend restarts for chart markers + analytics (JSONL on disk).
+persist_trade_history = true
+trade_history_max_entries = 500   # deque length + how many rows reload from tail of data/scalp_trade_history.jsonl
 exchange_penalize_base_sec = 15.0           # RateLimiter penalty on 403 / connection errors
 # limit | market | hybrid (limit first; empirical_market_promotion may switch to market bursts)
 order_type = "hybrid"
@@ -317,11 +312,21 @@ empirical_market_promotion_entries = 2
 empirical_market_promotion_cooldown_sec = 3600.0
 # When true, WFO + param tuner vec sim charge taker bps per leg (stress vs empirical market bursts).
 wfo_assume_taker_fee = false
-# Backtest / WFO / tuner / live PnL sim: Coinbase **Derivatives** (CDE) schedule — NOT spot.
-# Example Advanced 2 @ ~$50k–$500k 30d derivatives volume: 0.065% maker / 0.070% taker (= 6.5 / 7.0 bps per leg).
-# Maker/taker are % of notional per fill leg. Coinbase also charges a flat **per-contract** amount for
-# NFA/exchange/clearing (fee page: e.g. $0.15/contract) — that is fee_usd_per_contract_per_leg below; it is
-# NOT returned by the transaction_summary API, so you must update it in toml if Coinbase changes the table.
+# Backtest / WFO / tuner / live PnL sim: **Coinbase Advanced Trade → Fees → Derivatives** (CDE nano perps), not spot.
+# Same account shows **Spot** vs **Derivatives** fees separately; scalp uses **Derivatives** only.
+# Official ladder (30-day derivatives volume → maker | taker as % of notional, = bps per leg):
+#   $250M+           0.005% | 0.010%   (0.5 / 1.0 bps)
+#   $100M–$250M      0.015% | 0.020%
+#   $50M–$100M       0.025% | 0.030%
+#   $15M–$50M        0.035% | 0.040%
+#   $1M–$15M         0.045% | 0.050%
+#   $500K–$1M        0.055% | 0.060%
+#   $50K–$500K       0.065% | 0.070%   ← toml defaults below (e.g. ~$105K 30d vol)
+#   $10K–$50K        0.075% | 0.080%
+#   $1K–$10K         0.085% | 0.090%
+#   under $1K        0.095% | 0.100%
+# Plus flat **per contract** NFA / exchange / clearing (fee page: e.g. $0.15/contract) — fee_usd_per_contract_per_leg;
+# not returned by transaction_summary, so bump in toml if Coinbase changes it.
 # With fee_tier_volume_source = "exchange" + fee_tier_auto_apply_exchange_fee_rates = true, maker/taker bps
 # are overwritten in memory from GET transaction_summary (futures/perp variants) on startup and on each poll;
 # WFO / vec backtest / param tuner read the live ScalpBotConfig (so they track tier moves automatically).
@@ -368,14 +373,21 @@ wfo_enabled = true
 # Shorter interval = more WFO passes (CPU); still floored at 60s in the WFO loop.
 wfo_interval_sec = 300.0              # 5min — faster champion refresh when machine can take it
 wfo_train_hours = 168.0               # 1 week (~2016 bars at 5m) — flat weighting = more data is better
-wfo_holdout_hours = 24.0              # 1-day out-of-sample window — reduced from 48h; 48h windows were entirely signal-free on choppy days (sar_chop CHOP>38.2 wipes whole window)
+wfo_holdout_hours = 24.0              # 1-day out-of-sample window — reduced from 48h; 48h windows were entirely signal-free on choppy days (sar_chop default chop_threshold lets CHOP veto whole windows when index stays above cutoff)
 wfo_step_hours = 24.0                 # roll folds by 24h (set very large for one-window WFO)
 wfo_max_roll_windows = 21             # more folds = stabler $ ranking (span grows ~linearly; more CPU)
 # REST backfill requests WFO roll span + this many hours (gaps/pagination slack; 0 = exact span only).
 wfo_backfill_buffer_hours = 24
 # false = strict primary min-window count only (no quarter-fold / min_windows=1 WFO promotion fallback).
 wfo_allow_promotion_relaxation = false  # no fallback tiers — must meet primary window fraction or stay flat
-wfo_top_k = 80                        # more train survivors re-tested on each holdout (default was 50)
+# Post 11-mode grid (~5k rows): keep 80 until first WFO refresh; bump only if per-mode holdout pool is thin — see pine/HANDOFF_RESTORE_OFF_GRID_WFO_MODES.md § wfo_top_k
+wfo_top_k = 80                        # train top-K re-tested on each holdout fold (was 50; 95–100 ≈ old selection rate, ~110 ≈ ~10 slots/mode)
+# P0: alert when |1 - forward_pnl/(holdout_exp*trades)| exceeds this (see forward_reconciliation_report.py)
+wfo_forward_reconciliation_alert_pct = 0.30
+# P3: pure live loss circuit breaker (default off — enable after reviewing forward reconciliation)
+wfo_live_circuit_breaker_enabled = false
+wfo_live_circuit_breaker_dd_mult = 2.0
+wfo_live_circuit_breaker_hours = 24.0
 wfo_train_same_calendar_day_boost = 0.0  # disabled — rolling windows already capture recency; boost distorts total_pnl
 wfo_min_trades = 3                    # minimum closed trades per train slice to score a grid point
 wfo_min_holdout_trades = 1            # minimum closed trades on holdout — lowered from 3; current market too choppy for 3 trades/day threshold
@@ -396,10 +408,12 @@ param_tuner_require_wfo_champion = true
 param_tuner_allow_mode_override_champion = false
 # WFO champion ranking: holdout metric to maximize (see backend/server/scalp_bot/scalp_wfo.py _OBJECTIVES).
 # total_pnl = sum of simulated USD P&L on holdout (1 contract, pair contract_size, maker/taker + flat/leg).
-# When true: each WFO pass maximizes mean holdout simulated USD (``total_pnl``) and skips heavy
-# promotion gates (stability, mean-score floor, latest-window PnL/PF, same-mode param safety,
-# beat-prior, min_champion_score_delta, vol-armed WFO overlay). Rolling folds + trade floors unchanged.
+# When true: rank by **sum** of holdout USD across OOS slices where top-K tested (period performance),
+# not ``wfo_min_window_fraction`` fold-count bar; skips heavy promotion gates (stability, etc.).
 wfo_pnl_first_promotion = true
+wfo_exhaustive_grid_holdout = true  # holdout every grid row each fold; best total OOS $ wins
+wfo_min_period_holdout_trades = 3   # min total OOS closed trades summed across tested folds
+# wfo_top_k ignored when wfo_exhaustive_grid_holdout = true
 wfo_objective = "total_pnl"
 wfo_forward_min_trades = 10          # live trades required before demotion check activates
 wfo_forward_demotion_threshold = -0.5 # Gate 1: live PnL ratio floor (forward_pnl / holdout_expectancy×trades)
@@ -418,7 +432,8 @@ wfo_champion_cooldown_sec = 3600.0      # 1h min gap between champion replacemen
 # Safety gate deltas: raise from hardcoded 1.0/1.5 — grid explores TP 1.5→6.0 so ±1.5 blocked 31% of passes
 wfo_max_param_delta_stop = 2.0          # was 1.0 — allow stop_mult swings up to ±2.0 between champions
 wfo_max_param_delta_tp = 3.0            # was 1.5 — allow tp_mult swings up to ±3.0 between champions
-# Holdout participation: require each candidate on >= floor(N folds * fraction). 0.35 promotes more often than legacy half-window bar.
+# Holdout participation (only when wfo_pnl_first_promotion = false): min folds a param must score OOS.
+# With pnl-first, champion = best total holdout $ over the roll; this fraction is ignored.
 wfo_min_window_fraction = 0.35
 # Train IS hard gates (per rolling train slice, before a grid point scores). Defaults match WFOConfig.
 wfo_min_profit_factor = 0.0              # disabled — with min_trades=2, single-window PF is noise; holdout aggregation is the real filter

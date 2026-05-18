@@ -1,0 +1,119 @@
+================================================================================
+HANDOFF: Scalp strategies for LLM parity / logic review (Trading Bot repo)
+================================================================================
+Purpose
+  Human is preparing current Coinbase CDE scalp strategies for another LLM to
+  review (Python bot vs TradingView Pine translations, drift, fixes).
+
+Canonical trading bar size
+  5-minute candles everywhere for live + TV comparison:
+  - ScalpPairConfig.interval defaults to 5 (scalp_config.py).
+  - Pine scripts state "use 5m chart" in header; strategy titles include "(5m)".
+
+Where the bot defines strategies (source of truth for entries)
+  backend/server/scalp_bot/scalp_vec_backtest.py
+    - detect_signals_* per mode
+    - simulate_trades_bidir (most modes), simulate_trades_rsi (rsi_reversion)
+    - Shared helpers at top: ema(), atr(), rsi(), …
+  backend/server/scalp_bot/indicator_warmup.py
+    - vec_warmup_prefix_len / min_bars_ready_for_mode (first-bar masking)
+  tradingbot-main/strategies.md (repo root)
+    - Human-readable spec aligned with code
+
+Registered modes (11)
+  daviddtech_scalp, ema_momentum, ema_scalp, macd_scalp, rsi_reversion,
+  supertrend, squeeze_momentum, qqe_mod, utbot_alert, hull_suite, sar_chop
+  (see WFO_REGISTERED_STRATEGY_MODES in scalp_vec_backtest.py)
+
+Pine exports (for TV backtest / side-by-side review)
+  pine/TradingBotScalp_AllModes.pine
+    - Dropdown to select mode (paste once in TV).
+  pine/by_mode/TradingBotScalp__<mode>.pine
+    - One file per mode (fixed MODE_OPT).
+
+Packaged folders for outbound LLM review (zip what you send)
+  pine/review_packages/README.txt — layout overview.
+  pine/review_packages/_shared/ — warmup module, strategies.md, exit-sim excerpts, this handoff.
+  pine/review_packages/<mode>/ — strategy.pine + bot excerpt + README per strategy.
+  Regenerate bundles after bot/Pine edits:
+    python pine/_gen_by_mode.py && python pine/package_review_folders.py
+
+  pine/README.txt — setup notes, parity caveats.
+  pine/_gen_by_mode.py — refresh pine/by_mode from AllModes.
+  pine/package_review_folders.py — build/rebuild review_packages/.
+
+Suggested review order (simple → complex)
+  1. ema_momentum — EMA cross + ATR gate + warmup; seeding drift vs ta.ema.
+  2. ema_scalp, macd_scalp, rsi_reversion
+  3. supertrend, utbot_alert, hull_suite
+  4. squeeze_momentum, qqe_mod
+  5. daviddtech_scalp — ADX via ta.dmi vs numpy adx_wilder
+  6. sar_chop — PSAR (dual state machines), CHOP, UT trail direction
+
+Dimensions the reviewer should check
+  - Seeding / warmup bars vs indicator_warmup + vec masks
+  - Pine [N] indexing vs numpy slices on crosses and state machines
+  - var persistence in Pine (separate f_psar_hl vs f_psar_cc for Lucid)
+  - Order timing: strategy process_orders_on_close; bot fill_model close_slip vs next_open
+  - Stop-before-TP vs intrabar ordering in simulate_trades_bidir
+
+Out of scope for these Pine files
+  - strategy_mode "auto" (champion picker only)
+  - news_trade path
+  - Polymarket bot strategies (different problem domain)
+
+Defaults / config surface
+  backend/server/scalp_bot/scalp_config.py — intervals, atr_stop_mult, atr_tp_mult,
+  max_hold_bars, per-mode inputs.
+
+Audit framework (final — use on all mode audits from macd_scalp onward)
+  Path tags (multiple allowed): [WFO] [LIVE] [BOOT] [TUNER] [DOC]
+  Severity floor by tag combo:
+    [WFO][LIVE]     -> red unless trivial
+    [WFO] only      -> red if mode in default grid; yellow if off-grid
+    [LIVE] only     -> red (all pairs on that mode)
+    [BOOT]          -> yellow (no-champion / new symbol only)
+    [TUNER]         -> yellow (refinement; no mode flip when champion locked)
+    [DOC]           -> green
+  Full addendum + X/Y findings: pine/HANDOFF_AUDIT_SELECTION_PATH_ADDENDUM.md
+
+Selection-path addendum status (2026-05-16, maintainer ack)
+  X1 cooldown_bars     -> scoped hull_suite-only; designer call pending
+  X2 champion refresh  -> periodic WFO + on-demand full run_once; assume stale post sim fix
+  X3 exit parity       -> entry brackets OK except ema_scalp; counter-exit strictness gap tracked
+  X4 grid omissions    -> pending designer call
+  X5 tuner vs grid     -> pending per-mode tables in audits
+  X6-X7                -> done (ledger)
+
+Deferred bucket (recalibrated — path tags)
+  ema_scalp WFO vs live S/R exits          [WFO][LIVE] off-grid — manual pin only; lower priority
+  Counter-exit strictness asymmetry        [WFO][LIVE] — WFO bidir counter unconditional; live
+    check_counter_signal needs breakeven + confidence; holds longer live; timing not price gap
+  cooldown_bars sweep (hull_suite)         [WFO] — X1 designer call
+  WFO grid restore (4 modes)               [WFO] — utbot on-grid; squeeze/qqe/ema_scalp pending
+    See pine/HANDOFF_RESTORE_OFF_GRID_WFO_MODES.md
+  Tuner vs WFO grid alignment              [TUNER] — X5 hygiene
+  rsi_reversion sim fixes refresh          [WFO] — full symbol-set WFO after scoring change (X2)
+  Scoring-function version on champions    [WFO] — Y2 proactive; no field in JSON today
+  Cross-symbol total_pnl on scoreboard     [WFO][DOC] — Y1; per-symbol WFO OK; UI cross-symbol biased
+  Scoreboard omitted-mode UX               [DOC] — Y3; grid modes absent look like underperformers
+  Tuner perturbation vs WFO grid bounds    [TUNER] — Y4 intent clarification
+  hull_no_long_flip log rename             [LIVE][DOC] — cosmetic
+  Repo-wide shape guards                   [LIVE][BOOT] — per-mode during audits only
+  T3 vectorization perf                    [WFO][LIVE] — defer until profiling
+
+Audit status (detector logic reviews)
+  Done: daviddtech (prior), ema_momentum, ema_scalp, hull_suite, rsi_reversion,
+    macd_scalp, supertrend, utbot_alert (on-grid 2026-05; TV-parity init),
+    squeeze_momentum (2026-05-17; code fixes + HANDOFF_AUDIT_SQUEEZE_MOMENTUM.md),
+    selection-path addendum (X1-X7 + framework).
+  Done (2026-05-17): squeeze_momentum — see pine/HANDOFF_AUDIT_SQUEEZE_MOMENTUM.md (warmup/D/J/C/H fixed; A deliberate).
+  Done (2026-05-17): qqe_mod — see pine/HANDOFF_AUDIT_QQE_MOD.md (warmup B/E/F/A/H fixed; D canonical; C/I deferred).
+  Done (2026-05-17): sar_chop — see pine/HANDOFF_AUDIT_SAR_CHOP.md (D not a bug; I/K/H/G/B doc; E/F deferred; excerpt fixed).
+  Per-mode detector audits: complete (11/11). Default WFO grid: all 11 modes on-grid (2026-05-17).
+  Next phase (ops / validation, not more mode audits): pine/HANDOFF_POST_AUDIT_OPERATIONS.md
+    P0 live vs holdout tracking, P1 param_tuner audit, P2 slippage calibration, P3 circuit breaker spec.
+  Deferred: batched shape validation; ema_scalp live exit parity; wfo_top_k bump (watch at 80).
+  Cross-audit: hull_suite = state-classifier; supertrend/utbot = flip edge detectors (TV direction=1 seed).
+
+================================================================================

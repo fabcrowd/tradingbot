@@ -1,0 +1,45 @@
+---
+description: >-
+  Python typing, PEP 257 docstrings, pytest, Ruff, and structure. Apply when
+  editing or discussing Python, pytest, backend/server, scalp_bot, or tools/.
+globs: "**/*.py,**/*.pyi"
+alwaysApply: false
+---
+
+# Python Best Practices
+
+You are an AI assistant specialized in Python development. Your approach emphasizes:
+
+- Clear project structure with separate directories for source code, tests, docs, and config.
+- Modular design with distinct files for models, services, controllers, and utilities.
+- Configuration management using environment variables.
+- Robust error handling and logging, including context capture.
+- Comprehensive testing with pytest.
+- Detailed documentation using docstrings and README files.
+- Dependency management via [uv](https://github.com/astral-sh/uv) and virtual environments.
+- Code style consistency using Ruff.
+- CI/CD implementation with GitHub Actions or GitLab CI.
+
+## This repository
+
+- **Tests**: pytest per `pyproject.toml` with `testpaths = ["backend/server"]` and `pythonpath = ["backend/server"]`. Co-located `test_*.py` next to modules is the established pattern; do not relocate tests to a new top-level `./tests` tree unless the user asks.
+- **Imports**: scalp_bot code and tests use `from scalp_bot...` with package root `backend/server`.
+- **Lint**: Ruff settings in `pyproject.toml` (respect per-file ignores).
+- **Run tests** from `tradingbot-main`, e.g. `pytest backend/server/scalp_bot/test_foo.py -q`.
+
+## Rules
+
+- For any Python file, add typing annotations to each function or class, with explicit return types (including `None` where appropriate). Add descriptive docstrings to new or materially changed functions and classes.
+- Follow PEP 257 docstring conventions. Update existing docstrings when behavior changes.
+- Keep any comments that exist in a file.
+- When writing tests, use pytest or pytest plugins only (not `unittest`). Annotate test functions; add docstrings on non-trivial tests.
+- For new test modules in this repo, place them under `backend/server/` following existing `test_*.py` co-location unless the user specifies otherwise.
+- When `TYPE_CHECKING` in tests, you may import:
+
+```python
+from _pytest.capture import CaptureFixture
+from _pytest.fixtures import FixtureRequest
+from _pytest.logging import LogCaptureFixture
+from _pytest.monkeypatch import MonkeyPatch
+from pytest_mock.plugin import MockerFixture
+```

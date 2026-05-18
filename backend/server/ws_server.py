@@ -1109,20 +1109,22 @@ class DashboardServer:
             if not isinstance(raw, dict):
                 continue
             eff_fee = _toml_float(raw.get("fee_bps"), 0.0)
+            sched = str(raw.get("fee_schedule", "") or "").strip()
+            label = sched if sched else f"{eff_fee:g}bps_static"
             pairs[key] = {
                 "symbol": str(raw.get("symbol", key)),
                 "spread_bps": _toml_int(raw.get("spread_bps"), 0),
                 "order_size": _toml_float(raw.get("order_size"), 0.0),
                 "max_inventory": _toml_float(raw.get("max_inventory"), 0.0),
                 "fee_bps": eff_fee,
-                "fee_schedule": str(raw.get("fee_schedule", "")),
+                "fee_schedule": sched,
                 "cycle_ms": _toml_int(raw.get("cycle_ms"), 0) or _toml_int(b.get("default_cycle_ms"), 3000),
                 "inventory_skew_scale": _toml_float(raw.get("inventory_skew_scale"), 0.0),
                 "spread_floor_bps": _toml_int(raw.get("spread_floor_bps"), 0),
                 "bootstrap_half_spread_bps": _toml_int(raw.get("bootstrap_half_spread_bps"), 0),
                 "bootstrap_until_sell_trades": _toml_int(raw.get("bootstrap_until_sell_trades"), 0),
             }
-            fee_tier_by_pair[key] = {"label": raw.get("fee_schedule", "n/a"), "maker_bps": eff_fee}
+            fee_tier_by_pair[key] = {"label": label, "maker_bps": eff_fee}
 
         ep = b.get("enabled_pairs")
         if ep is None:
@@ -1590,6 +1592,7 @@ class DashboardServer:
                 "scalp_entries_blocked": self._state.scalp_entries_blocked(),
                 "mm_spread_bot_enabled": bool(getattr(self._state, "mm_spread_bot_enabled", False)),
                 "mm_risk_halted": bool(getattr(self._state, "risk_halted", False)),
+                **self._state.scalp_exchange_throttle_diag(),
             },
             "config_warnings": [],
             "slip_calibration": {

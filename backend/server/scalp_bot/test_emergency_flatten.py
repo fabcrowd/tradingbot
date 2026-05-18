@@ -78,6 +78,9 @@ def test_emergency_flatten_live_reduce_only_market(bot_state) -> None:
     assert mgr.add_calls[0]["reduce_only"] is True
     assert mgr.add_calls[0]["side"] == "sell"
     assert bot_state.scalp_risk_halted is True
+    # Live flatten defers close until fill — leg stays open until on_fill.
+    assert pos.status == "open"
+    assert pos.entry_cl_ord_id in rt._trader._positions
 
 
 def test_manual_close_live_reduce_only_no_halt(bot_state) -> None:

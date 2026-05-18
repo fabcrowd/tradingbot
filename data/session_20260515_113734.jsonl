@@ -1,0 +1,11 @@
+{"event": "session_start", "mode": "live", "ts": 1778845054.572}
+{"event": "scalp", "subtype": "runtime_task_begin", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "venue": "coinbase_perps", "wfo_enabled": true, "sim_mode": false, "warmup_enabled": true, "wfo_train_hours": 168.0, "wfo_holdout_hours": 24.0, "wfo_step_hours": 24.0, "ts": 1778845055.503}
+{"event": "scalp", "subtype": "scalp_fee_tier_refresh", "trigger": "auto_poll", "success": true, "detail": "ok", "maker_bps": 6.5, "taker_bps": 7.0, "prev_maker_bps": 6.5, "prev_taker_bps": 7.0, "rates_changed": false, "total_volume_30d_usd": 0.0, "ts": 1778845064.69}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 168.0, "holdout_hours": 24.0, "step_hours": 24.0, "interval_sec": 300.0, "objective": "total_pnl", "ts": 1778845076.355}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 5, "new_rows": 0, "total_in_store": 16745, "hours_needed": 697.0, "ts": 1778845088.392}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 5, "new_rows": 1, "total_in_store": 14421, "hours_needed": 697.0, "ts": 1778845099.972}
+{"event": "scalp", "subtype": "bar_backfill", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 5, "new_rows": 1, "total_in_store": 13745, "hours_needed": 697.0, "ts": 1778845111.42}
+{"event": "scalp", "subtype": "bar_backfill_skipped", "pair_key": "BTC_USD", "symbol": "BIP-20DEC30-CDE", "interval": 5, "reason": "span_already_sufficient", "total_in_store": 16745, "roll_hours": 673.0, "ts": 1778845111.483}
+{"event": "scalp", "subtype": "bar_backfill_skipped", "pair_key": "SOL_USD", "symbol": "SLP-20DEC30-CDE", "interval": 5, "reason": "span_already_sufficient", "total_in_store": 14421, "roll_hours": 673.0, "ts": 1778845111.523}
+{"event": "scalp", "subtype": "bar_backfill_skipped", "pair_key": "XRP_USD", "symbol": "XPP-20DEC30-CDE", "interval": 5, "reason": "span_already_sufficient", "total_in_store": 13745, "roll_hours": 673.0, "ts": 1778845111.546}
+{"event": "scalp", "subtype": "wfo_pass_start", "pairs": ["BTC_USD", "SOL_USD", "XRP_USD"], "train_hours": 168.0, "holdout_hours": 24.0, "step_hours": 24.0, "interval_sec": 300.0, "objective": "total_pnl", "ts": 1778845111.631}

@@ -1,0 +1,75 @@
+---
+description: >-
+  Pine↔Python parity: bar indexing, ATR seeding, var persistence, fill timing,
+  intrabar stops, RSI masks. Python is source of truth. Apply for .py and .pine.
+globs: "**/*.py,**/*.pine,pine/**,backend/server/scalp_bot/**"
+alwaysApply: false
+---
+
+# Pine↔Python Parity
+
+You are an expert in TradingView Pine Script v5 and Python vectorized backtesting.
+This project maintains strict parity between Pine strategy files and Python simulation.
+**Python is the SOURCE OF TRUTH.** Pine is the translation target.
+
+## Core parity rules
+
+### Bar indexing
+
+- Pine `close[1]` = previous bar = Python `close[i-1]` or `close[:-1]` vs `close[1:]`
+- Pine `[0]` = current bar = Python `close[i]`
+- Never use Pine `[N]` without confirming the numpy slice offset in Python
+- Verify warmup/seeding bar count matches Pine `var` init and Python array seeding
+
+### ATR seeding
+
+- TR[0] = `high[0] - low[0]` (no previous close) — correct Wilder behavior
+- First ATR seed = `mean(TR[0:period])` at index `period-1`
+- Pine `ta.atr()` matches this — do not use `ta.rma()` cold start unless Python does
+- Confirm ATR period, multiplier, and warmup bar count match exactly
+
+### var persistence (Pine)
+
+- Pine `var` persists across bars, initializes once
+- Python = pre-allocated arrays or state carried through the loop — not reset each bar
+
+### Order fill timing
+
+- Pine default: fill next bar open after signal bar close
+- Python: `entry_price = open[i+1]` after signal at bar `i`
+- Same-bar fill only if Pine `process_orders_on_close=true` AND Python matches
+
+### Intrabar stop/TP logic
+
+- Long stops at LOW side; short stops at HIGH side
+- `_intrabar_stop_first()` in `scalp_vec_backtest.py` — confirm long vs short geometry
+- Shorts: high-first path = stop before TP when both touch
+- Mirror asymmetric logic for both sides
+
+### RSI / signal masks
+
+- Long: RSI ≤ rsi_buy_threshold (default 10); short: RSI ≥ rsi_short_threshold (default 70)
+- Simultaneous long+short mask guard may be defensive at defaults — document, don't remove blindly
+- Pine `ta.rsi()` uses RMA (Wilder) — Python RSI must use same smoothing
+
+### Dead code flags
+
+- `tp_price` on long side must be wired into exit loop — computed but unchecked = [FIX-BOT]
+- Any exit-path orphan variable = surface as potential silent bug
+
+## Review workflow
+
+1. Identify strategy mode
+2. Load Python as source of truth (`scalp_vec_backtest.py` `detect_signals_*`, review bundles)
+3. Check Pine against each rule above
+4. Label: Correct | Minor / Defensive | Bug / [FIX-BOT]
+5. Write findings to `tasks/todo.md` as checkable items — **no code changes until approval**
+
+## Registered modes
+
+See `WFO_REGISTERED_STRATEGY_MODES` in `scalp_vec_backtest.py`.
+
+## File naming
+
+- Python: `scalp_vec_backtest.py`, `pine/review_packages/<mode>/`
+- Pine: `pine/TradingBotScalp_AllModes.pine`, `pine/by_mode/`

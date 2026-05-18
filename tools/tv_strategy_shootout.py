@@ -430,9 +430,8 @@ def simulate_trades_bidir(
 
             if stop_hit and tp_hit:
                 if has_open:
-                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j])
-                    if not is_long:
-                        stop_first = not stop_first
+                    side = 1 if is_long else -1
+                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j], side)
                 else:
                     stop_first = True
                 if stop_first:

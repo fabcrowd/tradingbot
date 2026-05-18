@@ -10,10 +10,11 @@ import asyncio
 import logging
 import time
 import uuid
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Callable
 
+from .trade_history_store import append_trade_history_row, load_trade_history_tail
 from .empirical_market_promotion import EmpiricalMarketPromotion
 from .signal_engine import ScalpSignal, SignalEngine
 
@@ -28,8 +29,9 @@ if TYPE_CHECKING:
 LOG = logging.getLogger(__name__)
 
 # Paper/sim same-bar stop+TP: stop takes precedence (see ``_check_paper_exits_one``).
-# Vec ``simulate_trades``: if both touched and no ``open_prices``, stop-first; with ``open_prices``,
-# ``_intrabar_stop_first`` picks path. Live venue OCO ordering is separate — this names bar-path policy.
+# Vec ``simulate_trades`` / ``simulate_trades_bidir`` / RSI sim: no ``open`` → stop-first; with
+# opens, `_intrabar_stop_first(..., side=±1)` picks path (long vs short geometry). Live venue OCO
+# ordering is separate — this names bar-path policy.
 LIVE_BAR_PATH_EXIT_EVAL_ORDER = ("stop_before_tp_if_both_intrabar",)
 
 
@@ -61,6 +63,15 @@ def _clamp_protective_stop_for_resting_order(
         if stop_price <= ref_price + eps:
             return round(ref_price + eps, 5), True
     return round(stop_price, 5), False
+
+
+def _safe_float(x: object) -> float:
+    if x is None or x == "":
+        return 0.0
+    try:
+        return float(x)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 @dataclass
@@ -119,6 +130,10 @@ class ScalpPosition:
     runner_stop: float = 0.0       # breakeven stop for the runner leg
     # Extra ``_reserved_capital`` after live stop+TP rest (heuristic margin for protectives).
     margin_reserve_addon: float = 0.0
+    # Intrabar mark extremes vs entry (for strategy report MFE / MAE).
+    excursion_max_usd: float = 0.0
+    excursion_min_usd: float = 0.0
+    excursion_initialized: bool = False
 
 
 class ScalpTrader:
@@ -143,11 +158,28 @@ class ScalpTrader:
         self._market_exit_entry_link: dict[str, str] = {}
         # Live: position is closed before the market fill arrives — keep meta for scalp_fill_execution.
         self._pending_market_exits: dict[str, _PendingMarketExit] = {}
+        # Live counter-reversal: open opposite leg after exit fill (exit cl_ord_id → try_open args).
+        self._pending_counter_reversals: dict[str, dict] = {}
         self._daily_pnl: float = 0.0
         self._daily_reset_day: int = 0
         self._reserved_capital: float = 0.0
-        self._trade_history: deque[dict] = deque(maxlen=200)
+        _th_max = max(1, int(getattr(cfg, "trade_history_max_entries", 500) or 500))
+        self._trade_history: deque[dict] = deque(maxlen=_th_max)
+        if bool(getattr(cfg, "persist_trade_history", True)):
+            try:
+                for row in load_trade_history_tail(_th_max):
+                    self._trade_history.append(row)
+            except Exception:
+                LOG.exception("ScalpTrader: load persisted trade_history failed")
+        # Running cumulative / trade count per strategy_mode (rebuilt from deque).
+        self._strategy_trade_index: dict[str, int] = defaultdict(int)
+        self._strategy_cumulative_pnl: dict[str, float] = defaultdict(float)
+        self._sync_strategy_totals_from_history()
         self._sim_mode: bool = False
+        # Per-pair backoff after protective reconcile / IF rejects (reduces cancel+replace storms).
+        self._protective_reconcile_backoff_until: dict[str, float] = {}
+        self._protective_if_streak: dict[str, int] = defaultdict(int)
+        self._protective_circuit_until: dict[str, float] = {}
         # Set by ScalpRuntime: when True, block new entries (operator standby / go-live gate).
         self._entries_paused_fn: Callable[[], bool] | None = None
         # Set by ScalpRuntime: invoked once per UTC day when daily loss limit is breached.
@@ -181,6 +213,42 @@ class ScalpTrader:
     def _pnl_mult(self, pair_cfg: "ScalpPairConfig") -> float:
         """Dollar PnL per 1.0 price move: qty × contract_size (contracts × underlying)."""
         return float(pair_cfg.contract_size) if self._coinbase_perps() else 1.0
+
+    def _sync_strategy_totals_from_history(self) -> None:
+        """Rebuild per-strategy trade count and cumulative PnL from closed-leg deque (exit_ts order)."""
+        self._strategy_trade_index.clear()
+        self._strategy_cumulative_pnl.clear()
+        ordered = sorted(self._trade_history, key=lambda r: float(r.get("exit_ts") or 0))
+        for row in ordered:
+            m = str(row.get("strategy_mode") or "unknown")
+            self._strategy_trade_index[m] += 1
+            self._strategy_cumulative_pnl[m] += float(row.get("pnl") or 0)
+
+    @staticmethod
+    def _pct_vs_notional(usd: float, notional: float) -> float:
+        if notional <= 1e-12:
+            return 0.0
+        return float(usd) / float(notional) * 100.0
+
+    def _note_excursion(self, pos: ScalpPosition, unrealized: float) -> None:
+        u = float(unrealized)
+        if not pos.excursion_initialized:
+            pos.excursion_max_usd = u
+            pos.excursion_min_usd = u
+            pos.excursion_initialized = True
+            return
+        if u > pos.excursion_max_usd:
+            pos.excursion_max_usd = u
+        if u < pos.excursion_min_usd:
+            pos.excursion_min_usd = u
+
+    @staticmethod
+    def _strategy_entry_signal(direction: str) -> str:
+        return "Long" if str(direction).lower() == "long" else "Short"
+
+    @staticmethod
+    def _strategy_exit_signal(direction: str) -> str:
+        return "Long Exit" if str(direction).lower() == "long" else "Short Exit"
 
     @staticmethod
     def _slip_bps_for_entry(direction: str, ref: float, fill: float) -> float | None:
@@ -221,6 +289,8 @@ class ScalpTrader:
         strategy_mode: str = "",
         contract_size: float = 1.0,
         simulated: bool = False,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
     ) -> None:
         if self._session_log is None:
             return
@@ -244,6 +314,10 @@ class ScalpTrader:
         }
         if close_reason is not None:
             row["close_reason"] = close_reason
+        if exchange_trade_id:
+            row["exchange_trade_id"] = str(exchange_trade_id)[:80]
+        if exchange_order_id:
+            row["exchange_order_id"] = str(exchange_order_id)[:80]
         self._session_log.log_scalp("scalp_fill_execution", **row)
         cb = getattr(self, "_slip_observation_cb", None)
         if (
@@ -275,6 +349,30 @@ class ScalpTrader:
             contract_size=float(pos.contract_size or 1.0),
         )
 
+    def close_position_from_market_exit(
+        self,
+        pos: ScalpPosition,
+        fill_price: float,
+        reason: str,
+    ) -> None:
+        """Close an open leg after a live market exit fill is confirmed on the venue."""
+        if pos.status != "open":
+            return
+        mult = pos.contract_size if self._coinbase_perps() else 1.0
+        if pos.direction == "long":
+            pnl = (fill_price - pos.entry_price) * pos.qty * mult
+        else:
+            pnl = (pos.entry_price - fill_price) * pos.qty * mult
+        self._close_position(pos, pnl, reason, fill_price)
+        if pnl < 0:
+            self._signal_engine.record_loss(pos.pair_key)
+        else:
+            self._signal_engine.record_win(pos.pair_key)
+        LOG.info(
+            "ScalpTrader %s: closed via market fill (%s) @ %.5f | pnl=%.4f",
+            pos.pair_key, reason, fill_price, pnl,
+        )
+
     def on_market_exit_fill(
         self,
         cl_ord_id: str,
@@ -282,10 +380,12 @@ class ScalpTrader:
         fill_qty: float,
         *,
         fee_usd: float | None = None,
-    ) -> None:
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
+    ) -> _PendingMarketExit | None:
         meta = self._pending_market_exits.pop(cl_ord_id, None)
         if meta is None:
-            return
+            return None
         slip = self._slip_bps_for_exit(meta.direction, meta.ref_price, fill_price)
         self._emit_scalp_fill_execution(
             leg="exit",
@@ -305,7 +405,93 @@ class ScalpTrader:
             strategy_mode="",
             contract_size=meta.contract_size,
             simulated=False,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
         )
+        return meta
+
+    def _live_market_exit_inflight_for_entry(self, entry_cl_ord_id: str) -> bool:
+        """True if a reduce-only market exit was already submitted and we are awaiting its fill."""
+        return entry_cl_ord_id in self._market_exit_entry_link.values()
+
+    async def _submit_live_market_exit(
+        self,
+        pos: ScalpPosition,
+        *,
+        close_id: str,
+        reason: str,
+        ref_price: float,
+        reduce_only: bool = True,
+    ) -> bool:
+        """Submit market exit; return True if the venue accepted the order (close deferred until fill)."""
+        if self._live_mgr is None or self._sim_mode:
+            return False
+        if self._live_market_exit_inflight_for_entry(pos.entry_cl_ord_id):
+            LOG.warning(
+                "ScalpTrader %s: duplicate market exit suppressed — already awaiting venue (%s, entry=%s…)",
+                pos.pair_key,
+                reason,
+                pos.entry_cl_ord_id[:16],
+            )
+            return True
+        self._link_market_exit_order(close_id, pos.entry_cl_ord_id)
+        self.register_pending_market_exit(close_id, pos, reason, ref_price)
+        close_side = "sell" if pos.direction == "long" else "buy"
+        oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
+        try:
+            flat_fn = getattr(self._live_mgr, "flatten_scalp_leg_market", None)
+            if callable(flat_fn):
+                result = await flat_fn(
+                    symbol=pos.symbol,
+                    side=close_side,
+                    order_qty=float(oq),
+                    cl_ord_id=close_id,
+                    reduce_only=reduce_only,
+                )
+            else:
+                params: dict = {
+                    "symbol": pos.symbol,
+                    "side": close_side,
+                    "order_type": "market",
+                    "order_qty": oq,
+                    "cl_ord_id": close_id,
+                }
+                if reduce_only:
+                    params["reduce_only"] = True
+                result = await self._live_mgr.add_order(params=params)
+        except Exception:
+            LOG.exception("ScalpTrader: market exit submit failed for %s", pos.pair_key)
+            self._pending_market_exits.pop(close_id, None)
+            self._market_exit_entry_link.pop(close_id, None)
+            self._state.record_exchange_error(
+                "error",
+                "Scalp market exit failed",
+                f"{pos.pair_key}: {reason} — check venue position",
+                "scalp_protective",
+            )
+            return False
+        if not result:
+            self._pending_market_exits.pop(close_id, None)
+            self._market_exit_entry_link.pop(close_id, None)
+            LOG.error(
+                "ScalpTrader %s: market exit rejected (%s) — position stays open until reconcile",
+                pos.pair_key,
+                reason,
+            )
+            self._state.record_exchange_error(
+                "error",
+                "Scalp market exit rejected",
+                f"{pos.pair_key}: {reason} — venue may still hold size",
+                "scalp_protective",
+            )
+            return False
+        LOG.warning(
+            "ScalpTrader %s: market exit submitted (%s) cl=%s — awaiting fill before close",
+            pos.pair_key,
+            reason,
+            close_id[:20],
+        )
+        return True
 
     def _log_entry_fill_execution(
         self,
@@ -315,6 +501,8 @@ class ScalpTrader:
         *,
         order_type_override: str | None = None,
         fee_usd: float | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
     ) -> None:
         ref = float(pos.pending_limit_price) if pos.pending_limit_price > 0 else float(pos.entry_signal_price or 0.0)
         if ref <= 0:
@@ -341,6 +529,8 @@ class ScalpTrader:
             strategy_mode=pos.strategy_mode or "",
             contract_size=float(pos.contract_size or 1.0),
             simulated=self._sim_mode or self._live_mgr is None,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
         )
 
     def _log_exit_fill_execution_protective(
@@ -350,6 +540,8 @@ class ScalpTrader:
         fill_price: float,
         *,
         fee_usd: float | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
     ) -> None:
         is_stop = filled_cl_ord_id == pos.stop_cl_ord_id
         ref = float(pos.stop_price if is_stop else pos.tp_price)
@@ -372,7 +564,51 @@ class ScalpTrader:
             strategy_mode=pos.strategy_mode or "",
             contract_size=float(pos.contract_size or 1.0),
             simulated=False,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
         )
+
+    def close_open_leg_from_orphan_venue_fill(
+        self,
+        pos: ScalpPosition,
+        fill_price: float,
+        fill_qty: float,
+        *,
+        fill_side: str,
+        fee_usd: float | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
+    ) -> bool:
+        """Close an open leg when the venue fill has no ``scalp_*`` client order id."""
+        if pos.status != "open":
+            return False
+        side = str(fill_side or "").strip().lower()
+        need = "sell" if pos.direction == "long" else "buy"
+        if side != need:
+            return False
+        self._emit_scalp_fill_execution(
+            leg="exit",
+            pair_key=pos.pair_key,
+            symbol=pos.symbol,
+            direction=pos.direction,
+            order_type="market",
+            placed_ts=None,
+            fill_ts=time.time(),
+            fill_price=fill_price,
+            qty=fill_qty,
+            fee_usd=fee_usd,
+            reference_price=float(pos.entry_price),
+            slip_bps=self._slip_bps_for_exit(pos.direction, float(pos.entry_price), fill_price),
+            cl_ord_id=f"orphan_{pos.entry_cl_ord_id}"[:80],
+            close_reason="exchange_orphan_fill",
+            strategy_mode=pos.strategy_mode or "",
+            contract_size=float(pos.contract_size or 1.0),
+            simulated=False,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
+        )
+        self.close_position_from_market_exit(pos, fill_price, "exchange_orphan_fill")
+        return True
 
     # ── Public interface ──────────────────────────────────────────────────────
 
@@ -439,6 +675,9 @@ class ScalpTrader:
     def take_market_exit_entry_link(self, exit_cl_ord_id: str) -> str | None:
         return self._market_exit_entry_link.pop(exit_cl_ord_id, None)
 
+    def pop_pending_counter_reversal(self, exit_cl_ord_id: str) -> dict | None:
+        return self._pending_counter_reversals.pop(exit_cl_ord_id, None)
+
     def update_position_mark(self, pair_key: str, mark: float) -> None:
         """Mark-to-market for open/pending legs and empirical missed-move watches."""
         if mark <= 0:
@@ -451,6 +690,7 @@ class ScalpTrader:
                     pos.unrealized_pnl = (mark - pos.entry_price) * pos.qty * mult
                 else:
                     pos.unrealized_pnl = (pos.entry_price - mark) * pos.qty * mult
+                self._note_excursion(pos, pos.unrealized_pnl)
                 if self._coinbase_perps() and pos.liquidation_price > 0 and mark > 0:
                     thr = float(getattr(self._cfg, "liquidation_warn_pct", 5.0) or 5.0)
                     liq = pos.liquidation_price
@@ -467,6 +707,9 @@ class ScalpTrader:
     def has_position(self, pair_key: str) -> bool:
         return any(p.status in ("pending", "open") for p in self.positions_for_pair(pair_key))
 
+    def has_open_position(self, pair_key: str) -> bool:
+        return any(p.status == "open" for p in self.positions_for_pair(pair_key))
+
     def get_position(self, pair_key: str) -> ScalpPosition | None:
         """Arbitrary primary leg for pair (oldest open, else oldest pending) — prefer explicit entry id when possible."""
         active = [
@@ -478,6 +721,137 @@ class ScalpTrader:
         active.sort(key=lambda p: p.opened_at)
         opens = [p for p in active if p.status == "open"]
         return opens[0] if opens else active[0]
+
+    def _entry_margin_usd(self, pos: ScalpPosition) -> float:
+        lev = max(1.0, float(getattr(self._cfg, "max_leverage", 1.0)))
+        if self._coinbase_perps():
+            notional = float(pos.qty) * float(pos.contract_size) * float(pos.entry_price or 0.0)
+        else:
+            notional = float(pos.qty) * float(pos.entry_price or 0.0)
+        return max(0.0, notional / lev)
+
+    def _futures_margin_headroom_usd(self) -> float | None:
+        mgr = self._live_mgr
+        if mgr is None:
+            return None
+        fn = getattr(mgr, "futures_available_margin_usd", None)
+        if callable(fn):
+            return fn()
+        bal_fn = getattr(mgr, "balance_snapshot", None)
+        if not callable(bal_fn):
+            return None
+        fut = bal_fn().get("futures")
+        if not isinstance(fut, dict):
+            return None
+        try:
+            return float(fut.get("available_margin") or 0.0)
+        except (TypeError, ValueError):
+            return None
+
+    def _margin_ok_for_second_protective(self, pos: ScalpPosition) -> bool:
+        """Heuristic: enough free futures margin to rest a second protective (TP after stop)."""
+        headroom = self._futures_margin_headroom_usd()
+        if headroom is None:
+            return True
+        need = self._entry_margin_usd(pos)
+        buf = float(getattr(self._cfg, "buying_power_buffer_usd", 0.0) or 0.0)
+        return headroom >= max(need, buf)
+
+    def _protective_if_backoff_sec(self) -> float:
+        return max(
+            30.0,
+            float(getattr(self._cfg, "insufficient_funds_cooldown_sec", 300.0) or 300.0) / 5.0,
+        )
+
+    def _protective_circuit_open(self, pair_key: str) -> bool:
+        return time.time() < float(self._protective_circuit_until.get(pair_key, 0.0))
+
+    def _note_protective_order_failure(self, pair_key: str) -> None:
+        """Trip a per-pair circuit after repeated insufficient-funds on protectives."""
+        reason = str(getattr(self._state, "last_order_reject_reason", "") or "")
+        if "INSUFFICIENT" not in reason.upper() or "FUND" not in reason.upper():
+            return
+        self._protective_if_streak[pair_key] = int(self._protective_if_streak.get(pair_key, 0)) + 1
+        streak = self._protective_if_streak[pair_key]
+        if streak < 3:
+            return
+        pause = max(
+            600.0,
+            float(getattr(self._cfg, "insufficient_funds_cooldown_sec", 300.0) or 300.0) * 6.0,
+        )
+        self._protective_circuit_until[pair_key] = time.time() + pause
+        self._protective_reconcile_backoff_until[pair_key] = self._protective_circuit_until[pair_key]
+        self._state.push_alert(
+            "error",
+            f"Protective circuit open: {pair_key}",
+            f"{streak} consecutive insufficient-funds on stop/TP/exit — "
+            f"pausing reconcile for {int(pause // 60)} min. "
+            "Check CFM futures margin and cancel duplicate resting orders on Coinbase.",
+            "scalp_protective",
+            persistent=True,
+        )
+        LOG.error(
+            "ScalpTrader %s: protective IF circuit OPEN (%d strikes, pause %.0fs) — %s",
+            pair_key,
+            streak,
+            pause,
+            reason[:200],
+        )
+
+    def _note_protective_order_success(self, pair_key: str) -> None:
+        self._protective_if_streak[pair_key] = 0
+
+    async def _sync_protectives_from_venue_cache(self, pos: ScalpPosition) -> tuple[bool, bool]:
+        """Adopt resting stop/TP already on Coinbase; cancel duplicate stops."""
+        mgr = self._live_mgr
+        if mgr is None:
+            return False, False
+        fn = getattr(mgr, "resting_protectives_for_product", None)
+        if not callable(fn):
+            return False, False
+        close_side = "buy" if pos.direction == "short" else "sell"
+        stops, tps = fn(pos.symbol, close_side)
+        stop_ok = bool(stops)
+        tp_ok = bool(tps)
+        if stops:
+            best = max(
+                stops,
+                key=lambda o: (
+                    _safe_float(o.get("trigger_price") or o.get("limit_price") or 0),
+                    str(o.get("order_id") or ""),
+                ),
+            )
+            cid = str(best.get("client_order_id") or "").strip()
+            if not cid:
+                cid = f"venue_stop_{str(best.get('order_id') or '')[:12]}"
+            pos.stop_cl_ord_id = cid
+            tr = _safe_float(best.get("trigger_price") or 0)
+            if tr > 0:
+                pos.stop_price = round(tr, 5)
+            if len(stops) > 1:
+                LOG.warning(
+                    "ScalpTrader %s: %d duplicate resting stop(s) on venue — cancelling extras",
+                    pos.pair_key,
+                    len(stops) - 1,
+                )
+                cancel_oid = getattr(mgr, "cancel_exchange_order_id", None)
+                if callable(cancel_oid):
+                    for extra in stops:
+                        if extra is best:
+                            continue
+                        oid = str(extra.get("order_id") or "")
+                        if oid:
+                            await cancel_oid(oid)
+        if tps:
+            best_tp = tps[-1]
+            cid = str(best_tp.get("client_order_id") or "").strip()
+            if not cid:
+                cid = f"venue_tp_{str(best_tp.get('order_id') or '')[:12]}"
+            pos.tp_cl_ord_id = cid
+            lp = _safe_float(best_tp.get("limit_price") or 0)
+            if lp > 0:
+                pos.tp_price = round(lp, 5)
+        return stop_ok, tp_ok
 
     def _release_reserved_for_position(self, pos: ScalpPosition) -> None:
         mult = pos.contract_size if self._coinbase_perps() else 1.0
@@ -498,7 +872,12 @@ class ScalpTrader:
             except Exception:
                 LOG.debug("ScalpTrader: cancel protective %s failed", cl_id[:16], exc_info=True)
 
-    async def _place_protective_orders_coinbase(self, pos: ScalpPosition) -> tuple[bool, bool]:
+    async def _place_protective_orders_coinbase(
+        self,
+        pos: ScalpPosition,
+        *,
+        place_tp: bool = True,
+    ) -> tuple[bool, bool]:
         """Place stop + TP on Coinbase for an already-open ``ScalpPosition``."""
         pair_key = pos.pair_key
         if pos.status != "open":
@@ -581,9 +960,24 @@ class ScalpTrader:
                 f"{pair_key}: exchange rejected or empty ack for stop {pos.stop_cl_ord_id[:20]}…",
                 "scalp_protective",
             )
+            self._note_protective_order_failure(pair_key)
+        else:
+            self._note_protective_order_success(pair_key)
+
+        if not place_tp:
+            return stop_ok, True
 
         tp_side = "sell" if pos.direction == "long" else "buy"
         tp_ok = False
+        if stop_ok and not self._margin_ok_for_second_protective(pos):
+            LOG.warning(
+                "ScalpTrader %s: deferring TP — futures available_margin below entry margin "
+                "(stop resting; will retry on reconcile)",
+                pair_key,
+            )
+            return stop_ok, False
+        if stop_ok:
+            await asyncio.sleep(0.75)
         try:
             tp_ok = bool(
                 await self._live_mgr.add_order(params={
@@ -612,6 +1006,9 @@ class ScalpTrader:
                 f"{pair_key}: exchange rejected or empty ack for TP {pos.tp_cl_ord_id[:20]}…",
                 "scalp_protective",
             )
+            self._note_protective_order_failure(pair_key)
+        elif tp_ok:
+            self._note_protective_order_success(pair_key)
         return stop_ok, tp_ok
 
     async def _place_take_profit_coinbase(self, pos: ScalpPosition) -> bool:
@@ -652,60 +1049,31 @@ class ScalpTrader:
         reason: str,
         ref_price: float,
     ) -> None:
-        """Reduce-only market exit after stop could not be placed (same optimistic close as time_stop)."""
+        """Submit reduce-only market exit after stop/TP failure; close only when fill confirms."""
         pair_key = pos.pair_key
         if self._live_mgr is None or self._sim_mode:
             return
         await self._cancel_coinbase_protectives(pos)
         close_id = f"scalp_prot_{uuid.uuid4().hex[:8]}"
-        self._link_market_exit_order(close_id, pos.entry_cl_ord_id)
-        self.register_pending_market_exit(close_id, pos, reason, ref_price)
-        close_side = "sell" if pos.direction == "long" else "buy"
-        oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
-        try:
-            flat_fn = getattr(self._live_mgr, "flatten_scalp_leg_market", None)
-            if callable(flat_fn):
-                await flat_fn(
-                    symbol=pos.symbol,
-                    side=close_side,
-                    order_qty=float(oq),
-                    cl_ord_id=close_id,
-                    reduce_only=True,
-                )
-            else:
-                await self._live_mgr.add_order(
-                    params={
-                        "symbol": pos.symbol,
-                        "side": close_side,
-                        "order_type": "market",
-                        "order_qty": oq,
-                        "cl_ord_id": close_id,
-                        "reduce_only": True,
-                    },
-                )
-        except Exception:
-            LOG.exception("ScalpTrader: protective-failure flatten failed for %s", pair_key)
-            self._state.record_exchange_error(
-                "error",
-                "Scalp flatten after missing stop failed",
-                f"{pair_key}: market exit error — check venue position",
-                "scalp_protective",
-            )
-            return
-        mult = pos.contract_size if self._coinbase_perps() else 1.0
-        if pos.direction == "long":
-            pnl = (ref_price - pos.entry_price) * pos.qty * mult
-        else:
-            pnl = (pos.entry_price - ref_price) * pos.qty * mult
-        self._close_position(pos, pnl, reason, ref_price)
+        await self._submit_live_market_exit(
+            pos,
+            close_id=close_id,
+            reason=reason,
+            ref_price=ref_price,
+            reduce_only=True,
+        )
 
     async def ensure_coinbase_protectives_match_exchange(self, pair_key: str) -> None:
-        """If resting stop/TP are missing on Coinbase, cancel + re-place.
+        """If resting stop/TP are missing on Coinbase, re-place only the missing leg(s).
 
         Covers the case where the bot has an open leg but venue TP/SL were never attached or
         were cancelled without a fill event (UI shows ``Add`` for TP/SL).
         """
         if not self._coinbase_perps() or self._live_mgr is None or self._sim_mode:
+            return
+        if self._protective_circuit_open(pair_key):
+            return
+        if time.time() < float(self._protective_reconcile_backoff_until.get(pair_key, 0.0)):
             return
         mgr = self._live_mgr
         is_open = getattr(mgr, "is_resting_protective_open", None)
@@ -719,6 +1087,17 @@ class ScalpTrader:
                 continue
             stop_ok = bool(await is_open(pos.stop_cl_ord_id, pid))
             tp_ok = bool(await is_open(pos.tp_cl_ord_id, pid))
+            if not stop_ok or not tp_ok:
+                v_stop, v_tp = await self._sync_protectives_from_venue_cache(pos)
+                stop_ok = stop_ok or v_stop
+                tp_ok = tp_ok or v_tp
+                if v_stop or v_tp:
+                    LOG.info(
+                        "ScalpTrader %s: adopted venue resting protectives (stop=%s tp=%s)",
+                        pair_key,
+                        stop_ok,
+                        tp_ok,
+                    )
             if stop_ok and tp_ok:
                 continue
             LOG.warning(
@@ -727,11 +1106,24 @@ class ScalpTrader:
                 stop_ok,
                 tp_ok,
             )
-            await self._cancel_coinbase_protectives(pos)
-            pos.stop_cl_ord_id = f"scalp_stop_{uuid.uuid4().hex[:8]}"
-            pos.tp_cl_ord_id = f"scalp_tp_{uuid.uuid4().hex[:8]}"
-            stop_ok, _tp_ok = await self._place_protective_orders_coinbase(pos)
-            if not stop_ok:
+            placed_stop = stop_ok
+            placed_tp = tp_ok
+            if stop_ok and not tp_ok:
+                pos.tp_cl_ord_id = f"scalp_tp_{uuid.uuid4().hex[:8]}"
+                placed_tp = await self._place_take_profit_coinbase(pos)
+            elif tp_ok and not stop_ok:
+                pos.stop_cl_ord_id = f"scalp_stop_{uuid.uuid4().hex[:8]}"
+                placed_stop, _ = await self._place_protective_orders_coinbase(pos, place_tp=False)
+            else:
+                await self._cancel_coinbase_protectives(pos)
+                await asyncio.sleep(0.75)
+                pos.stop_cl_ord_id = f"scalp_stop_{uuid.uuid4().hex[:8]}"
+                pos.tp_cl_ord_id = f"scalp_tp_{uuid.uuid4().hex[:8]}"
+                placed_stop, placed_tp = await self._place_protective_orders_coinbase(pos)
+            if not placed_stop:
+                self._protective_reconcile_backoff_until[pair_key] = (
+                    time.time() + self._protective_if_backoff_sec()
+                )
                 LOG.error(
                     "ScalpTrader %s: stop rejected again after reconcile re-place — "
                     "flattening (naked position risk, price likely through stop)",
@@ -742,6 +1134,10 @@ class ScalpTrader:
                     pos, "reconcile_stop_failed", ref_price
                 )
                 break  # pos closed; no further legs to process
+            if not placed_tp:
+                self._protective_reconcile_backoff_until[pair_key] = (
+                    time.time() + self._protective_if_backoff_sec()
+                )
 
     async def try_open(
         self,
@@ -777,6 +1173,21 @@ class ScalpTrader:
         cap = self._cfg.concurrent_open_cap()
         if cap is not None and self.open_position_count >= cap:
             LOG.info("ScalpTrader: max concurrent positions reached (%d)", cap)
+            return False
+
+        use_exch = self._live_mgr is not None and not self._sim_mode
+        if (
+            use_exch
+            and bool(getattr(self._cfg, "use_exchange_buying_power_cap", False))
+            and self.open_position_count > 0
+            and float(available_capital) <= 0.0
+        ):
+            LOG.info(
+                "ScalpTrader %s: skip new entry — no exchange buying power while %d leg(s) open "
+                "(exits/protectives continue)",
+                signal.pair_key,
+                self.open_position_count,
+            )
             return False
 
         # Daily loss check
@@ -998,7 +1409,15 @@ class ScalpTrader:
 
         return True
 
-    async def on_entry_filled(self, entry_cl_ord_id: str, fill_price: float, fill_qty: float) -> None:
+    async def on_entry_filled(
+        self,
+        entry_cl_ord_id: str,
+        fill_price: float,
+        fill_qty: float,
+        *,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
+    ) -> None:
         """Called when the entry order is confirmed filled. Place stop + tp."""
         pos = self._positions.get(entry_cl_ord_id)
         pair_key = pos.pair_key if pos is not None else entry_cl_ord_id
@@ -1021,6 +1440,8 @@ class ScalpTrader:
         pos.qty = fill_qty
         pos.entry_fill_cost = 0.0
         pos.entry_fill_qty = 0.0
+        mult = pos.contract_size if self._coinbase_perps() else 1.0
+        self._note_excursion(pos, 0.0)
 
         # Paper/sim mode: stop/tp monitored via check_paper_exits() on each candle close
         if self._live_mgr is None or self._sim_mode:
@@ -1029,10 +1450,22 @@ class ScalpTrader:
                 "ScalpTrader %s: %s entry filled @ %.5f | stop=%.5f | tp=%.5f",
                 pair_key, mode_label, fill_price, pos.stop_price, pos.tp_price,
             )
-            self._log_entry_fill_execution(pos, fill_price, fill_qty)
+            self._log_entry_fill_execution(
+                pos,
+                fill_price,
+                fill_qty,
+                exchange_trade_id=exchange_trade_id,
+                exchange_order_id=exchange_order_id,
+            )
             return
 
-        self._log_entry_fill_execution(pos, fill_price, fill_qty)
+        self._log_entry_fill_execution(
+            pos,
+            fill_price,
+            fill_qty,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
+        )
         stop_ok, tp_ok = await self._place_protective_orders_coinbase(pos)
         if not stop_ok:
             LOG.error(
@@ -1105,6 +1538,8 @@ class ScalpTrader:
         fill_price: float,
         *,
         fee_usd: float | None = None,
+        exchange_trade_id: str | None = None,
+        exchange_order_id: str | None = None,
     ) -> None:
         """Called when stop or tp is filled. Cancels the sibling, closes position."""
         pos = self.position_for_client_order(pair_key, filled_cl_ord_id)
@@ -1121,7 +1556,14 @@ class ScalpTrader:
         is_stop = filled_cl_ord_id == pos.stop_cl_ord_id
         close_reason = "stop" if is_stop else "tp"
 
-        self._log_exit_fill_execution_protective(pos, filled_cl_ord_id, fill_price, fee_usd=fee_usd)
+        self._log_exit_fill_execution_protective(
+            pos,
+            filled_cl_ord_id,
+            fill_price,
+            fee_usd=fee_usd,
+            exchange_trade_id=exchange_trade_id,
+            exchange_order_id=exchange_order_id,
+        )
 
         # Cancel the sibling order
         sibling_id = pos.tp_cl_ord_id if is_stop else pos.stop_cl_ord_id
@@ -1176,24 +1618,21 @@ class ScalpTrader:
                             except Exception as exc:  # noqa: BLE001
                                 LOG.error("ScalpTrader: cancel_order failed for %s: %s", o[:16], exc)
                         loop.create_task(_cancel_with_log())
-                try:
+
+                async def _time_stop_exit(
+                    p: ScalpPosition = pos,
+                    px: float = current_price,
+                    pk: str = pair_key,
+                ) -> None:
                     close_id = f"scalp_tstop_{uuid.uuid4().hex[:8]}"
-                    self._link_market_exit_order(close_id, pos.entry_cl_ord_id)
-                    self.register_pending_market_exit(close_id, pos, "time_stop", current_price)
-                    close_side = "sell" if pos.direction == "long" else "buy"
-                    oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
-                    loop.create_task(
-                        self._live_mgr.add_order(params={
-                            "symbol": pos.symbol,
-                            "side": close_side,
-                            "order_type": "market",
-                            "order_qty": oq,
-                            "cl_ord_id": close_id,
-                        })
+                    ok = await self._submit_live_market_exit(
+                        p, close_id=close_id, reason="time_stop", ref_price=px, reduce_only=True,
                     )
-                except Exception:
-                    LOG.exception("ScalpTrader: time_stop market sell failed for %s", pair_key)
-                    return
+                    if not ok:
+                        LOG.error("ScalpTrader %s: TIME STOP market exit not accepted", pk)
+
+                loop.create_task(_time_stop_exit())
+                continue
 
             self._close_position(pos, pnl, "time_stop", current_price)
             if pnl < 0:
@@ -1263,24 +1702,21 @@ class ScalpTrader:
                             except Exception as exc:  # noqa: BLE001
                                 LOG.error("ScalpTrader: cancel_order failed for %s: %s", o[:16], exc)
                         loop.create_task(_cancel_with_log_rsi())
-                try:
+
+                async def _rsi_exit(
+                    p: ScalpPosition = pos,
+                    px: float = current_price,
+                    pk: str = pair_key,
+                ) -> None:
                     close_id = f"scalp_rsi_{uuid.uuid4().hex[:8]}"
-                    self._link_market_exit_order(close_id, pos.entry_cl_ord_id)
-                    self.register_pending_market_exit(close_id, pos, "rsi_exit", current_price)
-                    close_side = "sell" if pos.direction == "long" else "buy"
-                    oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
-                    loop.create_task(
-                        self._live_mgr.add_order(params={
-                            "symbol": pos.symbol,
-                            "side": close_side,
-                            "order_type": "market",
-                            "order_qty": oq,
-                            "cl_ord_id": close_id,
-                        })
+                    ok = await self._submit_live_market_exit(
+                        p, close_id=close_id, reason="rsi_exit", ref_price=px, reduce_only=True,
                     )
-                except Exception:
-                    LOG.exception("ScalpTrader: RSI exit market sell failed for %s", pair_key)
-                    return
+                    if not ok:
+                        LOG.error("ScalpTrader %s: RSI exit market order not accepted", pk)
+
+                loop.create_task(_rsi_exit())
+                continue
 
             self._close_position(pos, pnl, "rsi_exit", current_price)
             if pnl < 0:
@@ -1406,29 +1842,26 @@ class ScalpTrader:
                     except Exception:
                         LOG.debug("ScalpTrader: counter cancel %s failed", oid[:20], exc_info=True)
             close_id = f"scalp_ctr_{uuid.uuid4().hex[:8]}"
-            self._link_market_exit_order(close_id, pos.entry_cl_ord_id)
-            self.register_pending_market_exit(
-                close_id, pos, "counter_reversal" if do_reversal else "counter_exit", current_price,
+            exit_reason = "counter_reversal" if do_reversal else "counter_exit"
+            ok = await self._submit_live_market_exit(
+                pos,
+                close_id=close_id,
+                reason=exit_reason,
+                ref_price=current_price,
+                reduce_only=True,
             )
-            close_side = "sell" if pos.direction == "long" else "buy"
-            oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
-            try:
-                result = await self._live_mgr.add_order(params={
-                    "symbol": pos.symbol,
-                    "side": close_side,
-                    "order_type": "market",
-                    "order_qty": oq,
-                    "cl_ord_id": close_id,
-                })
-                if not result:
-                    LOG.error(
-                        "ScalpTrader %s: counter-exit market order rejected — staying in position",
-                        pair_key,
-                    )
-                    return
-            except Exception:
-                LOG.exception("ScalpTrader %s: counter-exit market order failed", pair_key)
+            if not ok:
                 return
+            if do_reversal:
+                self._pending_counter_reversals[close_id] = {
+                    "signal": counter_signal,
+                    "pair_cfg": pair_cfg,
+                    "available_capital": available_capital,
+                    "execution_risk_mult": execution_risk_mult,
+                    "allow_reversal": allow_reversal,
+                    "pair_key": pair_key,
+                }
+            return
 
         reason = "counter_reversal" if do_reversal else "counter_exit"
         self._close_position(pos, pnl, reason, current_price)
@@ -1561,17 +1994,10 @@ class ScalpTrader:
             # Paper/sim: update in memory, next check_paper_exits picks up the new level
             return
 
-        # Live: cancel the old stop order and place a new one at the updated price
+        # Live: place new stop first, then cancel old (avoids naked window on reject).
         old_stop_id = pos.stop_cl_ord_id
+        old_stop_price = old_stop
         new_stop_id = f"scalp_stop_{uuid.uuid4().hex[:8]}"
-        pos.stop_cl_ord_id = new_stop_id  # update before placing so fill routing uses new id
-
-        if old_stop_id:
-            try:
-                await self._live_mgr.cancel_order(old_stop_id)
-            except Exception:
-                LOG.warning("ScalpTrader %s: failed to cancel old stop %s for adjustment", pair_key, old_stop_id[:20])
-
         stop_side = "sell" if is_long else "buy"
         oq = max(1, int(round(pos.qty))) if self._coinbase_perps() else round(pos.qty, 8)
         try:
@@ -1591,19 +2017,32 @@ class ScalpTrader:
             ok = False
 
         if ok:
+            pos.stop_cl_ord_id = new_stop_id
+            if old_stop_id:
+                try:
+                    await self._live_mgr.cancel_order(old_stop_id)
+                except Exception:
+                    LOG.warning(
+                        "ScalpTrader %s: failed to cancel old stop %s after adjustment",
+                        pair_key, old_stop_id[:20],
+                    )
             LOG.info(
                 "ScalpTrader %s: adjusted stop order placed @ %.5f id=%s",
                 pair_key, pos.stop_price, new_stop_id[:20],
             )
         else:
+            pos.stop_price = old_stop_price
+            self._protective_reconcile_backoff_until[pair_key] = (
+                time.time() + self._protective_if_backoff_sec()
+            )
             LOG.error(
-                "ScalpTrader %s: adjusted stop REJECTED — position partially unprotected (stop=%.5f)",
-                pair_key, pos.stop_price,
+                "ScalpTrader %s: adjusted stop REJECTED — keeping prior stop @ %.5f (id=%s)",
+                pair_key, old_stop_price, (old_stop_id or "")[:20],
             )
             self._state.push_alert(
                 "error",
                 f"Stop adjustment failed: {pair_key}",
-                f"Exchange rejected adjusted stop @ {pos.stop_price:.5f}. Old stop cancelled.",
+                f"Exchange rejected adjusted stop; prior stop @ {old_stop_price:.5f} unchanged.",
                 "scalp_protective",
             )
 
@@ -1703,6 +2142,105 @@ class ScalpTrader:
                     pair_key, pos.tp_price, pnl, self._daily_pnl,
                 )
 
+    def reconcile_close_ghost_leg(
+        self,
+        pos: ScalpPosition,
+        mark_price: float,
+        *,
+        exit_price: float | None = None,
+    ) -> None:
+        """Clear bot state when the exchange has no position but we still track an open leg."""
+        if pos.status != "open":
+            return
+        ref = float(exit_price) if exit_price is not None and float(exit_price) > 0 else mark_price
+        if ref <= 0:
+            ref = float(pos.entry_price)
+        mult = pos.contract_size if self._coinbase_perps() else 1.0
+        if pos.direction == "long":
+            pnl = (ref - pos.entry_price) * pos.qty * mult
+        else:
+            pnl = (pos.entry_price - ref) * pos.qty * mult
+        LOG.warning(
+            "ScalpTrader %s: exchange flat — clearing ghost leg (entry=%.5f mark=%.5f qty=%.4f)",
+            pos.pair_key,
+            pos.entry_price,
+            ref,
+            pos.qty,
+        )
+        self._state.push_alert(
+            "warning",
+            f"Scalp reconcile: {pos.pair_key} flat on exchange",
+            "Bot had open leg but venue size is zero — internal state cleared.",
+            "scalp_reconcile",
+        )
+        self._close_position(pos, pnl, "exchange_reconcile_flat", ref)
+
+    async def adopt_exchange_position(
+        self,
+        *,
+        pair_key: str,
+        symbol: str,
+        direction: str,
+        qty: float,
+        entry_price: float,
+        stop_price: float,
+        tp_price: float,
+        pair_cfg: "ScalpPairConfig",
+        place_protectives: bool,
+    ) -> ScalpPosition | None:
+        """Track a venue perp leg the bot did not open (manual or missed fill)."""
+        if self.has_position(pair_key):
+            LOG.info(
+                "ScalpTrader %s: adopt skipped — bot already tracks a leg for this pair",
+                pair_key,
+            )
+            return None
+        entry_id = f"scalp_adopt_{uuid.uuid4().hex[:8]}"
+        stop_id = f"scalp_stop_{uuid.uuid4().hex[:8]}"
+        tp_id = f"scalp_tp_{uuid.uuid4().hex[:8]}"
+        oq = max(1, int(round(qty))) if self._coinbase_perps() else float(qty)
+        pos = ScalpPosition(
+            pair_key=pair_key,
+            symbol=symbol,
+            direction=direction,
+            entry_price=float(entry_price),
+            stop_price=float(stop_price),
+            tp_price=float(tp_price),
+            qty=float(oq),
+            contract_size=float(pair_cfg.contract_size),
+            entry_cl_ord_id=entry_id,
+            stop_cl_ord_id=stop_id,
+            tp_cl_ord_id=tp_id,
+            status="open",
+            entry_order_type="exchange_adopt",
+            leverage=float(getattr(self._cfg, "max_leverage", 1.0)),
+        )
+        lev = max(1.0, float(getattr(self._cfg, "max_leverage", 1.0)))
+        mult = pos.contract_size if self._coinbase_perps() else 1.0
+        notional = float(pos.qty) * float(pos.entry_price) * mult
+        self._reserved_capital += notional / lev
+        self._positions[entry_id] = pos
+        self._note_excursion(pos, 0.0)
+        LOG.warning(
+            "ScalpTrader %s: adopted exchange %s leg qty=%.4f entry=%.5f stop=%.5f tp=%.5f",
+            pair_key,
+            direction,
+            pos.qty,
+            pos.entry_price,
+            pos.stop_price,
+            pos.tp_price,
+        )
+        self._state.push_alert(
+            "warning",
+            f"Scalp adopted: {pair_key} {direction}",
+            f"Venue size {pos.qty:.4f} @ {pos.entry_price:.5f} — protectives "
+            f"{'will be placed' if place_protectives else 'deferred (scalp off/sim)'}",
+            "scalp_reconcile",
+        )
+        if place_protectives and self._live_mgr is not None and not self._sim_mode:
+            await self._place_protective_orders_coinbase(pos)
+        return pos
+
     def _close_position(
         self,
         pos: ScalpPosition,
@@ -1732,6 +2270,17 @@ class ScalpTrader:
                 contract_size=float(pos.contract_size or 1.0),
                 simulated=True,
             )
+        mult_exc = pos.contract_size if self._coinbase_perps() else 1.0
+        if pos.status == "open":
+            cp = float(close_price)
+            ep = float(pos.entry_price)
+            q = float(pos.qty)
+            if pos.direction == "long":
+                u_exit = (cp - ep) * q * mult_exc
+            else:
+                u_exit = (ep - cp) * q * mult_exc
+            self._note_excursion(pos, u_exit)
+
         pos.pnl = pnl
         pos.close_reason = reason
         pos.status = "closed"
@@ -1746,10 +2295,29 @@ class ScalpTrader:
         _lev_close = max(1.0, float(getattr(self._cfg, "max_leverage", 1.0)))
         addon = float(getattr(pos, "margin_reserve_addon", 0.0) or 0.0)
         self._reserved_capital = max(0.0, self._reserved_capital - notional / _lev_close - addon)
-        self._trade_history.append({
+
+        mode = pos.strategy_mode or "unknown"
+        pnl_f = float(pnl)
+        trade_idx = self._strategy_trade_index[mode] + 1
+        self._strategy_cumulative_pnl[mode] += pnl_f
+        cum_after = self._strategy_cumulative_pnl[mode]
+        self._strategy_trade_index[mode] = trade_idx
+
+        entry_notional = abs(float(pos.entry_price) * float(pos.qty) * mult_exc)
+        exit_notional = abs(float(close_price) * float(pos.qty) * mult_exc)
+        mfe_usd = float(pos.excursion_max_usd) if pos.excursion_initialized else 0.0
+        mae_usd = float(pos.excursion_min_usd) if pos.excursion_initialized else 0.0
+        net_pct = self._pct_vs_notional(pnl_f, entry_notional)
+        mfe_pct = self._pct_vs_notional(mfe_usd, entry_notional)
+        mae_pct = self._pct_vs_notional(mae_usd, entry_notional)
+        alloc = float(getattr(self._cfg, "allocated_capital_usd", 0.0) or 0.0)
+        cum_pct = (cum_after / alloc * 100.0) if alloc > 1e-12 else 0.0
+
+        _hist = {
             "pair_key": pos.pair_key,
+            "symbol": pos.symbol,
             "direction": pos.direction,
-            "strategy_mode": pos.strategy_mode or "unknown",
+            "strategy_mode": mode,
             "entry_ts": pos.opened_at,
             "exit_ts": pos.closed_at,
             "entry_price": pos.entry_price,
@@ -1758,7 +2326,20 @@ class ScalpTrader:
             "pnl": round(pnl, 6),
             "reason": reason,
             "simulated": self._sim_mode or self._live_mgr is None,
-        })
+            "entry_cl_ord_id": pos.entry_cl_ord_id,
+            "strategy_trade_index": int(trade_idx),
+            "cumulative_pnl_after": round(cum_after, 6),
+            "entry_notional_usd": round(entry_notional, 6),
+            "mfe_usd": round(mfe_usd, 6),
+            "mfe_pct": round(mfe_pct, 4),
+            "mae_usd": round(mae_usd, 6),
+            "mae_pct": round(mae_pct, 4),
+            "net_pnl_pct": round(net_pct, 4),
+            "cumulative_pnl_pct": round(cum_pct, 4),
+        }
+        self._trade_history.append(_hist)
+        if bool(getattr(self._cfg, "persist_trade_history", True)):
+            append_trade_history_row(_hist)
         self._state.push_alert(
             "success" if pnl > 0 else "warning",
             f"Scalp {reason.upper()}: {pos.pair_key}",
@@ -1767,11 +2348,51 @@ class ScalpTrader:
             "scalp",
         )
         if self._session_log is not None:
+            fill_ts = float(pos.closed_at)
+            entry_sig = self._strategy_entry_signal(pos.direction)
+            exit_sig = self._strategy_exit_signal(pos.direction)
+            self._session_log.log_scalp(
+                "strategy_report_trade",
+                strategy_mode=mode,
+                pair_key=pos.pair_key,
+                symbol=pos.symbol,
+                trade_number=int(trade_idx),
+                direction=pos.direction,
+                net_pnl_usd=round(pnl_f, 6),
+                net_pnl_pct=round(net_pct, 4),
+                mfe_usd=round(mfe_usd, 6),
+                mfe_pct=round(mfe_pct, 4),
+                mae_usd=round(mae_usd, 6),
+                mae_pct=round(mae_pct, 4),
+                cumulative_pnl_usd=round(cum_after, 6),
+                cumulative_pnl_pct=round(cum_pct, 4),
+                entry_notional_usd=round(entry_notional, 6),
+                exit_notional_usd=round(exit_notional, 6),
+                entry_row={
+                    "type": "Entry",
+                    "ts": round(float(pos.opened_at), 3),
+                    "signal": entry_sig,
+                    "price_usd": round(float(pos.entry_price), 8),
+                    "qty": round(float(pos.qty), 8),
+                    "notional_usd": round(entry_notional, 6),
+                },
+                exit_row={
+                    "type": "Exit",
+                    "ts": round(fill_ts, 3),
+                    "signal": exit_sig,
+                    "price_usd": round(float(close_price), 8),
+                    "qty": round(float(pos.qty), 8),
+                    "notional_usd": round(exit_notional, 6),
+                },
+                close_reason=str(reason)[:80],
+                simulated=self._sim_mode or self._live_mgr is None,
+                entry_cl_ord_id=str(pos.entry_cl_ord_id)[:80],
+            )
             self._session_log.log_scalp(
                 "position_closed",
                 pair_key=pos.pair_key,
                 symbol=pos.symbol,
-                strategy_mode=pos.strategy_mode or "unknown",
+                strategy_mode=mode,
                 direction=pos.direction,
                 reason=reason,
                 entry_cl_ord_id=pos.entry_cl_ord_id,
@@ -1812,6 +2433,7 @@ class ScalpTrader:
         self._positions.clear()
         self._market_exit_entry_link.clear()
         self._pending_market_exits.clear()
+        self._pending_counter_reversals.clear()
         self._reserved_capital = 0.0
         LOG.info("ScalpTrader: session reset — P&L, history, positions, and reserved capital cleared")
 
@@ -1824,37 +2446,47 @@ class ScalpTrader:
             self._daily_pnl = 0.0
             self._daily_loss_breach_notified = False
 
+    def _position_row(self, p: ScalpPosition) -> dict:
+        return {
+            "pair_key": p.pair_key,
+            "entry_cl_ord_id": p.entry_cl_ord_id,
+            "symbol": p.symbol,
+            "direction": p.direction,
+            "strategy_mode": p.strategy_mode or "unknown",
+            "entry": p.entry_price,
+            "stop": p.stop_price,
+            "tp": p.tp_price,
+            "entry_ts": int(p.opened_at),
+            "qty": p.qty,
+            "contract_size": p.contract_size,
+            "status": p.status,
+            "age_sec": round(time.time() - p.opened_at, 0),
+            "unrealized_pnl": round(p.unrealized_pnl, 4),
+            "mark_price": round(p.mark_price, 6) if p.mark_price else 0.0,
+            "leverage": p.leverage,
+            "liquidation_price": round(p.liquidation_price, 6) if p.liquidation_price else 0.0,
+            "funding_rate": p.funding_rate,
+            "breakeven_hit": p.breakeven_hit,
+            "trail_active": p.trail_active,
+        }
+
     def snapshot(self) -> dict:
         """Summary for dashboard display."""
         open_pos = {
-            p.entry_cl_ord_id: {
-                "pair_key": p.pair_key,
-                "entry_cl_ord_id": p.entry_cl_ord_id,
-                "symbol": p.symbol,
-                "direction": p.direction,
-                "strategy_mode": p.strategy_mode or "unknown",
-                "entry": p.entry_price,
-                "stop": p.stop_price,
-                "tp": p.tp_price,
-                "entry_ts": int(p.opened_at),
-                "qty": p.qty,
-                "contract_size": p.contract_size,
-                "status": p.status,
-                "age_sec": round(time.time() - p.opened_at, 0),
-                "unrealized_pnl": round(p.unrealized_pnl, 4),
-                "mark_price": round(p.mark_price, 6) if p.mark_price else 0.0,
-                "leverage": p.leverage,
-                "liquidation_price": round(p.liquidation_price, 6) if p.liquidation_price else 0.0,
-                "funding_rate": p.funding_rate,
-                "breakeven_hit": p.breakeven_hit,
-                "trail_active": p.trail_active,
-            }
+            p.entry_cl_ord_id: self._position_row(p)
             for p in self._positions.values()
-            if p.status in ("pending", "open")
+            if p.status == "open"
+        }
+        pending_pos = {
+            p.entry_cl_ord_id: self._position_row(p)
+            for p in self._positions.values()
+            if p.status == "pending"
         }
         return {
             "open_positions": open_pos,
+            "pending_entries": pending_pos,
             "open_count": len(open_pos),
+            "pending_count": len(pending_pos),
             "daily_pnl": round(self._daily_pnl, 4),
             "reserved_capital": round(self._reserved_capital, 2),
             "trade_history": list(self._trade_history),

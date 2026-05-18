@@ -11,6 +11,8 @@ Supports strategy modes selected by the WFO / config:
   - sar_chop: TV "5 min bot scalper" decode — PSAR (+ Lucid SAR) flip,
     CHOP regime filter, MA(200)/MA(50) trend, MACD(12,26,9) hist, UT Bot ATR trail gate
 
+Candles are driven per pair by ``ScalpPairConfig.interval`` (default **5** minutes).
+
 Long+short: shorts require ``shorts_enabled`` on the scalp bot config (Coinbase CDE perps).
 """
 
@@ -1684,7 +1686,7 @@ class SignalEngine:
     ) -> ScalpSignal | None:
         if direction == "long":
             if not iv.hull_long:
-                self._dbg_skip(pair_key, "hull_no_long_flip")
+                self._dbg_skip(pair_key, "hull_trend_down_no_long")
                 return None
             entry = iv.close
             stop = round(entry - iv.atr * cfg.atr_stop_mult, 6)

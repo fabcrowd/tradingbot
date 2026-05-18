@@ -5,14 +5,16 @@ indicator pick. WFO / champion selection scores **round-trip trades** only; ``wi
 in ``compute_metrics`` is the fraction of ``TradeResult`` with net PnL > 0 after fees
 (never "indicator pointed the right way without a trade").
 
-Registered strategy modes (must match ``evaluate_params`` branches and ``SignalEngine``):
+Registered strategy modes (must match ``evaluate_params`` branches and ``SignalEngine``).
+Mode ``ema_momentum`` is implemented by ``detect_signals_ema`` (historical shorthand name):
+
   - daviddtech_scalp — T3 + HLC + WAE + ADX bundle (vector long+short)
-  - ema_momentum — dual EMA cross + volume confluence + ATR stops/TP
+  - ema_momentum — fast/slow EMA cross entries + ATR gate (RSI/volume ParamSet slots unused here)
   - rsi_reversion — RSI oversold/overbought mean reversion (perps)
   - ema_scalp — Tony's EMA scalper + S/R bands
   - macd_scalp — Ehlers super-smoother MACD crossover
   - supertrend, hull_suite, … — full set in ``WFO_REGISTERED_STRATEGY_MODES``; default WFO grid
-    omits some overlapping/niche modes (see ``build_default_grid`` docstring).
+    is restoring all registered modes gradually (see ``build_default_grid`` docstring).
 
 Unknown ``mode`` values **raise** (no silent fallback) so WFO cannot score arbitrary strings.
 """
@@ -20,7 +22,9 @@ Unknown ``mode`` values **raise** (no silent fallback) so WFO cannot score arbit
 from __future__ import annotations
 
 import datetime
+import logging
 import math
+import os
 from dataclasses import dataclass, replace
 from types import SimpleNamespace
 
@@ -28,6 +32,34 @@ import numpy as np
 
 from .indicator_warmup import vec_warmup_prefix_len
 from .scalp_mode_resolution import normalize_auto_mode_fallback
+
+LOG = logging.getLogger(__name__)
+def _scalp_vec_bt_diag_max_keys() -> int:
+    """Cap unique diag fingerprints per process (override via SCALP_VEC_BT_DIAG_MAX_KEYS)."""
+    raw = os.environ.get("SCALP_VEC_BT_DIAG_MAX_KEYS", "64").strip()
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return 64
+
+
+_scalp_vec_bt_diag_keys: set[str] = set()
+
+
+def _scalp_vec_bt_diag_enabled() -> bool:
+    return os.environ.get("SCALP_VEC_BT_DIAG", "").strip().lower() in ("1", "true", "yes")
+
+
+def _scalp_vec_bt_diag_warn(fingerprint: str, msg: str) -> None:
+    """Throttle LOG.warning behind SCALP_VEC_BT_DIAG — avoids WFO spam."""
+    if not _scalp_vec_bt_diag_enabled():
+        return
+    if fingerprint in _scalp_vec_bt_diag_keys:
+        return
+    if len(_scalp_vec_bt_diag_keys) >= _scalp_vec_bt_diag_max_keys():
+        return
+    _scalp_vec_bt_diag_keys.add(fingerprint)
+    LOG.warning("%s", msg)
 
 
 # ---------------------------------------------------------------------------
@@ -56,6 +88,39 @@ def ema(close: np.ndarray, period: int) -> np.ndarray:
             out[i] = out[i - 1]
         else:
             out[i] = alpha * v + (1 - alpha) * out[i - 1]
+    return out
+
+
+def _rising_edge(mask: np.ndarray) -> np.ndarray:
+    """True at ``i`` when ``mask[i]`` is True and ``mask[i-1]`` was False.
+
+    ``mask`` must be **boolean**. Integer 0/1 arrays are unsafe — ``~`` breaks for ints.
+    """
+    n = int(mask.shape[0])
+    out = np.zeros(n, dtype=bool)
+    if n <= 1:
+        return out
+    out[1:] = mask[1:] & (~mask[:-1])
+    return out
+
+
+def _touch_crossover(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Pine ``ta.crossover(a, b)``: ``a[i-1] <= b[i-1]`` and ``a[i] > b[i]``."""
+    n = len(a)
+    out = np.zeros(n, dtype=bool)
+    if n <= 1:
+        return out
+    out[1:] = (a[:-1] <= b[:-1]) & (a[1:] > b[1:])
+    return out
+
+
+def _touch_crossunder(a: np.ndarray, b: np.ndarray) -> np.ndarray:
+    """Pine ``ta.crossunder(a, b)``: ``a[i-1] >= b[i-1]`` and ``a[i] < b[i]``."""
+    n = len(a)
+    out = np.zeros(n, dtype=bool)
+    if n <= 1:
+        return out
+    out[1:] = (a[:-1] >= b[:-1]) & (a[1:] < b[1:])
     return out
 
 
@@ -106,7 +171,13 @@ def wma(close: np.ndarray, period: int) -> np.ndarray:
     """Weighted moving average — linearly weighted, newest bar has highest weight."""
     n = len(close)
     out = np.full(n, np.nan, dtype=np.float64)
-    if period > n or period < 1:
+    if period < 1:
+        return out
+    if period > n:
+        _scalp_vec_bt_diag_warn(
+            f"wma:{period}:{n}",
+            f"wma: period={period} > len(close)={n}; returning all-NaN.",
+        )
         return out
     weights = np.arange(1, period + 1, dtype=np.float64)
     wsum = weights.sum()
@@ -193,11 +264,26 @@ def rolling_min_arr(x: np.ndarray, period: int) -> np.ndarray:
     return out
 
 
+def rolling_highest(close: np.ndarray, period: int) -> np.ndarray:
+    """Rolling highest close (Pine ``ta.highest``) — ``rolling_max_arr`` with NaN-safe windows."""
+    return rolling_max_arr(close, period)
+
+
+def rolling_lowest(close: np.ndarray, period: int) -> np.ndarray:
+    """Rolling lowest close (Pine ``ta.lowest``) — ``rolling_min_arr`` with NaN-safe windows."""
+    return rolling_min_arr(close, period)
+
+
 def adx_wilder(high: np.ndarray, low: np.ndarray, close: np.ndarray, period: int) -> np.ndarray:
     """Wilder ADX. NaN until bar index ``2 * period - 1`` (inclusive) has a value."""
     n = len(close)
     out = np.full(n, np.nan, dtype=np.float64)
     if n < 2 * period + 1:
+        need_n = 2 * period + 1
+        _scalp_vec_bt_diag_warn(
+            f"adx_wilder:{n}:{period}",
+            f"adx_wilder: series length={n} < minimum {need_n} for ADX period={period} — returning all NaN.",
+        )
         return out
 
     tr = np.zeros(n, dtype=np.float64)
@@ -290,7 +376,17 @@ def waddah_attar_explosion(
     Returns (hist, basis, upper, lower) all length n.
     """
     macd1 = ema(close, fast_len) - ema(close, slow_len)
+    # Histogram signal smoothing: empirical clamp (floor 3, cap 21). For ``wae_slow_len > 41``,
+    # ``slow_len // 2`` would exceed 21 but ``sig_period`` plateaus — high ``wae_slow_len`` overrides
+    # from config/champion do not change WAE behavior past this ceiling unless relaxed in code.
     sig_period = max(3, min(21, slow_len // 2))
+    if slow_len > 41:
+        _scalp_vec_bt_diag_warn(
+            f"wae_sig_plateau:{slow_len}",
+            "waddah_attar_explosion: wae_slow_len=%d exceeds plateau band "
+            "(sig_period=max(3,min(21,slow_len//2)) sticks at 21 — see strategies.md)."
+            % slow_len,
+        )
     sig = ema(macd1, sig_period)
     hist = (macd1 - sig) * float(sensitivity)
     basis = rolling_mean_arr(hist, bb_len)
@@ -345,6 +441,10 @@ def detect_signals_daviddtech(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """DaviddTech-style confluence. Long and short masks for bidirectional backtest."""
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_daviddtech: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
     long_mask = np.zeros(n, dtype=bool)
     short_mask = np.zeros(n, dtype=bool)
 
@@ -389,6 +489,14 @@ def detect_signals_daviddtech(
         long_mask[:warm] = False
         short_mask[:warm] = False
     else:
+        _scalp_vec_bt_diag_warn(
+            f"daviddtech_warm_coverage:{warm}:{n}",
+            (
+                "detect_signals_daviddtech: bar count=%d is less than or equal to warmup prefix=%d "
+                "— masks are cleared for the full window."
+            )
+            % (n, warm),
+        )
         long_mask[:] = False
         short_mask[:] = False
 
@@ -629,11 +737,7 @@ def simulate_trades_bidir(
             if stop_hit and tp_hit:
                 if has_open:
                     o = open_prices[j]
-                    if side == 1:
-                        stop_first = _intrabar_stop_first(o, high[j], low[j])
-                    else:
-                        # Short: stop sits at the high side; infer high-first path.
-                        stop_first = (high[j] - o) < (o - low[j])
+                    stop_first = _intrabar_stop_first(o, high[j], low[j], side)
                 else:
                     stop_first = True
                 if side == 1:
@@ -707,24 +811,38 @@ def detect_signals_ema(
     vol_mult: float,
     min_signals: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """EMA momentum mode: fast/slow EMA cross entries only (perps backtests).
+    """EMA momentum (**registered mode:** ``ema_momentum`` — kept short historical name).
 
-    RSI / VWAP / volume / ``min_signals`` stay in the signature for callers
-    (WFO / ParamSet) but do not gate entries.
+    Fast/slow EMA cross entries with ATR gate. RSI / VWAP / volume /
+    ``min_signals`` remain in the signature for WFO ``ParamSet`` compatibility but **do not**
+    gate entries; default ``build_default_grid`` does not sweep them for this mode.
     """
+    n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_ema: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+    if not (len(volume) == n and len(timestamp) == n):
+        raise ValueError(
+            f"detect_signals_ema: volume/timestamp length mismatch (expected {n}, "
+            f"volume={len(volume)}, timestamp={len(timestamp)})",
+        )
     del volume, timestamp, rsi_period, vol_ma_period, vol_mult, min_signals
 
     ema_f = ema(close, ema_fast_period)
     ema_s = ema(close, ema_slow_period)
     atr_vals = atr(high, low, close, atr_period)
 
-    ema_bullish = ema_f > ema_s
-    ema_cross_up = np.zeros(len(close), dtype=bool)
-    ema_cross_up[1:] = ema_bullish[1:] & ~ema_bullish[:-1]
+    valid_pair = ~np.isnan(ema_f) & ~np.isnan(ema_s)
+    prev_valid = np.zeros(n, dtype=bool)
+    prev_valid[1:] = valid_pair[:-1]
 
-    ema_bearish = ema_f < ema_s
-    ema_cross_down = np.zeros(len(close), dtype=bool)
-    ema_cross_down[1:] = ema_bearish[1:] & ~ema_bearish[:-1]
+    ema_bullish = (ema_f > ema_s) & valid_pair
+    ema_bearish = (ema_f < ema_s) & valid_pair
+    ema_cross_up = _rising_edge(ema_bullish)
+    ema_cross_down = _rising_edge(ema_bearish)
+    ema_cross_up &= prev_valid
+    ema_cross_down &= prev_valid
 
     ok_atr = ~np.isnan(atr_vals) & (atr_vals > 0)
     long_mask = ema_cross_up & ok_atr
@@ -761,6 +879,11 @@ def detect_signals_rsi(
     rsi_sell_threshold is used by the long-exit simulator (RSI recovery).
     rsi_short_threshold gates short entries (default 70 = overbought).
     """
+    n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_rsi: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
     rsi_vals = rsi(close, rsi_period)
     atr_vals = atr(high, low, close, atr_period)
 
@@ -789,6 +912,7 @@ def simulate_trades_rsi(
     atr_vals: np.ndarray,
     rsi_vals: np.ndarray,
     *,
+    open_prices: np.ndarray | None = None,
     rsi_sell_threshold: float = 50.0,
     rsi_short_cover_threshold: float = 30.0,
     atr_stop_mult: float = 1.5,
@@ -801,17 +925,25 @@ def simulate_trades_rsi(
     cooldown_bars: int = 1,
     fill_model: str = "close_slip",
 ) -> list[TradeResult]:
-    """RSI mean-reversion: long and short entries for perps."""
+    """RSI mean-reversion: long and short entries for perps.
+
+    Long exits use ATR TP (``entry + atr * atr_tp_mult``) like live ``SignalEngine``.
+    Same-bar ambiguity when both stop and TP print resolves with `_intrabar_stop_first`
+    if ``open_prices`` exists; otherwise **stop first** — matches ``simulate_trades_bidir``
+    behavior when OHLC lacks opens.
+    """
     n = len(close)
     trades: list[TradeResult] = []
     next_allowed = 0
-    use_next_open = fill_model == "next_open"
+    has_open = open_prices is not None
+    use_next_open = fill_model == "next_open" and has_open
 
     for i in range(n):
         if i < next_allowed:
             continue
 
         if long_mask[i] and short_mask[i]:
+            # Defensive — only reachable with mis/overlapping buy vs short RSI thresholds.
             continue
 
         a = atr_vals[i]
@@ -819,30 +951,61 @@ def simulate_trades_rsi(
             continue
 
         if long_mask[i]:
-            if use_next_open:
-                if i + 1 >= n:
+            if fill_model == "next_open":
+                if not has_open:
+                    if i + 1 >= n:
+                        continue
+                    entry_price = close[i + 1] * (1.0 + slippage_pct)
+                elif i + 1 >= n:
                     continue
-                entry_price = close[i + 1] * (1.0 + slippage_pct)
+                else:
+                    entry_price = open_prices[i + 1] * (1.0 + slippage_pct)
             else:
                 entry_price = close[i] * (1.0 + slippage_pct)
             stop_price = entry_price - a * atr_stop_mult
-            tp_price = entry_price * 1.10
+            tp_price = entry_price + a * atr_tp_mult
 
             if stop_price >= entry_price:
+                continue
+            if tp_price <= entry_price:
                 continue
 
             exit_bar = min(i + max_hold_bars, n - 1)
             exit_price = close[exit_bar]
             exit_reason = "time_stop"
 
+            slip = float(slippage_pct)
             for j in range(i + 1, min(i + max_hold_bars + 1, n)):
-                if low[j] <= stop_price:
-                    exit_price = stop_price * (1.0 - slippage_pct)
+                stop_hit = low[j] <= stop_price
+                tp_hit = high[j] >= tp_price
+
+                if stop_hit and tp_hit:
+                    if has_open:
+                        o = float(open_prices[j])
+                        stop_first = _intrabar_stop_first(o, float(high[j]), float(low[j]), 1)
+                    else:
+                        stop_first = True
+                    if stop_first:
+                        exit_price = stop_price * (1.0 - slip)
+                        exit_reason = "stop"
+                        exit_bar = j
+                    else:
+                        exit_price = tp_price * (1.0 - slip)
+                        exit_reason = "tp"
+                        exit_bar = j
+                    break
+                if stop_hit:
+                    exit_price = stop_price * (1.0 - slip)
                     exit_reason = "stop"
                     exit_bar = j
                     break
+                if tp_hit:
+                    exit_price = tp_price * (1.0 - slip)
+                    exit_reason = "tp"
+                    exit_bar = j
+                    break
                 if not np.isnan(rsi_vals[j]) and rsi_vals[j] >= rsi_sell_threshold:
-                    exit_price = close[j] * (1.0 - slippage_pct)
+                    exit_price = close[j] * (1.0 - slip)
                     exit_reason = "rsi_exit"
                     exit_bar = j
                     break
@@ -872,10 +1035,15 @@ def simulate_trades_rsi(
             continue
 
         if short_mask[i]:
-            if use_next_open:
-                if i + 1 >= n:
+            if fill_model == "next_open":
+                if not has_open:
+                    if i + 1 >= n:
+                        continue
+                    entry_price = close[i + 1] * (1.0 - slippage_pct)
+                elif i + 1 >= n:
                     continue
-                entry_price = close[i + 1] * (1.0 - slippage_pct)
+                else:
+                    entry_price = open_prices[i + 1] * (1.0 - slippage_pct)
             else:
                 entry_price = close[i] * (1.0 - slippage_pct)
             stop_price = entry_price + a * atr_stop_mult
@@ -888,19 +1056,38 @@ def simulate_trades_rsi(
             exit_price = close[exit_bar]
             exit_reason = "time_stop"
 
+            slip = float(slippage_pct)
             for j in range(i + 1, min(i + max_hold_bars + 1, n)):
-                if high[j] >= stop_price:
-                    exit_price = stop_price * (1.0 + slippage_pct)
+                stop_hit = high[j] >= stop_price
+                tp_hit = low[j] <= tp_price
+
+                if stop_hit and tp_hit:
+                    if has_open:
+                        o = float(open_prices[j])
+                        stop_first = _intrabar_stop_first(o, float(high[j]), float(low[j]), -1)
+                    else:
+                        stop_first = True
+                    if stop_first:
+                        exit_price = stop_price * (1.0 + slip)
+                        exit_reason = "stop"
+                        exit_bar = j
+                    else:
+                        exit_price = tp_price * (1.0 + slip)
+                        exit_reason = "tp"
+                        exit_bar = j
+                    break
+                if stop_hit:
+                    exit_price = stop_price * (1.0 + slip)
                     exit_reason = "stop"
                     exit_bar = j
                     break
-                if low[j] <= tp_price:
-                    exit_price = tp_price * (1.0 + slippage_pct)
+                if tp_hit:
+                    exit_price = tp_price * (1.0 + slip)
                     exit_reason = "tp"
                     exit_bar = j
                     break
                 if not np.isnan(rsi_vals[j]) and rsi_vals[j] <= rsi_short_cover_threshold:
-                    exit_price = close[j] * (1.0 + slippage_pct)
+                    exit_price = close[j] * (1.0 + slip)
                     exit_reason = "rsi_exit"
                     exit_bar = j
                     break
@@ -935,24 +1122,6 @@ def simulate_trades_rsi(
 # Signal detection (vectorized) — EMA scalp mode (Tony's EMA Scalper)
 # ---------------------------------------------------------------------------
 
-def rolling_highest(close: np.ndarray, period: int) -> np.ndarray:
-    """Rolling highest close over `period` bars."""
-    n = len(close)
-    out = np.full(n, np.nan, dtype=np.float64)
-    for i in range(period - 1, n):
-        out[i] = np.max(close[i - period + 1: i + 1])
-    return out
-
-
-def rolling_lowest(close: np.ndarray, period: int) -> np.ndarray:
-    """Rolling lowest close over `period` bars."""
-    n = len(close)
-    out = np.full(n, np.nan, dtype=np.float64)
-    for i in range(period - 1, n):
-        out[i] = np.min(close[i - period + 1: i + 1])
-    return out
-
-
 def detect_signals_ema_scalp(
     close: np.ndarray,
     high: np.ndarray,
@@ -961,31 +1130,41 @@ def detect_signals_ema_scalp(
     atr_period: int,
     sr_bars: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Tony's EMA Scalper: long on bullish EMA cross; short on bearish cross (perps).
+    """Tony's EMA Scalper (**registered mode:** ``ema_scalp``).
 
-    Returns (long_mask, short_mask, atr_vals, high_n, low_n).
+    Entries: price crosses the EMA with bar-direction confirmation (strict ``>`` / ``<`` vs
+    prior close — matches Pine / live ``SignalEngine``). ``high_n`` / ``low_n`` are rolling
+    S/R levels from close; they **do not** veto longs near resistance or shorts near support
+    (same as Pine ``hh``/``ll`` validity checks). They gate entries only once the S/R window is
+    finite and are returned for live stop/TP (``high_8`` / ``low_8``) and legacy sim paths.
+
+    WFO ``evaluate_params`` uses ``simulate_trades_bidir`` (generic ATR stop/TP), not S/R exits.
     """
+    n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_ema_scalp: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+
     ema_vals = ema(close, ema_period)
     atr_vals = atr(high, low, close, atr_period)
     high_n = rolling_highest(close, sr_bars)
     low_n = rolling_lowest(close, sr_bars)
 
-    n = len(close)
-    long_mask = np.zeros(n, dtype=bool)
-    short_mask = np.zeros(n, dtype=bool)
+    ema_ok = ~np.isnan(ema_vals)
+    pair_ok = np.zeros(n, dtype=bool)
+    pair_ok[1:] = ema_ok[1:] & ema_ok[:-1]
 
-    for i in range(1, n):
-        if np.isnan(ema_vals[i]) or np.isnan(ema_vals[i - 1]):
-            continue
-        prev_above = close[i - 1] > ema_vals[i - 1]
-        cur_above = close[i] > ema_vals[i]
-        crossed = prev_above != cur_above
-        bullish = crossed and cur_above and close[i] > close[i - 1]
-        bearish = crossed and (not cur_above) and close[i] < close[i - 1]
-        if bullish:
-            long_mask[i] = True
-        if bearish:
-            short_mask[i] = True
+    above = (close > ema_vals) & ema_ok
+    below = (close < ema_vals) & ema_ok
+    # Strict bar-direction filter (equal close vs prior bar = no confirmation).
+    close_up = np.zeros(n, dtype=bool)
+    close_up[1:] = close[1:] > close[:-1]
+    close_dn = np.zeros(n, dtype=bool)
+    close_dn[1:] = close[1:] < close[:-1]
+
+    long_mask = _rising_edge(above) & pair_ok & close_up
+    short_mask = _rising_edge(below) & pair_ok & close_dn
 
     ok = ~np.isnan(atr_vals) & (atr_vals > 0) & ~np.isnan(high_n) & ~np.isnan(low_n)
     long_mask &= ok
@@ -1022,7 +1201,11 @@ def simulate_trades_ema_scalp(
     slippage_pct: float = 0.0001,
     cooldown_bars: int = 1,
 ) -> list[TradeResult]:
-    """EMA scalp trade sim with intrabar path and slippage."""
+    """Legacy long-only EMA scalp sim using S/R bands for stop/TP.
+
+    Not used by ``evaluate_params`` (WFO uses ``simulate_trades_bidir``). Kept for tools /
+    parity experiments; live ``SignalEngine`` applies the same S/R stop/TP idea per fill.
+    """
     n = len(close)
     trades: list[TradeResult] = []
     next_allowed = 0
@@ -1057,7 +1240,7 @@ def simulate_trades_ema_scalp(
 
             if stop_hit and tp_hit:
                 if has_open:
-                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j])
+                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j], 1)
                 else:
                     stop_first = True
                 if stop_first:
@@ -1112,12 +1295,14 @@ def simulate_trades_ema_scalp(
 
 def super_smooth(data: np.ndarray, period: int) -> np.ndarray:
     """Ehlers 2-pole super-smoother filter (recursive IIR)."""
+    n = len(data)
+    if period < 1 or n < 1:
+        return np.full(n, np.nan, dtype=np.float64)
     f = (1.4142135623730951 * math.pi) / period
     a = math.exp(-f)
     c2 = 2.0 * a * math.cos(f)
     c3 = -(a * a)
     c1 = 1.0 - c2 - c3
-    n = len(data)
     out = np.empty(n, dtype=np.float64)
     out[0] = data[0]
     if n > 1:
@@ -1138,22 +1323,27 @@ def detect_signals_macd(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Scalp Pro MACD: bull and bear super-smoother crossovers (perps).
 
-    Returns (long_mask, short_mask, atr_vals, macd_line, macd_signal_line).
+    ``* 1e7`` on the MACD line matches Pine ``TradingBotScalp``; inert for crossover
+    bars (sign-only) but keeps plotted / returned magnitudes aligned with TV.
+
+    Returns ``(long_mask, short_mask, atr_vals, macd_line, macd_signal_line)``.
+    ``evaluate_params`` discards the MACD series (masks only); live paths use ATR brackets.
     """
+    n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_macd: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+
     ss_fast = super_smooth(close, fast_len)
     ss_slow = super_smooth(close, slow_len)
     macd_line = (ss_fast - ss_slow) * 1e7
     macd_signal_line = super_smooth(macd_line, signal_len)
     atr_vals = atr(high, low, close, atr_period)
 
-    n = len(close)
-    long_mask = np.zeros(n, dtype=bool)
-    short_mask = np.zeros(n, dtype=bool)
-    for i in range(1, n):
-        if macd_line[i - 1] <= macd_signal_line[i - 1] and macd_line[i] > macd_signal_line[i]:
-            long_mask[i] = True
-        if macd_line[i - 1] >= macd_signal_line[i - 1] and macd_line[i] < macd_signal_line[i]:
-            short_mask[i] = True
+    # Touch-and-cross (Pine ta.crossover / ta.crossunder); mutual exclusion is mathematical.
+    long_mask = _touch_crossover(macd_line, macd_signal_line)
+    short_mask = _touch_crossunder(macd_line, macd_signal_line)
 
     ok = ~np.isnan(atr_vals) & (atr_vals > 0)
     long_mask &= ok
@@ -1186,14 +1376,24 @@ def detect_signals_supertrend(
     factor: float = 3.0,
     atr_period: int = 14,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Supertrend ATR-channel trend following.
+    """Supertrend ATR-channel trend following (edge detector: flip bars only).
 
-    Bands: hl2 ± factor×ATR, tightened each bar.
-    Long signal: supertrend flips from bearish to bullish (price breaks upper band).
-    Short signal: supertrend flips from bullish to bearish (price breaks lower band).
+    Bands: hl2 ± factor×ATR, tightened each bar (``close[i-1]`` vs prior band — standard lag).
+    Long/short masks fire on direction flips only (sparse); ``cooldown_bars`` is not load-bearing.
+
+    At ``loop_warm``, direction is seeded **bullish (1)** to match Pine ``var int stDir = 1``.
+    That TV-parity choice means uptrends miss an initial long until the first bear→bull flip;
+    downtrends can short on bar ``loop_warm + 1`` from the forced seed (Pine ``bar_index > loopWarm``).
+    ``mask_prefix`` (= ``loop_warm + 1``) clears bars ``0..loop_warm`` only; first flip bar is not masked.
+
     Returns (long_mask, short_mask, atr_vals).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_supertrend: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+
     atr_v = atr(high, low, close, atr_period)
     hl2 = (high + low) / 2.0
     basic_upper = hl2 + factor * atr_v
@@ -1201,16 +1401,20 @@ def detect_signals_supertrend(
 
     final_upper = np.full(n, np.nan)
     final_lower = np.full(n, np.nan)
-    direction = np.zeros(n, dtype=np.int8)  # 1=bull, -1=bear
+    direction = np.ones(n, dtype=np.int8)  # 1=bull, -1=bear; pre-warmup filled to match seed
 
-    loop_warm = max(atr_period, period)
     mask_prefix = vec_warmup_prefix_len(
         "supertrend",
         SimpleNamespace(atr_period=atr_period, supertrend_period=period),
     )
+    loop_warm = mask_prefix - 1  # == max(atr_period, period); synced via vec_warmup_prefix_len
     long_mask = np.zeros(n, dtype=bool)
     short_mask = np.zeros(n, dtype=bool)
     if loop_warm >= n:
+        _scalp_vec_bt_diag_warn(
+            f"supertrend:warm:{n}:{loop_warm}",
+            f"detect_signals_supertrend: len(close)={n} < recurrence start {loop_warm}; no signals.",
+        )
         return long_mask, short_mask, atr_v
 
     final_upper[loop_warm] = basic_upper[loop_warm]
@@ -1328,27 +1532,33 @@ def detect_signals_squeeze(
     mom_period: int = 12,
     atr_period: int = 14,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Squeeze Momentum: Bollinger Bands + Keltner Channels + linear-regression momentum.
+    """Squeeze Momentum (TTM-style): BB inside KC + linear-regression momentum.
 
-    Long signal: momentum crosses above zero.
-    Short signal: momentum crosses below zero.
+    Entry (intentional semantics — matches ``strategies.md`` and Pine export):
+      - Prior bar ``squeeze_on`` (BB strictly inside KC).
+      - This bar: momentum crosses zero (touch-and-cross on ``mom``).
+      - **Does not** require ``not squeeze_on[i]`` — signals may fire while squeeze
+        is still on if momentum crosses during compression (broader than strict
+        "release bar only").
+
     Returns (long_mask, short_mask, atr_vals).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_squeeze: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+    long_mask = np.zeros(n, dtype=bool)
+    short_mask = np.zeros(n, dtype=bool)
     atr_v = atr(high, low, close, atr_period)
-    kc_mid = ema(close, bb_period)
+    if mom_period < 2:
+        return long_mask, short_mask, atr_v
 
-    # Bollinger Bands (SMA + stdev)
-    sma = np.full(n, np.nan)
-    stdev = np.full(n, np.nan)
-    roll_high = np.full(n, np.nan)
-    roll_low = np.full(n, np.nan)
-    for i in range(bb_period - 1, n):
-        s = close[i - bb_period + 1: i + 1]
-        sma[i] = np.mean(s)
-        stdev[i] = np.std(s, ddof=0)
-        roll_high[i] = np.max(high[i - bb_period + 1: i + 1])
-        roll_low[i] = np.min(low[i - bb_period + 1: i + 1])
+    kc_mid = ema(close, bb_period)
+    sma = rolling_mean_arr(close, bb_period)
+    stdev = rolling_std_arr(close, bb_period)
+    roll_high = rolling_max_arr(high, bb_period)
+    roll_low = rolling_min_arr(low, bb_period)
 
     # BB/KC envelopes — squeeze is on when BB fits inside KC (low volatility).
     bb_upper = sma + bb_mult * stdev
@@ -1356,27 +1566,25 @@ def detect_signals_squeeze(
     kc_upper = kc_mid + kc_mult * atr_v
     kc_lower = kc_mid - kc_mult * atr_v
 
-    # Squeeze condition: BB inside KC (volatility compression).
+    # Squeeze condition: BB inside KC (strict inequalities; equality is zero-measure).
     squeeze_on = (bb_lower > kc_lower) & (bb_upper < kc_upper)
 
-    # Momentum: linear-regression of delta over mom_period
+    # Momentum: linear-regression projection to the right edge of the window (TTM formula).
     midpoint = (roll_high + roll_low) / 2.0
     val = close - (midpoint + sma) / 2.0
 
     x = np.arange(mom_period, dtype=np.float64)
     x -= x.mean()
-    xdot = np.dot(x, x)
+    xdot = float(np.dot(x, x))  # > 0 for mom_period >= 2
     mom = np.full(n, np.nan)
     for i in range(mom_period - 1, n):
         y = val[i - mom_period + 1: i + 1]
-        if np.any(np.isnan(y)) or xdot == 0:
+        if np.any(np.isnan(y)):
             continue
         slope = np.dot(x, y) / xdot
-        mom[i] = slope * (mom_period - 1) / 2.0 + np.mean(y)
+        mom[i] = slope * (mom_period - 1) / 2.0 + float(np.mean(y))
 
-    # Entry: momentum crosses zero AND prior bar was in a squeeze (release signal).
-    long_mask = np.zeros(n, dtype=bool)
-    short_mask = np.zeros(n, dtype=bool)
+    # Entry: momentum cross gated by prior-bar squeeze (see docstring).
     for i in range(1, n):
         if np.isnan(mom[i]) or np.isnan(mom[i - 1]):
             continue
@@ -1398,6 +1606,12 @@ def detect_signals_squeeze(
             squeeze_mom_period=mom_period,
         ),
     )
+    if warmup >= n:
+        _scalp_vec_bt_diag_warn(
+            f"squeeze:warm:{n}:{warmup}",
+            f"detect_signals_squeeze: len(close)={n} < warmup {warmup}; no signals generated.",
+        )
+        return long_mask, short_mask, atr_v
     long_mask[:warmup] = False
     short_mask[:warmup] = False
     return long_mask, short_mask, atr_v
@@ -1442,18 +1656,27 @@ def detect_signals_qqe(
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """QQE Mod: Wilder-smoothed RSI with a dynamic ATR-derived trailing level.
 
-    Long signal: smooth_rsi crosses above QQE trail AND smooth_rsi > 50.
-    Short signal: smooth_rsi crosses below QQE trail AND smooth_rsi < 50.
+    Long: ``_touch_crossover(smooth_rsi, trail)`` and smooth_rsi > 50.
+    Short: ``_touch_crossunder(smooth_rsi, trail)`` and smooth_rsi < 50.
+
+    Trail seeds at ``wilders_period`` with ``smooth_rsi[start]`` (canonical QQE Mod /
+    Pine ``trail := sm`` at first valid bar). ``abs_diff`` uses ``prepend=np.nan`` so
+    the Wilder seed is not biased by a synthetic zero at bar 0.
+
     Returns (long_mask, short_mask, atr_vals).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_qqe: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
     atr_v = atr(high, low, close, atr_period)
     rsi_v = rsi(close, rsi_period)
     smooth_rsi = ema(rsi_v, qqe_smoothing)
 
     # Wilder-smoothed ATR of the smoothed RSI
     wilders_period = rsi_period * 2 - 1
-    abs_diff = np.abs(np.diff(smooth_rsi, prepend=smooth_rsi[0]))
+    abs_diff = np.abs(np.diff(smooth_rsi, prepend=np.nan))
     atr_rsi = np.full(n, np.nan)
     if wilders_period < n:
         seed = np.nanmean(abs_diff[:wilders_period])
@@ -1467,7 +1690,7 @@ def detect_signals_qqe(
     qqe_dn = smooth_rsi - qqe_factor * atr_rsi   # lower band (bull trail)
     qqe_up = smooth_rsi + qqe_factor * atr_rsi   # upper band (bear trail)
 
-    # Trailing stop
+    # Trailing stop (seed = smooth RSI at first valid bar — matches Pine qqe_mod block)
     trail = np.full(n, np.nan)
     start = wilders_period
     if start < n and np.isfinite(smooth_rsi[start]):
@@ -1484,17 +1707,10 @@ def detect_signals_qqe(
         else:
             trail[i] = min(prev_trail, qqe_up[i])
 
-    long_mask = np.zeros(n, dtype=bool)
-    short_mask = np.zeros(n, dtype=bool)
-    for i in range(1, n):
-        if np.isnan(smooth_rsi[i]) or np.isnan(trail[i]) or np.isnan(trail[i - 1]):
-            continue
-        if (smooth_rsi[i - 1] <= trail[i - 1] and smooth_rsi[i] > trail[i]
-                and smooth_rsi[i] > 50):
-            long_mask[i] = True
-        elif (smooth_rsi[i - 1] >= trail[i - 1] and smooth_rsi[i] < trail[i]
-              and smooth_rsi[i] < 50):
-            short_mask[i] = True
+    cross_up = _touch_crossover(smooth_rsi, trail)
+    cross_dn = _touch_crossunder(smooth_rsi, trail)
+    long_mask = cross_up & (smooth_rsi > 50.0)
+    short_mask = cross_dn & (smooth_rsi < 50.0)
 
     ok = ~np.isnan(atr_v) & (atr_v > 0)
     long_mask &= ok
@@ -1504,8 +1720,15 @@ def detect_signals_qqe(
         SimpleNamespace(
             qqe_rsi_period=rsi_period,
             qqe_smoothing=qqe_smoothing,
+            atr_period=atr_period,
         ),
     )
+    if warmup >= n:
+        _scalp_vec_bt_diag_warn(
+            f"qqe_mod:warm:{n}:{warmup}",
+            f"detect_signals_qqe: len(close)={n} < warmup {warmup}; no signals generated.",
+        )
+        return long_mask, short_mask, atr_v
     long_mask[:warmup] = False
     short_mask[:warmup] = False
     return long_mask, short_mask, atr_v
@@ -1545,26 +1768,47 @@ def detect_signals_utbot(
     atr_period: int = 10,
     atr_mult: float = 1.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """UT Bot Alert: ATR-based trailing stop that ratchets with price.
+    """UT Bot Alert: ATR trailing stop with direction flips (edge detector).
 
-    Long signal: price crosses above the trail (direction flips to bull).
-    Short signal: price crosses below the trail (direction flips to bear).
+    Sparse masks: entries only on bull/bear flips, not every bar in a trend.
+    ``cooldown_bars`` is not load-bearing. Mode is **off** the default WFO grid
+    (manual pin, bootstrap, no-champion tuner).
+
+    At ``loop_warm``, ``direction`` is seeded **bullish (1)** and ``trail`` to
+    ``close[loop_warm]`` — Pine ``var int udir = 1`` at ``bar_index == utAtrLen``.
+    Same window-start asymmetry as ``detect_signals_supertrend`` (TV parity).
+    ``mask_prefix`` (= ``loop_warm + 1``) clears bars ``0..loop_warm``; first flip
+    may occur at ``loop_warm + 1``.
+
+    Ratchet uses strict ``>`` / ``<``; ``close == trail`` falls through to ``c + loss``
+    (Pine ternary else branch). Direction flips use strict inequalities on ``pc`` vs
+    prior trail and ``c`` vs new trail.
+
     Returns (long_mask, short_mask, atr_vals).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_utbot: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+
     atr_v = atr(high, low, close, atr_period)
 
     trail = np.full(n, np.nan)
-    direction = np.zeros(n, dtype=np.int8)  # 1=bull, -1=bear
+    direction = np.ones(n, dtype=np.int8)  # 1=bull, -1=bear; pre-warmup matches seed
 
-    loop_warm = atr_period
     mask_prefix = vec_warmup_prefix_len(
         "utbot_alert",
         SimpleNamespace(utbot_atr_period=atr_period),
     )
+    loop_warm = mask_prefix - 1  # == utbot_atr_period; synced via vec_warmup_prefix_len
     long_mask = np.zeros(n, dtype=bool)
     short_mask = np.zeros(n, dtype=bool)
     if loop_warm >= n:
+        _scalp_vec_bt_diag_warn(
+            f"utbot:warm:{n}:{loop_warm}",
+            f"detect_signals_utbot: len(close)={n} < recurrence start {loop_warm}; no signals.",
+        )
         return long_mask, short_mask, atr_v
 
     trail[loop_warm] = close[loop_warm]
@@ -1579,7 +1823,7 @@ def detect_signals_utbot(
         c = close[i]
         pc = close[i - 1]
         pt = trail[i - 1]
-        # Ratchet logic
+        # Ratchet (Pine utbot_alert ternary chain; c == pt → else branch c + loss)
         if c > pt and pc > pt:
             trail[i] = max(pt, c - loss)
         elif c < pt and pc < pt:
@@ -1588,7 +1832,7 @@ def detect_signals_utbot(
             trail[i] = c - loss
         else:
             trail[i] = c + loss
-        # Direction
+        # Direction (pc vs prior trail, c vs ratcheted trail[i])
         if pc < trail[i - 1] and c > trail[i]:
             direction[i] = 1
         elif pc > trail[i - 1] and c < trail[i]:
@@ -1673,14 +1917,22 @@ def detect_signals_hull(
     hull_period: int = 38,
     atr_period: int = 14,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Hull Suite (DashTrader / InSilico pack, Hma only).
+    """Hull Suite (**registered mode:** ``hull_suite`` — DashTrader / InSilico Hma path).
 
-    HMA = WMA(2*WMA(n/2) − WMA(n), round(sqrt(n))) on ``close`` (Pine ``src`` default).
+    HMA = WMA(2×WMA(n/2) − WMA(n), round(√n)) on ``close``. Long when ``HMA[i] > HMA[i-2]``,
+    short when ``HMA[i] < HMA[i-2]`` (Pine ``longSig`` / ``shortSig``).
 
-    Long when ``HMA[i] > HMA[i-2]``, short when ``HMA[i] < HMA[i-2]`` (Pine ``MHULL`` vs ``SHULL``).
-    Returns (long_mask, short_mask, atr_vals).
+    **State classifier (not edge-only):** the mask is **True on every bar** the inequality holds,
+    not only on direction flips. Pine and live only act when flat; WFO ``simulate_trades_bidir``
+    dedupes via ``next_allowed`` + ``cooldown_bars``. ``counter_signal_exit`` is effectively inert
+    here (opposite mask cannot be True while HMA stays monotonic vs lag-2).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_hull: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
+
     atr_v = atr(high, low, close, atr_period)
 
     half = max(1, hull_period // 2)
@@ -1691,15 +1943,12 @@ def detect_signals_hull(
     diff = 2.0 * wma_half - wma_full
     hma = wma(diff, sqrtn)
 
-    long_mask = np.zeros(n, dtype=bool)
-    short_mask = np.zeros(n, dtype=bool)
-    for i in range(2, n):
-        if not np.isfinite(hma[i]) or not np.isfinite(hma[i - 2]):
-            continue
-        if hma[i] > hma[i - 2]:
-            long_mask[i] = True
-        elif hma[i] < hma[i - 2]:
-            short_mask[i] = True
+    hma_lag2 = np.full(n, np.nan, dtype=np.float64)
+    hma_lag2[2:] = hma[:-2]
+    # isfinite (not isnan): HMA/WMA differencing can theoretically yield ±inf on bad inputs.
+    valid = np.isfinite(hma) & np.isfinite(hma_lag2)
+    long_mask = (hma > hma_lag2) & valid
+    short_mask = (hma < hma_lag2) & valid
 
     ok = ~np.isnan(atr_v) & (atr_v > 0)
     long_mask &= ok
@@ -1708,6 +1957,14 @@ def detect_signals_hull(
         "hull_suite",
         SimpleNamespace(hull_period=hull_period, atr_period=atr_period),
     )
+    if warmup >= n:
+        _scalp_vec_bt_diag_warn(
+            f"hull_suite:warm:{n}:{warmup}",
+            f"detect_signals_hull: window len={n} < warmup prefix {warmup}; no signals.",
+        )
+        long_mask[:] = False
+        short_mask[:] = False
+        return long_mask, short_mask, atr_v
     long_mask[:warmup] = False
     short_mask[:warmup] = False
     return long_mask, short_mask, atr_v
@@ -1752,11 +2009,14 @@ def _parabolic_sar(
     step: float = 0.02,
     max_af: float = 0.2,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Classic Wilder Parabolic SAR.
+    """Classic Wilder Parabolic SAR (price-derived seed on bars 0–1).
 
     Returns (sar, bull_dir, long_flip_mask, short_flip_mask) where bull_dir is
     +1 when price is above SAR and -1 when below. ``long_flip_mask[i]`` is True
     on the bar the direction flipped from -1 to +1 (mirror for short_flip).
+
+    Also used for Lucid SAR when ``high is low`` (same close array passed twice);
+    no ``high >= low`` check in that case — intentional for close-based PSAR.
     """
     n = len(high)
     sar = np.full(n, np.nan, dtype=np.float64)
@@ -1819,7 +2079,9 @@ def _chop_index(
 ) -> np.ndarray:
     """Choppiness Index — 100 * log10(sum(TR)/range) / log10(period).
 
-    < ~38.2 → trending; > ~61.8 → choppy. First `period` values are NaN.
+    Classic read: ``< ~38.2`` trending-side, ``> ~61.8`` chop-side — between is a gray zone.
+    ``sar_chop`` default gate uses ``sar_chop_chop_threshold`` (repo default ``68``, looser than
+    strict Fib caps so routine moderate-chop regimes are not vetoed). First ``period`` values are NaN.
     """
     n = len(close)
     out = np.full(n, np.nan, dtype=np.float64)
@@ -1878,7 +2140,7 @@ def _utbot_trail_flips(
     n = len(close)
     atr_v = atr(high, low, close, atr_period)
     trail = np.full(n, np.nan, dtype=np.float64)
-    direction = np.zeros(n, dtype=np.int8)
+    direction = np.ones(n, dtype=np.int8)
     long_flip = np.zeros(n, dtype=bool)
     short_flip = np.zeros(n, dtype=bool)
     warmup = atr_period
@@ -1950,7 +2212,14 @@ def _sar_chop_common_mats(
     np.ndarray,
     np.ndarray,
 ] | None:
-    """Shared PSAR/CHOP/MA/MACD/UT arrays for sar_chop. Returns None if ``len(close) < 3``."""
+    """Shared PSAR/CHOP/MA/MACD/UT arrays for sar_chop entry logic.
+
+    Consumers: ``detect_signals_sar_chop``, ``sar_chop_diagnostic_frame`` (CSV/TV
+    parity), ``sar_chop_signal_dump``. Split from ``_sar_chop_fill_masks`` so
+    diagnostics export per-bar gates without duplicating indicator math.
+
+    Returns None if ``len(close) < 3``.
+    """
     n = len(close)
     atr_v = atr(high, low, close, atr_period)
     if n < 3:
@@ -2052,7 +2321,7 @@ def detect_signals_sar_chop(
     ma_long_period: int = 200,
     ma_short_period: int = 50,
     chop_period: int = 14,
-    chop_threshold: float = 38.2,
+    chop_threshold: float = 68.0,
     macd_fast: int = 12,
     macd_slow: int = 26,
     macd_signal: int = 9,
@@ -2066,7 +2335,7 @@ def detect_signals_sar_chop(
 
     Entry conditions (long):
       - primary PSAR flips from bear to bull on this bar (``psar_long_flip``)
-      - Choppiness Index < ``chop_threshold`` (trending regime)
+      - Choppiness Index < ``chop_threshold`` (regime gate; default ``68`` is looser than strict fib caps — see `_chop_index` doc.)
       - close > MA(7) (fast MA momentum confirmation)
       - close > MA(200) AND MA(50) >= MA(200) (bullish trend stack)
       - MACD histogram > 0
@@ -2074,7 +2343,12 @@ def detect_signals_sar_chop(
       - if ``use_utbot_trail``: UT Bot trail is bull (prevents entry while exit
         trail still says bear)
 
-    Short is the mirror. Exits via simulate_trades_bidir ATR stops/TPs — the
+    Short (intentionally not a mirror of the long MA stack):
+      - PSAR bull→bear flip; same CHOP regime gate
+      - close < MA(7), close < MA(50), close < MA(200); MACD hist < 0
+      - optional Lucid bear / UT bear gates
+
+    Exits via simulate_trades_bidir ATR stops/TPs — the
     ``utbot_atr_mult`` choice is reflected in the caller's atr_stop_mult when
     tuned for this mode (the trail agreement gate keeps entries aligned with
     the same stop that would protect a live fill).
@@ -2082,6 +2356,10 @@ def detect_signals_sar_chop(
     Returns (long_mask, short_mask, atr_vals).
     """
     n = len(close)
+    if not (len(high) == n and len(low) == n):
+        raise ValueError(
+            f"detect_signals_sar_chop: OHLC length mismatch close={n} high={len(high)} low={len(low)}",
+        )
     long_mask = np.zeros(n, dtype=bool)
     short_mask = np.zeros(n, dtype=bool)
     cm = _sar_chop_common_mats(
@@ -2103,6 +2381,11 @@ def detect_signals_sar_chop(
         atr_period=atr_period,
     )
     if cm is None:
+        if n < 3:
+            _scalp_vec_bt_diag_warn(
+                f"sar_chop:short:{n}",
+                f"detect_signals_sar_chop: len(close)={n} < 3; no signals generated.",
+            )
         return long_mask, short_mask, atr(high, low, close, atr_period)
     (
         warmup,
@@ -2117,6 +2400,12 @@ def detect_signals_sar_chop(
         macd_h,
         ut_dir,
     ) = cm
+    if warmup >= n:
+        _scalp_vec_bt_diag_warn(
+            f"sar_chop:warm:{n}:{warmup}",
+            f"detect_signals_sar_chop: len(close)={n} < warmup {warmup}; no signals generated.",
+        )
+        return long_mask, short_mask, atr_v
     long_mask, short_mask = _sar_chop_fill_masks(
         close,
         warmup,
@@ -2149,7 +2438,7 @@ def sar_chop_diagnostic_frame(
     ma_long_period: int = 200,
     ma_short_period: int = 50,
     chop_period: int = 14,
-    chop_threshold: float = 38.2,
+    chop_threshold: float = 68.0,
     macd_fast: int = 12,
     macd_slow: int = 26,
     macd_signal: int = 9,
@@ -2253,7 +2542,7 @@ def sar_chop_live_bundle(
     ma_long_period: int = 200,
     ma_short_period: int = 50,
     chop_period: int = 14,
-    chop_threshold: float = 38.2,
+    chop_threshold: float = 68.0,
     macd_fast: int = 12,
     macd_slow: int = 26,
     macd_signal: int = 9,
@@ -2375,16 +2664,25 @@ class BacktestMetrics:
     trades: list[TradeResult]
 
 
-def _intrabar_stop_first(open_price: float, high_price: float, low_price: float) -> bool:
-    """TradingView-style intrabar path: infer whether stop (low) was hit before TP (high).
+def _intrabar_stop_first(
+    open_price: float,
+    high_price: float,
+    low_price: float,
+    side: int,
+) -> bool:
+    """TradingView-style intrabar path: infer whether protective stop fills before TP.
 
-    If open is closer to high -> path is open->high->low->close (TP first).
-    If open is closer to low  -> path is open->low->high->close (stop first).
+    ``side``: ``1`` = long — stop near low, TP near high / ``-1`` = short — stop near high, TP near low.
 
-    When ``open_prices`` is absent and both stop and TP print in the same bar, the loop below
-    uses ``stop_first = True`` — aligned with paper ``scalp_trader`` same-bar precedence.
+    When ``open_prices`` is absent and both prints touch in the same bar, callers assume
+    **stop first** (`stop_first=True`) — matches paper ``scalp_trader`` / ``simulate_trades``
+    precedent.
     """
-    return (open_price - low_price) < (high_price - open_price)
+    if side == 1:
+        return (open_price - low_price) < (high_price - open_price)
+    if side == -1:
+        return (high_price - open_price) < (open_price - low_price)
+    raise ValueError(f"_intrabar_stop_first: invalid side={side} (expect 1 or -1)")
 
 
 def simulate_trades(
@@ -2452,7 +2750,7 @@ def simulate_trades(
 
             if stop_hit and tp_hit:
                 if has_open:
-                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j])
+                    stop_first = _intrabar_stop_first(open_prices[j], high[j], low[j], 1)
                 else:
                     stop_first = True
                 if stop_first:
@@ -2804,6 +3102,7 @@ def compute_metrics(
 # ---------------------------------------------------------------------------
 
 # Modes with an explicit ``evaluate_params`` dispatch; champion ``mode`` must be one of these.
+# Note: registered name ``ema_momentum`` maps to ``detect_signals_ema`` above (historical alias).
 WFO_REGISTERED_STRATEGY_MODES: frozenset[str] = frozenset({
     "daviddtech_scalp",
     "ema_momentum",
@@ -2892,7 +3191,7 @@ class ParamSet:
     sar_chop_ma_long_period: int = 200
     sar_chop_ma_short_period: int = 50
     sar_chop_chop_period: int = 14
-    sar_chop_chop_threshold: float = 38.2
+    sar_chop_chop_threshold: float = 68.0
     sar_chop_macd_fast: int = 12
     sar_chop_macd_slow: int = 26
     sar_chop_macd_signal: int = 9
@@ -3023,6 +3322,7 @@ def evaluate_params(
             atr_period=params.atr_period,
             sr_bars=params.ema_scalp_sr_bars,
         )
+        # S/R series discarded here — WFO exits are generic ATR bidir (see strategies.md).
         trades = simulate_trades_bidir(
             close=close, high=high, low=low,
             long_mask=long_m, short_mask=short_m, atr_vals=atr_vals,
@@ -3046,6 +3346,7 @@ def evaluate_params(
             close=close, high=high, low=low,
             long_mask=long_m, short_mask=short_m,
             atr_vals=atr_vals, rsi_vals=rsi_vals,
+            open_prices=open_prices,
             rsi_sell_threshold=params.rsi_sell_threshold,
             rsi_short_cover_threshold=params.rsi_buy_threshold,
             atr_stop_mult=params.atr_stop_mult,
@@ -3256,11 +3557,11 @@ def evaluate_params(
 # ---------------------------------------------------------------------------
 
 def build_default_grid(fee_pct: float = 0.0, fill_model: str = "close_slip") -> list[ParamSet]:
-    """Build default WFO parameter grid (subset of registered modes for CPU/runtime).
+    """Build default WFO parameter grid.
 
-    Omitted from this grid (still valid in ``evaluate_params`` / live if champion says so):
-    ``ema_scalp``, ``squeeze_momentum``, ``qqe_mod``, ``utbot_alert`` — high overlap or
-    niche vs the retained blocks; see AGENTS / operator notes when re-expanding.
+    Target invariant: every ``WFO_REGISTERED_STRATEGY_MODES`` entry has grid rows.
+  All 11 registered modes on-grid as of 2026-05-17 (``ema_scalp`` uses ``simulate_trades_bidir``
+    for WFO; live S/R stops remain a known exit skew — see ``strategies.md`` §3).
     """
     grid: list[ParamSet] = []
 
@@ -3281,9 +3582,10 @@ def build_default_grid(fee_pct: float = 0.0, fill_model: str = "close_slip") -> 
                             fill_model=fill_model,
                         ))
 
-    # EMA momentum combos — TP range extended to 5x ATR for fee-awareness
-    # Note: min_signals is accepted by ParamSet but discarded in detect_signals_ema;
-    # a single default value is used to avoid doubling the grid with no effect.
+    # EMA momentum combos — TP range extended to 5× ATR for fee-awareness.
+    # ``detect_signals_ema`` ignores ``rsi_period``, ``vol_ma_period``, ``vol_mult``, ``min_signals``,
+    # and discarded volume/timestamp — do **not** add inner loops here on those knobs (would waste
+    # CPU and mimic false parameter sensitivity).
     for ema_fast in (3, 5, 8):
         for ema_slow in (10, 13, 21):
             if ema_fast >= ema_slow:
@@ -3320,10 +3622,45 @@ def build_default_grid(fee_pct: float = 0.0, fill_model: str = "close_slip") -> 
                                 atr_stop_mult=stop_mult,
                                 atr_tp_mult=tp_mult,
                                 fee_pct=fee_pct,
-                                fill_model=fill_model,
-                            ))
+                            fill_model=fill_model,
+                        ))
 
-    # Supertrend combos (UT Bot grid omitted — correlated ATR-trail family; faster WFO.)
+    # ema_scalp — Tony EMA cross + bar direction (WFO exits via simulate_trades_bidir).
+    # 3×3×3×3×3 = 243 rows.
+    for ema_p in (15, 20, 26):
+        for sr_b in (6, 8, 12):
+            for max_hold in (5, 10, 20):
+                for stop_mult in (0.75, 1.0, 1.5):
+                    for tp_mult in (1.5, 2.5, 4.0):
+                        grid.append(ParamSet(
+                            mode="ema_scalp",
+                            ema_scalp_period=ema_p,
+                            ema_scalp_sr_bars=sr_b,
+                            max_hold_bars=max_hold,
+                            atr_stop_mult=stop_mult,
+                            atr_tp_mult=tp_mult,
+                            fee_pct=fee_pct,
+                            fill_model=fill_model,
+                        ))
+
+    # UT Bot Alert — restored 2026-05 (was unintentionally off-grid).
+    for ut_period in (7, 10, 14):
+        for ut_mult in (0.5, 1.0, 1.5):
+            for max_hold in (5, 10, 20):
+                for stop_mult in (0.75, 1.0, 1.5):
+                    for tp_mult in (1.5, 2.5, 4.0):
+                        grid.append(ParamSet(
+                            mode="utbot_alert",
+                            utbot_atr_period=ut_period,
+                            utbot_atr_mult=ut_mult,
+                            max_hold_bars=max_hold,
+                            atr_stop_mult=stop_mult,
+                            atr_tp_mult=tp_mult,
+                            fee_pct=fee_pct,
+                            fill_model=fill_model,
+                        ))
+
+    # Supertrend combos
     for st_period in (7, 10, 14):
         for st_factor in (2.0, 3.0, 4.0):
             for max_hold in (5, 10, 20):
@@ -3333,6 +3670,45 @@ def build_default_grid(fee_pct: float = 0.0, fill_model: str = "close_slip") -> 
                             mode="supertrend",
                             supertrend_period=st_period,
                             supertrend_factor=st_factor,
+                            max_hold_bars=max_hold,
+                            atr_stop_mult=stop_mult,
+                            atr_tp_mult=tp_mult,
+                            fee_pct=fee_pct,
+                            fill_model=fill_model,
+                        ))
+
+    # squeeze_momentum — BB/KC squeeze + LR momentum cross (bb_mult/kc_mult at repo defaults).
+    # 3×3×3×3×3 = 243 rows.
+    for bb_p in (15, 20, 25):
+        for mom_p in (8, 12, 16):
+            for max_hold in (5, 10, 20):
+                for stop_mult in (0.75, 1.0, 1.5):
+                    for tp_mult in (1.5, 2.5, 4.0):
+                        grid.append(ParamSet(
+                            mode="squeeze_momentum",
+                            squeeze_bb_period=bb_p,
+                            squeeze_bb_mult=2.0,
+                            squeeze_kc_mult=1.5,
+                            squeeze_mom_period=mom_p,
+                            max_hold_bars=max_hold,
+                            atr_stop_mult=stop_mult,
+                            atr_tp_mult=tp_mult,
+                            fee_pct=fee_pct,
+                            fill_model=fill_model,
+                        ))
+
+    # qqe_mod — smoothed RSI vs Wilder ATR trail + 50-line confirm (qqe_factor at default).
+    # 3×3×3×3×3 = 243 rows.
+    for rsi_p in (12, 14, 18):
+        for qqe_smooth in (4, 5, 7):
+            for max_hold in (5, 10, 20):
+                for stop_mult in (0.75, 1.0, 1.5):
+                    for tp_mult in (1.5, 2.5, 4.0):
+                        grid.append(ParamSet(
+                            mode="qqe_mod",
+                            qqe_rsi_period=rsi_p,
+                            qqe_smoothing=qqe_smooth,
+                            qqe_factor=4.238,
                             max_hold_bars=max_hold,
                             atr_stop_mult=stop_mult,
                             atr_tp_mult=tp_mult,
@@ -3376,10 +3752,10 @@ def build_default_grid(fee_pct: float = 0.0, fill_model: str = "close_slip") -> 
     # Critical dims: CHOP period (10=TV-native vs 14=default), CHOP threshold (regime),
     # MA length (trend), UT Bot mult (trail gate). Lucid SAR hardcoded True (confirmed improvement).
     # stop_mult floor raised to 1.5 — 1.0×ATR is too tight for CDE fill-lag on low-ATR pairs.
-    # Total: 2×2×3×2×2×3×3×2×2 = 864 (same as before).
+    # Total: 2×2×4×2×2×3×3×2×2 = 1152 (four CHOP thresholds including live default ~68).
     for sar_step in (0.02, 0.03):
         for sar_max_af in (0.2, 0.3):
-            for chop_th in (38.2, 50.0, 61.8):
+            for chop_th in (38.2, 50.0, 61.8, 68.0):
                 for chop_per in (10, 14):
                     for ma_long in (100, 200):
                         for ut_mult in (1.0, 2.0, 3.0):

@@ -1,0 +1,603 @@
+//@version=5
+// Use a **5-minute** chart — matches live bot candle interval (ScalpPairConfig.interval default 5).
+strategy("TB scalp: ema_scalp (5m)", overlay=true, max_lines_count=500, max_boxes_count=50,
+     initial_capital=100000, default_qty_type=strategy.percent_of_equity, default_qty_value=10,
+     commission_type=strategy.commission.percent, commission_value=0.04,
+     slippage=1, calc_on_order_fills=false, process_orders_on_close=true)
+
+// === Mode (fixed) ============================================================
+MODE_OPT = "ema_scalp"
+
+// === Risk / exits (matches scalp_config.py defaults + simulate_trades_bidir) =
+atrPeriod = input.int(14, "atr_period", minval = 1)
+atrStopMult = input.float(1.0, "atr_stop_mult", step = 0.05)
+atrTpMult = input.float(1.5, "atr_tp_mult", step = 0.05)
+maxHoldBars = input.int(15, "max_hold_bars", minval = 1)
+counterExit = input.bool(false, "counter_signal_exit (close on opposite entry mask)")
+
+// --- daviddtech -----------------------------------------------------------
+t3Len = input.int(7, "[davidd] t3_length", group = "daviddtech_scalp")
+t3V = input.float(0.7, "[davidd] t3_vfactor", group = "daviddtech_scalp")
+hlcCloseP = input.int(5, "[davidd] hlc_close_period", group = "daviddtech_scalp")
+hlcLowP = input.int(13, "[davidd] hlc_low_period", group = "daviddtech_scalp")
+hlcHighP = input.int(34, "[davidd] hlc_high_period", group = "daviddtech_scalp")
+adxLen = input.int(14, "[davidd] adx_period", group = "daviddtech_scalp")
+adxThr = input.float(20.0, "[davidd] adx_threshold", group = "daviddtech_scalp")
+waeSens = input.float(150.0, "[davidd] wae_sensitivity", group = "daviddtech_scalp")
+waeFast = input.int(20, "[davidd] wae_fast_len", group = "daviddtech_scalp")
+waeSlow = input.int(40, "[davidd] wae_slow_len", group = "daviddtech_scalp")
+waeBbLen = input.int(20, "[davidd] wae_bb_len", group = "daviddtech_scalp")
+waeBbMult = input.float(2.0, "[davidd] wae_bb_mult", group = "daviddtech_scalp")
+
+// --- ema_momentum ---------------------------------------------------------
+emaFast = input.int(5, "[ema_mom] ema_fast", group = "ema_momentum")
+emaSlow = input.int(13, "[ema_mom] ema_slow", group = "ema_momentum")
+
+// --- ema_scalp ------------------------------------------------------------
+emaScalpLen = input.int(20, "[ema_scalp] ema_period", group = "ema_scalp")
+emaSrBars = input.int(8, "[ema_scalp] sr_bars", group = "ema_scalp")
+
+// --- macd_scalp -----------------------------------------------------------
+macdFast = input.int(8, "[macd] macd_fast_len", group = "macd_scalp")
+macdSlow = input.int(10, "[macd] macd_slow_len", group = "macd_scalp")
+macdSig = input.int(8, "[macd] macd_signal_len", group = "macd_scalp")
+
+// --- rsi_reversion --------------------------------------------------------
+rsiLen = input.int(14, "[rsi] rsi_period", group = "rsi_reversion")
+rsiBuy = input.float(10.0, "[rsi] rsi_buy_threshold (long entry)", group = "rsi_reversion")
+rsiSell = input.float(50.0, "[rsi] rsi_sell_threshold (long exit)", group = "rsi_reversion")
+rsiShort = input.float(70.0, "[rsi] rsi_short_threshold (short entry)", group = "rsi_reversion")
+rsiCover = input.float(10.0, "[rsi] rsi_short_cover_threshold", group = "rsi_reversion")
+
+// --- supertrend -----------------------------------------------------------
+stPeriod = input.int(10, "[st] supertrend_period (warmup)", group = "supertrend")
+stFactor = input.float(3.0, "[st] supertrend_factor", group = "supertrend")
+stAtrLen = input.int(14, "[st] atr_period (bands)", group = "supertrend")
+
+// --- squeeze --------------------------------------------------------------
+sqBb = input.int(20, "[sqz] bb_period", group = "squeeze")
+sqBbMult = input.float(2.0, "[sqz] bb_mult", group = "squeeze")
+sqKcMult = input.float(1.5, "[sqz] kc_mult", group = "squeeze")
+sqMom = input.int(12, "[sqz] mom_period", group = "squeeze")
+
+// --- qqe ------------------------------------------------------------------
+qqeRsiLen = input.int(14, "[qqe] rsi_period", group = "qqe_mod")
+qqeFact = input.float(4.238, "[qqe] qqe_factor", group = "qqe_mod")
+qqeSmooth = input.int(5, "[qqe] qqe_smoothing", group = "qqe_mod")
+
+// --- utbot ----------------------------------------------------------------
+utAtrLen = input.int(10, "[ut] utbot_atr_period", group = "utbot_alert")
+utMult = input.float(1.0, "[ut] utbot_atr_mult", group = "utbot_alert")
+
+// --- hull -----------------------------------------------------------------
+hullLen = input.int(38, "[hull] hull_period", group = "hull_suite")
+
+// --- sar_chop -------------------------------------------------------------
+sarStart = input.float(0.02, "[sar] sar_start", group = "sar_chop")
+sarStep = input.float(0.02, "[sar] sar_increment", group = "sar_chop")
+sarMax = input.float(0.20, "[sar] sar_max", group = "sar_chop")
+scMaFast = input.int(7, "[sar] ma_fast_period", group = "sar_chop")
+scMaLong = input.int(200, "[sar] ma_long_period", group = "sar_chop")
+scMaShort = input.int(50, "[sar] ma_short_period", group = "sar_chop")
+scChopLen = input.int(14, "[sar] chop_period", group = "sar_chop")
+scChopThr = input.float(68.0, "[sar] chop_threshold", group = "sar_chop")
+scMacdF = input.int(12, "[sar] macd_fast", group = "sar_chop")
+scMacdS = input.int(26, "[sar] macd_slow", group = "sar_chop")
+scMacdSig = input.int(9, "[sar] macd_signal", group = "sar_chop")
+scLucid = input.bool(true, "[sar] use_lucid_sar", group = "sar_chop")
+scUtTrail = input.bool(true, "[sar] use_utbot_trail", group = "sar_chop")
+scUtAtr = input.int(10, "[sar] sar_chop_utbot_atr_period", group = "sar_chop")
+scUtMult = input.float(2.0, "[sar] sar_chop_utbot_mult", group = "sar_chop")
+
+// ---------------------------------------------------------------------------
+// Bot ATR: SMA seed at bar (period-1), then Wilder-style recurrence (numpy atr())
+// ---------------------------------------------------------------------------
+f_tr_py() =>
+    bar_index == 0 ? high - low : math.max(high - low, math.max(math.abs(high - close[1]), math.abs(low - close[1])))
+
+f_atr_py(lenATR) =>
+    tr = f_tr_py()
+    var float atrV = na
+    if bar_index == lenATR - 1
+        atrV := ta.sma(tr, lenATR)
+    else if bar_index >= lenATR
+        atrV := (nz(atrV[1], tr) * (lenATR - 1) + tr) / lenATR
+    atrV
+
+// Ehlers 2-pole super smoother (super_smooth in scalp_vec_backtest.py)
+f_super_smooth(src, period) =>
+    float f = (1.4142135623730951 * math.pi) / period
+    float a = math.exp(-f)
+    float c2 = 2.0 * a * math.cos(f)
+    float c3 = -(a * a)
+    float c1 = 1.0 - c2 - c3
+    float ss = na
+    ss := bar_index == 0 ? src : bar_index == 1 ? c1 * (src + src[1]) * 0.5 + c2 * nz(ss[1]) : c1 * (src + src[1]) * 0.5 + c2 * nz(ss[1]) + c3 * nz(ss[2])
+    ss
+
+f_t3(src, len_, v) =>
+    e1 = ta.ema(src, len_)
+    e2 = ta.ema(e1, len_)
+    e3 = ta.ema(e2, len_)
+    e4 = ta.ema(e3, len_)
+    e5 = ta.ema(e4, len_)
+    e6 = ta.ema(e5, len_)
+    c1 = -(math.pow(v, 3))
+    c2 = 3 * v * v + 3 * math.pow(v, 3)
+    c3 = -6 * v * v - 3 * v - 3 * math.pow(v, 3)
+    c4 = 1 + 3 * v + math.pow(v, 3) + 3 * v * v
+    c1 * e6 + c2 * e5 + c3 * e4 + c4 * e3
+
+f_wae(close_, sens, fastLen, slowLen, bbLen, bbMult) =>
+    macd1 = ta.ema(close_, fastLen) - ta.ema(close_, slowLen)
+    sigP = math.max(3, math.min(21, int(slowLen / 2)))
+    sig = ta.ema(macd1, sigP)
+    hist = (macd1 - sig) * sens
+    basis = ta.sma(hist, bbLen)
+    std = ta.stdev(hist, bbLen)
+    upper = basis + bbMult * std
+    lower = basis - bbMult * std
+    [hist, upper, lower]
+
+// Squeeze momentum auxiliary (linear regression mom from bot)
+f_sqz_mom(val, momPeriod) =>
+    float sumY = 0.0
+    for i = 0 to momPeriod - 1
+        sumY += val[momPeriod - 1 - i]
+    meanY = sumY / momPeriod
+    xMean = (momPeriod - 1) / 2.0
+    float sumXY = 0.0
+    float sumX2 = 0.0
+    for i = 0 to momPeriod - 1
+        yi = val[momPeriod - 1 - i]
+        xi = i - xMean
+        sumXY += xi * yi
+        sumX2 += xi * xi
+    slope = sumX2 != 0 ? sumXY / sumX2 : na
+    slope * (momPeriod - 1) / 2.0 + meanY
+
+// Classic PSAR — duplicate functions so HL vs Close(Lucid) keep separate var state.
+f_psar_hl(hi, lo, start, step, maxAf) =>
+    var float sar = na
+    var float ep = na
+    var float af = na
+    var int dir = na
+    bool longFlip = false
+    bool shortFlip = false
+    if bar_index <= 0
+        longFlip := false
+        shortFlip := false
+    else if bar_index == 1
+        if hi >= hi[1]
+            dir := 1
+            sar := lo[1]
+            ep := hi
+            af := start
+        else
+            dir := -1
+            sar := hi[1]
+            ep := lo
+            af := start
+        longFlip := false
+        shortFlip := false
+    else
+        prevSar = sar
+        newSar = prevSar + af * (ep - prevSar)
+        longFlip := false
+        shortFlip := false
+        if dir == 1
+            newSar := math.min(newSar, lo[1], lo[2])
+            if lo < newSar
+                shortFlip := true
+                dir := -1
+                newSar := ep
+                ep := lo
+                af := start
+            else
+                if hi > ep
+                    ep := hi
+                    af := math.min(af + step, maxAf)
+        else
+            newSar := math.max(newSar, hi[1], hi[2])
+            if hi > newSar
+                longFlip := true
+                dir := 1
+                newSar := ep
+                ep := hi
+                af := start
+            else
+                if lo < ep
+                    ep := lo
+                    af := math.min(af + step, maxAf)
+        sar := newSar
+    [longFlip, shortFlip, dir]
+
+f_psar_cc(hi, lo, start, step, maxAf) =>
+    var float sar = na
+    var float ep = na
+    var float af = na
+    var int dir = na
+    bool longFlip = false
+    bool shortFlip = false
+    if bar_index <= 0
+        longFlip := false
+        shortFlip := false
+    else if bar_index == 1
+        if hi >= hi[1]
+            dir := 1
+            sar := lo[1]
+            ep := hi
+            af := start
+        else
+            dir := -1
+            sar := hi[1]
+            ep := lo
+            af := start
+        longFlip := false
+        shortFlip := false
+    else
+        prevSar = sar
+        newSar = prevSar + af * (ep - prevSar)
+        longFlip := false
+        shortFlip := false
+        if dir == 1
+            newSar := math.min(newSar, lo[1], lo[2])
+            if lo < newSar
+                shortFlip := true
+                dir := -1
+                newSar := ep
+                ep := lo
+                af := start
+            else
+                if hi > ep
+                    ep := hi
+                    af := math.min(af + step, maxAf)
+        else
+            newSar := math.max(newSar, hi[1], hi[2])
+            if hi > newSar
+                longFlip := true
+                dir := 1
+                newSar := ep
+                ep := hi
+                af := start
+            else
+                if lo < ep
+                    ep := lo
+                    af := math.min(af + step, maxAf)
+        sar := newSar
+    [longFlip, shortFlip, dir]
+
+// UT Bot direction only (for sar_chop filter); separate vars from chart utbot mode.
+f_ut_trail_dir(c_, atrSer, atrLen, mult) =>
+    var float trail = na
+    var int udir = 1
+    atrV = atrSer
+    int out = udir
+    if bar_index < atrLen
+        out := udir
+    else if bar_index == atrLen
+        trail := c_
+        udir := 1
+        out := 1
+    else if na(atrV)
+        trail := nz(trail[1])
+        udir := nz(udir[1])
+        out := udir
+    else
+        loss = mult * atrV
+        cc = c_
+        pc = c_[1]
+        ptPrev = nz(trail[1])
+        trailNew = cc > ptPrev and pc > ptPrev ? math.max(ptPrev, cc - loss) : cc < ptPrev and pc < ptPrev ? math.min(ptPrev, cc + loss) : cc > ptPrev ? cc - loss : cc + loss
+        udir := pc < ptPrev and cc > trailNew ? 1 : pc > ptPrev and cc < trailNew ? -1 : nz(udir[1])
+        trail := trailNew
+        out := udir
+    out
+
+// Choppiness Index (_chop_index)
+f_chop(h_, l_, c_, period) =>
+    tr = bar_index == 0 ? h_ - l_ : math.max(h_ - l_, math.max(math.abs(h_ - c_[1]), math.abs(l_ - c_[1])))
+    trSum = ta.sum(tr, period)
+    rng = ta.highest(h_, period) - ta.lowest(l_, period)
+    ln = math.log10(period)
+    bar_index >= period and rng > 0 and trSum > 0 and ln > 0 ? 100.0 * math.log10(trSum / rng) / ln : na
+
+f_macd_hist(c_, fast, slow, sig) =>
+    line = ta.ema(c_, fast) - ta.ema(c_, slow)
+    line - ta.ema(line, sig)
+
+atrMain = f_atr_py(atrPeriod)
+atrUt = f_atr_py(scUtAtr)
+
+// ---------------- Signals ---------------------------------------------------
+longSig = false
+shortSig = false
+
+// daviddtech_scalp
+if MODE_OPT == "daviddtech_scalp"
+    atrV = f_atr_py(atrPeriod)
+    t3 = f_t3(close, t3Len, t3V)
+    [_dip, _dim, adxL] = ta.dmi(adxLen, adxLen)
+    hlc3 = (high + low + close) / 3.0
+    g = ta.highest(hlc3, math.max(1, hlcHighP))
+    r = ta.lowest(hlc3, math.max(1, hlcLowP))
+    mid = ta.sma(hlc3, math.max(1, hlcCloseP))
+    [wh, upb, lob] = f_wae(close, waeSens, waeFast, waeSlow, waeBbLen, waeBbMult)
+    eBand = (upb - lob) / 2.0
+    waeL = not na(wh) and not na(eBand) and wh > 0 and wh > eBand
+    waeS = not na(wh) and not na(eBand) and wh < 0 and wh < -eBand
+    base = not na(atrV) and atrV > 0 and not na(t3) and not na(adxL) and adxL > adxThr and not na(g) and not na(r) and not na(mid)
+    longSig := base and close > t3 and g > r and close > mid and waeL
+    shortSig := base and close < t3 and g < r and close < mid and waeS
+
+// ema_momentum
+if MODE_OPT == "ema_momentum"
+    atrV = f_atr_py(atrPeriod)
+    ef = ta.ema(close, emaFast)
+    es = ta.ema(close, emaSlow)
+    crossUp = ta.crossover(ef, es)
+    crossDn = ta.crossunder(ef, es)
+    ok = not na(atrV) and atrV > 0
+    // vec_warmup_prefix_len(ema_momentum): max(ema_slow, atr_period) bars masked (indicator_warmup.py)
+    emMomWarmDone = bar_index >= math.max(emaSlow, atrPeriod)
+    longSig := crossUp and ok and emMomWarmDone
+    shortSig := crossDn and ok and emMomWarmDone
+
+// ema_scalp
+if MODE_OPT == "ema_scalp"
+    atrV = f_atr_py(atrPeriod)
+    ev = ta.ema(close, emaScalpLen)
+    prevAbove = close[1] > ev[1]
+    curAbove = close > ev
+    crossed = prevAbove != curAbove
+    bullish = crossed and curAbove and close > close[1]
+    bearish = crossed and not curAbove and close < close[1]
+    hh = ta.highest(close, emaSrBars)
+    ll = ta.lowest(close, emaSrBars)
+    ok = not na(atrV) and atrV > 0 and not na(hh) and not na(ll)
+    longSig := bullish and ok
+    shortSig := bearish and ok
+
+// macd_scalp
+if MODE_OPT == "macd_scalp"
+    atrV = f_atr_py(atrPeriod)
+    ssF = f_super_smooth(close, macdFast)
+    ssS = f_super_smooth(close, macdSlow)
+    mLine = (ssF - ssS) * 1e7
+    mSig = f_super_smooth(mLine, macdSig)
+    crossUp = ta.crossover(mLine, mSig)
+    crossDn = ta.crossunder(mLine, mSig)
+    ok = not na(atrV) and atrV > 0
+    longSig := crossUp and ok
+    shortSig := crossDn and ok
+
+// rsi_reversion (levels only; exits handled below)
+float rsiV = na
+if MODE_OPT == "rsi_reversion"
+    atrV = f_atr_py(atrPeriod)
+    rsiV := ta.rsi(close, rsiLen)
+    longSig := not na(rsiV) and rsiV <= rsiBuy and not na(atrV) and atrV > 0
+    shortSig := not na(rsiV) and rsiV >= rsiShort and not na(atrV) and atrV > 0
+
+// supertrend (detect_signals_supertrend)
+if MODE_OPT == "supertrend"
+    atrV = f_atr_py(stAtrLen)
+    srcHl2 = (high + low) / 2.0
+    bu = srcHl2 + stFactor * atrV
+    bl = srcHl2 - stFactor * atrV
+    var float fu = na
+    var float fl = na
+    var int stDir = 1
+    loopWarm = math.max(stAtrLen, stPeriod)
+    if bar_index == loopWarm
+        fu := bu
+        fl := bl
+        stDir := 1
+    else if bar_index > loopWarm
+        if na(atrV)
+            fu := nz(fu[1])
+            fl := nz(fl[1])
+            stDir := nz(stDir[1])
+        else
+            fu := close[1] <= nz(fu[1]) ? math.min(bu, nz(fu[1])) : bu
+            fl := close[1] >= nz(fl[1]) ? math.max(bl, nz(fl[1])) : bl
+            stDir := nz(stDir[1]) == -1 ? (close > fu ? 1 : -1) : (close < fl ? -1 : 1)
+    prevD = nz(stDir[1])
+    longSig := bar_index > loopWarm and not na(atrV) and atrV > 0 and stDir == 1 and prevD != 1
+    shortSig := bar_index > loopWarm and not na(atrV) and atrV > 0 and stDir == -1 and prevD != -1
+
+// squeeze_momentum
+if MODE_OPT == "squeeze_momentum"
+    atrV = f_atr_py(atrPeriod)
+    kcMid = ta.ema(close, sqBb)
+    sma = ta.sma(close, sqBb)
+    sd = ta.stdev(close, sqBb)
+    bbU = sma + sqBbMult * sd
+    bbL = sma - sqBbMult * sd
+    kcU = kcMid + sqKcMult * atrV
+    kcL = kcMid - sqKcMult * atrV
+    squeezeOn = bbL > kcL and bbU < kcU
+    rh = ta.highest(high, sqBb)
+    rl = ta.lowest(low, sqBb)
+    midPt = (rh + rl) / 2.0
+    val = close - (midPt + sma) / 2.0
+    mom = f_sqz_mom(val, sqMom)
+    longSig := squeezeOn[1] and not na(mom) and not na(mom[1]) and mom[1] <= 0 and mom > 0 and not na(atrV) and atrV > 0
+    shortSig := squeezeOn[1] and not na(mom) and not na(mom[1]) and mom[1] >= 0 and mom < 0 and not na(atrV) and atrV > 0
+
+// qqe_mod
+if MODE_OPT == "qqe_mod"
+    atrV = f_atr_py(atrPeriod)
+    rsiRaw = ta.rsi(close, qqeRsiLen)
+    sm = ta.ema(rsiRaw, qqeSmooth)
+    wildLen = qqeRsiLen * 2 - 1
+    absDiff = bar_index == 0 ? 0.0 : math.abs(sm - sm[1])
+    var float atrRsi = na
+    if bar_index == wildLen - 1
+        atrRsi := ta.sma(absDiff, wildLen)
+    else if bar_index >= wildLen
+        atrRsi := (nz(atrRsi[1]) * (wildLen - 1) + absDiff) / wildLen
+    qDn = sm - qqeFact * atrRsi
+    qUp = sm + qqeFact * atrRsi
+    var float trail = na
+    if bar_index == wildLen
+        trail := sm
+    else if bar_index > wildLen and not na(sm) and not na(qDn) and not na(trail[1])
+        pt = trail[1]
+        trail := sm > pt ? math.max(pt, qDn) : math.min(pt, qUp)
+    lx = not na(sm[1]) and not na(trail[1]) and not na(trail) and sm[1] <= trail[1] and sm > trail and sm > 50
+    sx = not na(sm[1]) and not na(trail[1]) and not na(trail) and sm[1] >= trail[1] and sm < trail and sm < 50
+    ok = not na(atrV) and atrV > 0
+    longSig := lx and ok
+    shortSig := sx and ok
+
+// utbot_alert
+if MODE_OPT == "utbot_alert"
+    atrV = f_atr_py(utAtrLen)
+    var float utrail = na
+    var int udir = 1
+    bool utLong = false
+    bool utShort = false
+    if bar_index == utAtrLen
+        utrail := close
+        udir := 1
+    else if bar_index > utAtrLen
+        if na(atrV)
+            utrail := utrail[1]
+            udir := udir[1]
+        else
+            loss = utMult * atrV
+            c = close
+            pc = close[1]
+            ptPrev = nz(utrail[1])
+            trNew = c > ptPrev and pc > ptPrev ? math.max(ptPrev, c - loss) : c < ptPrev and pc < ptPrev ? math.min(ptPrev, c + loss) : c > ptPrev ? c - loss : c + loss
+            udir := pc < ptPrev and c > trNew ? 1 : pc > ptPrev and c < trNew ? -1 : nz(udir[1])
+            utrail := trNew
+            utLong := udir[1] != 1 and udir == 1
+            utShort := udir[1] != -1 and udir == -1
+    ok = not na(atrV) and atrV > 0
+    longSig := utLong and ok
+    shortSig := utShort and ok
+
+// hull_suite
+if MODE_OPT == "hull_suite"
+    atrV = f_atr_py(atrPeriod)
+    half = math.max(1, int(hullLen / 2))
+    sqn = math.max(1, int(math.round(math.sqrt(hullLen))))
+    w1 = ta.wma(close, half)
+    w2 = ta.wma(close, hullLen)
+    hma = ta.wma(2.0 * w1 - w2, sqn)
+    longSig := not na(hma) and not na(hma[2]) and hma > hma[2] and not na(atrV) and atrV > 0
+    shortSig := not na(hma) and not na(hma[2]) and hma < hma[2] and not na(atrV) and atrV > 0
+
+// sar_chop
+if MODE_OPT == "sar_chop"
+    atrV = f_atr_py(atrPeriod)
+    [lfh, sfh, _dh] = f_psar_hl(high, low, sarStart, sarStep, sarMax)
+    [_l2, _s2, lucDir] = f_psar_cc(close, close, sarStart, sarStep, sarMax)
+    chop = f_chop(high, low, close, scChopLen)
+    mf = ta.ema(close, scMaFast)
+    ml = ta.ema(close, scMaLong)
+    ms = ta.ema(close, scMaShort)
+    mh = f_macd_hist(close, scMacdF, scMacdS, scMacdSig)
+    utDir = f_ut_trail_dir(close, atrUt, scUtAtr, scUtMult)
+    chopOk = not na(chop) and chop < scChopThr
+    baseAtr = not na(atrV) and atrV > 0
+    lucOkLong = not scLucid or lucDir == 1
+    lucOkShort = not scLucid or lucDir == -1
+    utOkLong = not scUtTrail or utDir == 1
+    utOkShort = not scUtTrail or utDir == -1
+    ftrend = not na(mf) and not na(ml) and not na(ms) and not na(mh)
+    longSig := baseAtr and chopOk and ftrend and lfh and close > mf and close > ml and ms >= ml and mh > 0 and lucOkLong and utOkLong
+    shortSig := baseAtr and chopOk and ftrend and sfh and close < mf and close < ml and close < ms and mh < 0 and lucOkShort and utOkShort
+
+// Conflict resolution (bidirectional bot skips both-true bars)
+both = longSig and shortSig
+longEntry = longSig and not both
+shortEntry = shortSig and not both
+
+// ----------------------------------------------------------------------------
+// Orders
+// ----------------------------------------------------------------------------
+useRsi = MODE_OPT == "rsi_reversion"
+
+// Counter-signal flatten (approximate simulate_trades_bidir counter_signal_exit)
+if counterExit and strategy.position_size > 0
+    if strategy.position_size > 0 and shortEntry and not longEntry
+        strategy.close_all(comment = "counter_short")
+    if strategy.position_size < 0 and longEntry and not shortEntry
+        strategy.close_all(comment = "counter_long")
+
+var float refAtr = na
+var int openBar = na
+
+flat = strategy.position_size == 0
+
+// RSI simulator paths (simulate_trades_rsi)
+if useRsi and flat
+    if longEntry
+        refAtr := atrMain
+        openBar := bar_index
+        strategy.entry("L", strategy.long)
+    if shortEntry
+        refAtr := atrMain
+        openBar := bar_index
+        strategy.entry("S", strategy.short)
+
+// RSI exits at bar close (matches vector stepping style loosely)
+if useRsi and strategy.position_size > 0 and not na(refAtr) and not na(openBar)
+    barsHeld = bar_index - openBar + 1
+    avg = strategy.position_avg_price
+    if strategy.position_size > 0
+        st = avg - refAtr * atrStopMult
+        hitStop = low <= st
+        exitRsi = not na(rsiV) and rsiV >= rsiSell
+        hitTime = barsHeld >= maxHoldBars
+        if hitStop or exitRsi or hitTime
+            strategy.close("L", comment = hitStop ? "stop" : exitRsi ? "rsi" : "time")
+    if strategy.position_size < 0
+        stp = avg + refAtr * atrStopMult
+        tp = avg - refAtr * atrTpMult
+        hitStop = high >= stp
+        hitTp = low <= tp
+        exitRsi = not na(rsiV) and rsiV <= rsiCover
+        hitTime = barsHeld >= maxHoldBars
+        if hitStop or hitTp or exitRsi or hitTime
+            strategy.close("S", comment = hitStop ? "stop" : hitTp ? "tp" : exitRsi ? "rsi" : "time")
+
+// Default bidirectional simulate_trades_bidir-style
+if not useRsi and flat and longEntry
+    refAtr := atrMain
+    openBar := bar_index
+    strategy.entry("L", strategy.long)
+
+if not useRsi and flat and shortEntry
+    refAtr := atrMain
+    openBar := bar_index
+    strategy.entry("S", strategy.short)
+
+// Bidirectional exits (stop / TP / time; stop checked before TP like conservative intrabar)
+if not useRsi and strategy.position_size > 0 and not na(refAtr) and not na(openBar)
+    avg = strategy.position_avg_price
+    barsHeld = bar_index - openBar + 1
+    if strategy.position_size > 0
+        st = avg - refAtr * atrStopMult
+        tp = avg + refAtr * atrTpMult
+        hitStop = low <= st
+        hitTp = high >= tp
+        hitTime = barsHeld >= maxHoldBars
+        if hitStop or hitTp or hitTime
+            strategy.close("L", comment = hitStop ? "stop" : hitTp ? "tp" : "time")
+    if strategy.position_size < 0
+        stp = avg + refAtr * atrStopMult
+        tpL = avg - refAtr * atrTpMult
+        hitStop = high >= stp
+        hitTp = low <= tpL
+        hitTime = barsHeld >= maxHoldBars
+        if hitStop or hitTp or hitTime
+            strategy.close("S", comment = hitStop ? "stop" : hitTp ? "tp" : "time")
+
+// Reset refs when flat
+if strategy.position_size == 0
+    refAtr := na
+    openBar := na

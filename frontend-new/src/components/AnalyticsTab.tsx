@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import type {
   ExchangeErrorEvent,
   ScalpTrade,
@@ -278,6 +278,296 @@ function MaxConcurrentPositionsControl({
   );
 }
 
+function localDayStartSec(ymd: string): number | null {
+  if (!ymd || !/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return null;
+  const [y, m, d] = ymd.split("-").map((x) => parseInt(x, 10));
+  if (!Number.isFinite(y) || !Number.isFinite(m) || !Number.isFinite(d)) return null;
+  return new Date(y, m - 1, d).getTime() / 1000;
+}
+
+function tradeStrategyLabel(t: ScalpTrade): string {
+  return t.strategy_mode && t.strategy_mode !== "unknown" ? t.strategy_mode : "legacy_unknown";
+}
+
+function StrategyReportSection({ trades }: { trades: ScalpTrade[] }) {
+  const modes = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of trades) {
+      s.add(tradeStrategyLabel(t));
+    }
+    return ["__all__", ...Array.from(s).sort()];
+  }, [trades]);
+
+  const [modeSel, setModeSel] = useState("__all__");
+  const [dFrom, setDFrom] = useState("");
+  const [dTo, setDTo] = useState("");
+
+  const filtered = useMemo(() => {
+    let rows = trades;
+    if (modeSel !== "__all__") {
+      rows = rows.filter((t) => tradeStrategyLabel(t) === modeSel);
+    }
+    const ts0 = localDayStartSec(dFrom);
+    const ts1 = localDayStartSec(dTo);
+    if (ts0 != null) rows = rows.filter((t) => (t.exit_ts ?? 0) >= ts0);
+    if (ts1 != null) rows = rows.filter((t) => (t.exit_ts ?? 0) < ts1 + 86400);
+    return [...rows].sort((a, b) => (b.exit_ts ?? 0) - (a.exit_ts ?? 0));
+  }, [trades, modeSel, dFrom, dTo]);
+
+  const exportCsv = () => {
+    const headers = [
+      "strategy_mode",
+      "trade_number",
+      "direction",
+      "pair_key",
+      "entry_ts",
+      "exit_ts",
+      "entry_signal",
+      "exit_signal",
+      "entry_price",
+      "exit_price",
+      "qty",
+      "entry_notional_usd",
+      "exit_notional_usd",
+      "net_pnl_usd",
+      "net_pnl_pct",
+      "mfe_usd",
+      "mfe_pct",
+      "mae_usd",
+      "mae_pct",
+      "cumulative_pnl_usd",
+      "cumulative_pnl_pct",
+      "reason",
+    ];
+    const lines = [headers.join(",")];
+    for (const t of filtered) {
+      const dir = (t.direction ?? "").toLowerCase();
+      const entrySig = dir === "long" ? "Long" : "Short";
+      const exitSig = dir === "long" ? "Long Exit" : "Short Exit";
+      const mult = (t.entry_price ?? 0) * (t.qty ?? 0); // fallback if no notional
+      const entryN = t.entry_notional_usd ?? mult;
+      const exitN = (t.exit_price ?? 0) * (t.qty ?? 0);
+      const row = [
+        tradeStrategyLabel(t),
+        String(t.strategy_trade_index ?? ""),
+        t.direction ?? "",
+        t.pair_key,
+        String(t.entry_ts ?? ""),
+        String(t.exit_ts ?? ""),
+        entrySig,
+        exitSig,
+        String(t.entry_price ?? ""),
+        String(t.exit_price ?? ""),
+        String(t.qty ?? ""),
+        String(entryN),
+        String(exitN),
+        String(t.pnl ?? ""),
+        String(t.net_pnl_pct ?? ""),
+        String(t.mfe_usd ?? ""),
+        String(t.mfe_pct ?? ""),
+        String(t.mae_usd ?? ""),
+        String(t.mae_pct ?? ""),
+        String(t.cumulative_pnl_after ?? ""),
+        String(t.cumulative_pnl_pct ?? ""),
+        `"${String(t.reason ?? "").replace(/"/g, '""')}"`,
+      ];
+      lines.push(row.join(","));
+    }
+    const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `strategy_report_${modeSel === "__all__" ? "all" : modeSel}_${Date.now()}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  return (
+    <section className="panel" style={{ marginTop: 12 }}>
+      <div className="panel-hdr" style={{ alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+        <span className="ph-title">STRATEGY_REPORT</span>
+        <span className="strat-mode" style={{ flex: "1 1 180px" }}>
+          closed legs · JSONL <span className="mono">strategy_report_trade</span> per close
+        </span>
+        <label style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+          Strategy
+          <select
+            value={modeSel}
+            onChange={(e) => setModeSel(e.target.value)}
+            style={{
+              padding: "4px 8px",
+              borderRadius: 4,
+              border: "1px solid var(--border-subtle, #374151)",
+              background: "var(--surface-2, #111827)",
+              color: "var(--text-primary)",
+              fontSize: 11,
+            }}
+          >
+            {modes.map((m) => (
+              <option key={m} value={m}>
+                {m === "__all__" ? "All strategies" : modeLabel(m)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+          From
+          <input type="date" value={dFrom} onChange={(e) => setDFrom(e.target.value)} style={{ fontSize: 11 }} />
+        </label>
+        <label style={{ fontSize: 10, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6 }}>
+          To
+          <input type="date" value={dTo} onChange={(e) => setDTo(e.target.value)} style={{ fontSize: 11 }} />
+        </label>
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={filtered.length === 0}
+          style={{
+            padding: "6px 12px",
+            borderRadius: 4,
+            border: "1px solid var(--border-subtle)",
+            background: "var(--surface-2)",
+            color: "var(--text-primary)",
+            fontSize: 10,
+            fontWeight: 700,
+            cursor: filtered.length === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          EXPORT CSV
+        </button>
+      </div>
+      <div className="analytics-table-wrap" style={{ padding: "0 12px 12px", overflowX: "auto" }}>
+        {filtered.length === 0 ? (
+          <div className="no-data" style={{ padding: 16 }}>
+            No trades match filters (closed legs only; new fields appear after next bot version closes).
+          </div>
+        ) : (
+          <table className="analytics-table strategy-report-table" style={{ fontSize: 11, minWidth: 920 }}>
+            <thead>
+              <tr>
+                <th>Trade #</th>
+                <th>Type</th>
+                <th>Date &amp; time</th>
+                <th>Signal</th>
+                <th>Price</th>
+                <th>Size</th>
+                <th>Net P&amp;L</th>
+                <th>MFE</th>
+                <th>MAE</th>
+                <th>Cumulative</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((t) => {
+                const dir = (t.direction ?? "").toLowerCase();
+                const long = dir === "long";
+                const dirColor = long ? "#60a5fa" : "#f87171";
+                const entrySig = long ? "Long" : "Short";
+                const exitSig = long ? "Long Exit" : "Short Exit";
+                const tn = t.strategy_trade_index ?? "—";
+                const entryN = t.entry_notional_usd ?? Math.abs((t.entry_price ?? 0) * (t.qty ?? 0));
+                const exitN = Math.abs((t.exit_price ?? 0) * (t.qty ?? 0));
+                const netPct = t.net_pnl_pct;
+                const cumPct = t.cumulative_pnl_pct;
+                const mfeU = t.mfe_usd;
+                const maeU = t.mae_usd;
+                const mfeP = t.mfe_pct;
+                const maeP = t.mae_pct;
+                const pk = `${t.entry_cl_ord_id ?? t.pair_key}-${t.exit_ts}`;
+                return (
+                  <Fragment key={pk}>
+                    <tr style={{ borderTop: "1px solid var(--border-subtle, #374151)" }}>
+                      <td rowSpan={2} style={{ verticalAlign: "middle", fontWeight: 700, color: dirColor }}>
+                        {tn} <span style={{ display: "block", fontSize: 10 }}>{long ? "Long" : "Short"}</span>
+                        <span
+                          style={{
+                            display: "block",
+                            fontSize: 9,
+                            color: "var(--text-muted)",
+                            fontWeight: 500,
+                            marginTop: 2,
+                          }}
+                          className="mono"
+                        >
+                          {t.pair_key}
+                          {t.symbol ? ` · ${t.symbol}` : ""}
+                        </span>
+                      </td>
+                      <td className="mono">Exit</td>
+                      <td className="mono" style={{ whiteSpace: "nowrap" }}>
+                        {fmtExTime(t.exit_ts)}
+                      </td>
+                      <td>{exitSig}</td>
+                      <td className="mono">{fmt(t.exit_price ?? 0, 4)} USD</td>
+                      <td className="mono" style={{ lineHeight: 1.35 }}>
+                        {fmt(t.qty ?? 0, 4)}
+                        <span style={{ display: "block", fontSize: 9, color: "var(--text-muted)" }}>
+                          {fmt(exitN, 2)} USD
+                        </span>
+                      </td>
+                      <td
+                        rowSpan={2}
+                        style={{
+                          verticalAlign: "middle",
+                          fontWeight: 700,
+                          color: (t.pnl ?? 0) >= 0 ? "#4ade80" : "#f87171",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {(t.pnl ?? 0) >= 0 ? "+" : ""}
+                        {fmt(t.pnl ?? 0, 3)} USD
+                        <span style={{ display: "block", fontSize: 10, color: "var(--text-muted)" }}>
+                          {netPct != null ? `${(t.pnl ?? 0) >= 0 ? "+" : ""}${fmt(netPct, 2)}%` : "—"}
+                        </span>
+                      </td>
+                      <td rowSpan={2} className="mono" style={{ verticalAlign: "middle", fontSize: 10 }}>
+                        {mfeU != null ? `${fmt(mfeU, 3)} USD` : "—"}
+                        <span style={{ display: "block", color: "var(--text-muted)" }}>
+                          {mfeP != null ? `${fmt(mfeP, 2)}%` : ""}
+                        </span>
+                      </td>
+                      <td rowSpan={2} className="mono" style={{ verticalAlign: "middle", fontSize: 10 }}>
+                        {maeU != null ? `${fmt(maeU, 3)} USD` : "—"}
+                        <span style={{ display: "block", color: "var(--text-muted)" }}>
+                          {maeP != null ? `${fmt(maeP, 2)}%` : ""}
+                        </span>
+                      </td>
+                      <td rowSpan={2} className="mono" style={{ verticalAlign: "middle", fontSize: 10 }}>
+                        {t.cumulative_pnl_after != null ? `${fmt(t.cumulative_pnl_after, 3)} USD` : "—"}
+                        <span style={{ display: "block", color: "var(--text-muted)" }}>
+                          {cumPct != null ? `${fmt(cumPct, 2)}%` : ""}
+                        </span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="mono">Entry</td>
+                      <td className="mono" style={{ whiteSpace: "nowrap" }}>
+                        {fmtExTime(t.entry_ts)}
+                      </td>
+                      <td>{entrySig}</td>
+                      <td className="mono">{fmt(t.entry_price ?? 0, 4)} USD</td>
+                      <td className="mono" style={{ lineHeight: 1.35 }}>
+                        {fmt(t.qty ?? 0, 4)}
+                        <span style={{ display: "block", fontSize: 9, color: "var(--text-muted)" }}>
+                          {fmt(entryN, 2)} USD
+                        </span>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+        <p className="analytics-footnote" style={{ marginTop: 8 }}>
+          MFE / MAE track unrealized extremes while the leg is open (mark updates). Cumulative is per strategy mode,
+          ordered by exit time. Matches session JSONL analytics rows{" "}
+          <span className="mono">subtype=strategy_report_trade</span>.
+        </p>
+      </div>
+    </section>
+  );
+}
+
 export function AnalyticsTab({
   snapshot,
   send,
@@ -388,6 +678,8 @@ export function AnalyticsTab({
         </div>
         {scalp && <MaxConcurrentPositionsControl key={capRaw} capRaw={capRaw} send={send} />}
       </section>
+
+      <StrategyReportSection trades={trades} />
 
       <details className="settings-accordion analytics-details">
         <summary className="settings-accordion-summary">

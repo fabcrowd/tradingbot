@@ -44,6 +44,7 @@ data/sessions/
 data/trades_live.jsonl
 data/trades_paper.jsonl
 data/trades.jsonl
+data/scalp_trade_history.jsonl
 data/state.json
 data/learner_state_*.json
 data/sim_report.json

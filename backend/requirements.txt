@@ -3,7 +3,12 @@ python-dotenv>=1.0.0
 tomli>=2.0.0;python_version<"3.11"
 hexital>=1.5.0
 coinbase-advanced-py>=1.8.0
-# coinbase-advanced-py may pin websockets loosely; CDE WS benefits from a current websockets release.
-websockets>=14.1,<17
+# coinbase-advanced-py 1.8.x requires websockets >=12,<14 (REST + user WS).
+websockets>=12,<14
 # News front-run: DuckDuckGo search, no API key required (package renamed duckduckgo-search → ddgs)
 ddgs>=9.0.0
+# Bar store Parquet + dashboard JSON payloads (not always pulled transitively).
+numpy>=1.26.0
+pandas>=2.0.0
+orjson>=3.9.0
+pyarrow>=14.0.0

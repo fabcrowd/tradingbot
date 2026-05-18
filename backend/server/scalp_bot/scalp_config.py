@@ -13,7 +13,7 @@ LOG = logging.getLogger(__name__)
 class ScalpPairConfig:
     # Exchange symbol: Coinbase CDE product id e.g. "SLP-20DEC30-CDE"
     symbol: str
-    interval: int = 1               # candle interval in minutes (1m default for scalping)
+    interval: int = 5               # candle interval in minutes (live default 5m)
     # Strategy mode: "auto" = champion mode for symbol, else auto_mode_fallback.
     # Manual: "daviddtech_scalp", "ema_momentum", "ema_scalp", "macd_scalp", "rsi_reversion",
     # "supertrend", "squeeze_momentum", "qqe_mod", "utbot_alert", "hull_suite", "sar_chop"
@@ -22,8 +22,8 @@ class ScalpPairConfig:
     # WFO will replace this with its champion mode if/when one scores better for the symbol.
     auto_mode_fallback: str = "sar_chop"
     # EMA momentum params
-    ema_fast: int = 5               # fast EMA period (tuned for 1m)
-    ema_slow: int = 13              # slow EMA period (tuned for 1m)
+    ema_fast: int = 5               # fast EMA period (tuned for 5m charts)
+    ema_slow: int = 13              # slow EMA period (tuned for 5m charts)
     rsi_period: int = 9             # RSI period
     atr_period: int = 14            # ATR period for stop sizing
     volume_ma_period: int = 20      # rolling average period for volume spike detection
@@ -33,13 +33,13 @@ class ScalpPairConfig:
     atr_tp_mult: float = 1.5        # take-profit distance = ATR × this
     risk_pct: float = 0.02          # fraction of scalp capital to risk per trade
     min_signals: int = 2            # minimum confluence signals required (ema_momentum mode)
-    signal_cooldown_sec: float = 15.0   # min seconds between entries (fast for 1m)
-    loss_cooldown_sec: float = 30.0     # shorter recovery for 1m scalping
+    signal_cooldown_sec: float = 15.0   # min seconds between entries
+    loss_cooldown_sec: float = 30.0     # recovery window before new entries after a loss
     min_candles_required: int = 20  # wait for this many candles before trading
     # Rolling OHLC history cap for live bundles (0 = auto ``max(320, sar_chop_ma_long+50)``).
     ohlc_hist_max_bars: int = 0
     # Time stop: exit after N bars if stop/TP not hit (bar count, not wall clock).
-    max_hold_bars: int = 15         # e.g. 15 bars = 15m on 1m; pairs with vec ``max_hold_bars`` for parity
+    max_hold_bars: int = 15         # bar count (15 × 5m = 75m wall time at default interval); vec/live parity
     # RSI reversion params
     rsi_buy_threshold: float = 10.0     # buy when RSI <= this
     rsi_sell_threshold: float = 50.0    # sell when RSI >= this (long exit)
@@ -89,7 +89,7 @@ class ScalpPairConfig:
     sar_chop_ma_long_period: int = 200
     sar_chop_ma_short_period: int = 50
     sar_chop_chop_period: int = 14
-    sar_chop_chop_threshold: float = 38.2
+    sar_chop_chop_threshold: float = 68.0
     sar_chop_macd_fast: int = 12
     sar_chop_macd_slow: int = 26
     sar_chop_macd_signal: int = 9
@@ -302,6 +302,11 @@ class ScalpBotConfig:
     wfo_forward_min_trades: int = 10          # minimum live trades before demotion check activates
     wfo_forward_demotion_threshold: float = -0.5  # demote if forward_pnl / expected_pnl < this ratio
     wfo_forward_outperform_factor: float = 1.5  # Gate 2: replacement expectancy vs champion live expectancy
+    wfo_forward_reconciliation_alert_pct: float = 0.30  # |1 - forward_ratio| above this → alert + log
+    # Live circuit breaker (default off): demote champion to bootstrap/fallback on large forward loss.
+    wfo_live_circuit_breaker_enabled: bool = False
+    wfo_live_circuit_breaker_dd_mult: float = 2.0  # trip when forward_pnl < -mult * holdout max_drawdown
+    wfo_live_circuit_breaker_hours: float = 24.0   # rolling window for forward PnL (via period_start)
     wfo_no_candidates_demotion_passes: int = 0  # consecutive no_candidates passes before wfo_champion demoted to bootstrap (0 = disabled)
     # WFO holdout quality gates (configurable; loose defaults let "best available" through)
     wfo_min_mean_score: float = -999.0        # minimum mean holdout score; -999 = no gate (best-available)
@@ -331,11 +336,16 @@ class ScalpBotConfig:
     wfo_prior_beat_epsilon: float = 1e-6
     # Additional margin vs prior champion holdout score (same units as ``wfo_objective``); 0 = off.
     wfo_min_champion_score_delta: float = 0.0
-    # When True: WFO ranks by mean holdout ``total_pnl`` (sim USD) and relaxes heavy promotion filters
-    # (stability, mean holdout score floor, mean holdout DD cap, latest-window PnL/PF checks, same-mode
-    # param safety deltas, beat-prior and min_champion_score_delta saves, vol-armed WFO overlay). Rolling
-    # windows and ``wfo_min_window_fraction`` / trade-count floors still apply; ``wfo_champion_cooldown_sec`` unchanged.
+    # When True: WFO ranks by **sum** of holdout ``total_pnl`` across OOS slices where top-K tested
+    # (period performance, not ``wfo_min_window_fraction`` fold-count bar) and relaxes heavy promotion
+    # filters (stability, mean holdout score floor, mean holdout DD cap, latest-window PnL/PF checks,
+    # same-mode param safety deltas, beat-prior and min_champion_score_delta saves, vol-armed WFO overlay).
+    # ``wfo_min_period_holdout_trades`` still applies; ``wfo_champion_cooldown_sec`` unchanged.
     wfo_pnl_first_promotion: bool = False
+    # With ``wfo_pnl_first_promotion``: min total closed holdout trades summed across tested folds.
+    wfo_min_period_holdout_trades: int = 3
+    # With ``wfo_pnl_first_promotion``: holdout-backtest every grid row each fold (no train top-K).
+    wfo_exhaustive_grid_holdout: bool = True
     # While regime risk-on: WFO sleep is at least ``wfo_interval_sec`` × this fraction (0 = off).
     risk_on_wfo_min_base_interval_frac: float = 0.5
     # While vol filter is armed: one-pass WFO uses a tightened copy (does not change saved TOML defaults).
@@ -399,10 +409,18 @@ class ScalpBotConfig:
     balance_stale_sec: float = 120.0
     # Extra reserved margin (× entry margin) after stop+TP rest — reduces stacked INSUFFICIENT_FUNDS. 0 = off.
     protective_margin_reserve_mult: float = 0.0
-    # After this many consecutive venue order rejects, pause new entries for order_reject_cooldown_sec.
+    # After this many consecutive venue order rejects, pause new entries for order_reject_cooldown_sec
+    # (only when exchange_entry_cooldown_enabled).
     order_reject_max_consecutive: int = 3
     order_reject_cooldown_sec: float = 120.0
     insufficient_funds_cooldown_sec: float = 300.0
+    # When True, venue rejects extend order_reject_pause_until / insufficient_funds_until (blocks entries).
+    # When False, entries rely on sizing / buying power only; exits are unaffected.
+    exchange_entry_cooldown_enabled: bool = False
+    # Persist closed legs to data/scalp_trade_history.jsonl and reload on startup (chart markers / UI).
+    persist_trade_history: bool = True
+    # In-memory deque maxlen and max rows reloaded from disk (most recent first).
+    trade_history_max_entries: int = 500
     # Limiter penalty (seconds) on 403 / connection-style REST failures.
     exchange_penalize_base_sec: float = 15.0
 
@@ -470,7 +488,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         _afb = str(scalp_raw.get("auto_mode_fallback", "sar_chop"))
         pairs[key] = ScalpPairConfig(
             symbol=val["symbol"],
-            interval=int(val.get("interval", 1)),
+            interval=int(val.get("interval", 5)),
             strategy_mode=str(val.get("strategy_mode", "auto")),
             auto_mode_fallback=str(val.get("auto_mode_fallback", _afb)),
             ema_fast=int(val.get("ema_fast", 5)),
@@ -527,7 +545,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
             sar_chop_ma_long_period=int(val.get("sar_chop_ma_long_period", 200)),
             sar_chop_ma_short_period=int(val.get("sar_chop_ma_short_period", 50)),
             sar_chop_chop_period=int(val.get("sar_chop_chop_period", 14)),
-            sar_chop_chop_threshold=float(val.get("sar_chop_chop_threshold", 38.2)),
+            sar_chop_chop_threshold=float(val.get("sar_chop_chop_threshold", 68.0)),
             sar_chop_macd_fast=int(val.get("sar_chop_macd_fast", 12)),
             sar_chop_macd_slow=int(val.get("sar_chop_macd_slow", 26)),
             sar_chop_macd_signal=int(val.get("sar_chop_macd_signal", 9)),
@@ -720,6 +738,18 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_forward_min_trades=int(scalp_raw.get("wfo_forward_min_trades", 10)),
         wfo_forward_demotion_threshold=float(scalp_raw.get("wfo_forward_demotion_threshold", -0.5)),
         wfo_forward_outperform_factor=float(scalp_raw.get("wfo_forward_outperform_factor", 1.5)),
+        wfo_forward_reconciliation_alert_pct=float(
+            scalp_raw.get("wfo_forward_reconciliation_alert_pct", 0.30),
+        ),
+        wfo_live_circuit_breaker_enabled=bool(
+            scalp_raw.get("wfo_live_circuit_breaker_enabled", False),
+        ),
+        wfo_live_circuit_breaker_dd_mult=float(
+            scalp_raw.get("wfo_live_circuit_breaker_dd_mult", 2.0),
+        ),
+        wfo_live_circuit_breaker_hours=float(
+            scalp_raw.get("wfo_live_circuit_breaker_hours", 24.0),
+        ),
         wfo_no_candidates_demotion_passes=int(scalp_raw.get("wfo_no_candidates_demotion_passes", 0)),
         param_tuner_allow_mode_override_champion=bool(
             scalp_raw.get("param_tuner_allow_mode_override_champion", False)
@@ -757,6 +787,9 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         order_reject_max_consecutive=int(scalp_raw.get("order_reject_max_consecutive", 3)),
         order_reject_cooldown_sec=float(scalp_raw.get("order_reject_cooldown_sec", 120.0)),
         insufficient_funds_cooldown_sec=float(scalp_raw.get("insufficient_funds_cooldown_sec", 300.0)),
+        exchange_entry_cooldown_enabled=bool(scalp_raw.get("exchange_entry_cooldown_enabled", False)),
+        persist_trade_history=bool(scalp_raw.get("persist_trade_history", True)),
+        trade_history_max_entries=max(1, int(scalp_raw.get("trade_history_max_entries", 500) or 500)),
         exchange_penalize_base_sec=float(scalp_raw.get("exchange_penalize_base_sec", 15.0)),
         wfo_min_mean_score=float(scalp_raw.get("wfo_min_mean_score", -999.0)),
         wfo_min_stability_ratio=float(scalp_raw.get("wfo_min_stability_ratio", -999.0)),
@@ -778,6 +811,8 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_prior_beat_epsilon=float(scalp_raw.get("wfo_prior_beat_epsilon", 1e-6)),
         wfo_min_champion_score_delta=float(scalp_raw.get("wfo_min_champion_score_delta", 0.0)),
         wfo_pnl_first_promotion=bool(scalp_raw.get("wfo_pnl_first_promotion", False)),
+        wfo_min_period_holdout_trades=int(scalp_raw.get("wfo_min_period_holdout_trades", 3)),
+        wfo_exhaustive_grid_holdout=bool(scalp_raw.get("wfo_exhaustive_grid_holdout", True)),
         risk_on_wfo_min_base_interval_frac=float(
             scalp_raw.get("risk_on_wfo_min_base_interval_frac", 0.5),
         ),
