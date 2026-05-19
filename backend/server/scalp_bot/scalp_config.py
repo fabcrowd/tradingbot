@@ -195,17 +195,12 @@ class ScalpBotConfig:
     liquidation_warn_pct: float = 5.0        # warn if mark within this % of liquidation price
     max_notional_usd_per_pair: float | None = None  # cap estimated notional per open position
     rest_seed_candles: int = 100        # candles to fetch from REST on startup
-    # Walk-forward optimizer (hours-based windows for scalp timeframes)
+    # Walk-forward optimizer (continuous full-grid evaluation)
     wfo_enabled: bool = True
     wfo_interval_sec: float = 3600.0
-    wfo_train_hours: float = 6.0     # training window (hours)
-    wfo_holdout_hours: float = 2.0   # holdout/validation window (hours)
-    wfo_step_hours: float = 2.0      # rolling step size (hours)
+    # Param tuner / dashboard backtest lookback (hours); not the WFO eval window.
+    wfo_train_hours: float = 6.0
     wfo_min_trades: int = 20
-    # Holdout-only trade floor (0 = same as wfo_min_trades). Lower this to reduce holdout-frequency pressure.
-    wfo_min_holdout_trades: int = 0
-    # Holdout validation: how many top train-scoring grid points to re-evaluate on each OOS window.
-    wfo_top_k: int = 50
     wfo_objective: str = "expectancy_sqrt_n"
     # Strategy lookback: how many hours of recent data to backtest for the UI dashboard
     strategy_lookback_hours: float = 24.0
@@ -229,9 +224,9 @@ class ScalpBotConfig:
     # When True, startup leaves scalp in operator standby: no new entries until WS
     # ``scalp_operator_go_live`` (Settings tab). Warmup/WFO still run unless disabled.
     require_manual_go_live: bool = False
-    # When True, entries are blocked for any pair whose mode_source is "bootstrap"
-    # (no WFO champion selected yet). The pair will only trade once WFO crowns a champion.
-    require_champion_to_trade: bool = False
+    # When True, entries are blocked until mode_source is WFO-backed (not bootstrap).
+    # The pair only trades after WFO crowns a champion (or forward demotion / approved overrides).
+    require_champion_to_trade: bool = True
     # Mid-bar entries: price-action triggers on WS ticks using frozen last-bar indicators
     tick_entries_enabled: bool = False
     tick_signal_cooldown_sec: float = 300.0
@@ -314,21 +309,11 @@ class ScalpBotConfig:
     wfo_require_positive_holdout: bool = False # if True, reject champion with negative holdout PnL
     wfo_min_holdout_pf: float = 0.5           # minimum holdout profit factor (0.5 = very loose)
     wfo_max_avg_dd_pct: float = 999.0         # max average drawdown % across holdout windows; 999 = no gate
-    # Holdout window participation: require each grid point on >= int(N * fraction) rolling folds.
-    # 0.48 ≈ legacy half the windows; lower (e.g. 0.35) if WFO never promotes a champion.
-    wfo_min_window_fraction: float = 0.48
-    # Train hard gates (WFO grid); match ``WFOConfig`` defaults unless you need looser/tighter IS filters.
     wfo_min_profit_factor: float = 0.8
     wfo_min_win_rate: float = 0.20
     wfo_max_train_drawdown_pct: float = 30.0
-    # Rolling WFO: keep last (train+holdout + (N-1)*step) hours of tape; N = max_roll_windows
-    wfo_max_roll_windows: int = 12
-    # REST backfill requests roll_span + this many extra hours (pagination / gap slack; 0 = exact roll only).
+    # REST backfill requests eval+warmup span + this many extra hours (pagination / gap slack).
     wfo_backfill_buffer_hours: float = 24.0
-    # When False, WFO does not relax min holdout-window count (no quarter-fold or min_windows=1 fallback).
-    wfo_allow_promotion_relaxation: bool = False
-    # Train-score bias: extra weight for trades on same UTC day as train window end (0 = off)
-    wfo_train_same_calendar_day_boost: float = 0.0
     # Min seconds between successful champion disk writes per symbol (0 = off).
     wfo_champion_cooldown_sec: float = 0.0
     # Require new champion holdout score >= prior score + epsilon before overwriting champion.json.
@@ -336,23 +321,18 @@ class ScalpBotConfig:
     wfo_prior_beat_epsilon: float = 1e-6
     # Additional margin vs prior champion holdout score (same units as ``wfo_objective``); 0 = off.
     wfo_min_champion_score_delta: float = 0.0
-    # When True: WFO ranks by **sum** of holdout ``total_pnl`` across OOS slices where top-K tested
-    # (period performance, not ``wfo_min_window_fraction`` fold-count bar) and relaxes heavy promotion
-    # filters (stability, mean holdout score floor, mean holdout DD cap, latest-window PnL/PF checks,
-    # same-mode param safety deltas, beat-prior and min_champion_score_delta saves, vol-armed WFO overlay).
-    # ``wfo_min_period_holdout_trades`` still applies; ``wfo_champion_cooldown_sec`` unchanged.
-    wfo_pnl_first_promotion: bool = False
-    # With ``wfo_pnl_first_promotion``: min total closed holdout trades summed across tested folds.
-    wfo_min_period_holdout_trades: int = 3
-    # With ``wfo_pnl_first_promotion``: holdout-backtest every grid row each fold (no train top-K).
-    wfo_exhaustive_grid_holdout: bool = True
+    # Primary sort key for continuous champion pool: "total_pnl" | "calmar" | "sharpe_like"
+    wfo_period_rank_metric: str = "total_pnl"
+    wfo_pick_best_per_mode: bool = True
+    wfo_continuous_eval_hours:   float = 672.0   # 28-day evaluation window
+    wfo_continuous_warmup_hours: float = 168.0   # 7-day indicator warmup prefix
+    wfo_continuous_min_trades:   int   = 20      # min closed trades in eval window
     # While regime risk-on: WFO sleep is at least ``wfo_interval_sec`` × this fraction (0 = off).
     risk_on_wfo_min_base_interval_frac: float = 0.5
-    # While vol filter is armed: one-pass WFO uses a tightened copy (does not change saved TOML defaults).
-    wfo_vol_armed_min_window_fraction: float = 0.0
+    # Vol-armed WFO overlay is a no-op in continuous mode (fields kept for config compat).
     wfo_vol_armed_min_latest_holdout_pf: float = 0.0
     wfo_vol_armed_disallow_promotion_relaxation: bool = True
-    # Pessimistic holdout re-score before champion save (same rolling windows; stricter fill/fees).
+    # Pessimistic re-score on the continuous eval window before champion save.
     wfo_adverse_check_enabled: bool = False
     wfo_adverse_fill_model: str = "next_open"
     wfo_adverse_assume_taker_fee: bool = True
@@ -449,6 +429,18 @@ def wfo_fee_bps_per_leg(cfg: ScalpBotConfig) -> float:
     if bool(getattr(cfg, "wfo_assume_taker_fee", False)):
         return float(getattr(cfg, "fee_bps_taker_per_leg", 7.0) or 7.0)
     return effective_scalp_fee_bps_per_leg(cfg)
+
+
+def wfo_continuous_span_hours(cfg: ScalpBotConfig) -> float:
+    """Bar-history span for WFO backfill and offline backtests (eval + warmup hours)."""
+    eval_h = float(getattr(cfg, "wfo_continuous_eval_hours", 672.0) or 672.0)
+    warm_h = float(getattr(cfg, "wfo_continuous_warmup_hours", 168.0) or 168.0)
+    return eval_h + warm_h
+
+
+def wfo_tuner_lookback_hours(cfg: ScalpBotConfig) -> float:
+    """Param-tuner / dashboard lookback — not the WFO eval window."""
+    return float(getattr(cfg, "wfo_train_hours", 6.0) or 6.0)
 
 
 def load_scalp_config(raw: dict) -> ScalpBotConfig:
@@ -647,11 +639,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_enabled=bool(scalp_raw.get("wfo_enabled", True)),
         wfo_interval_sec=float(scalp_raw.get("wfo_interval_sec", 3600.0)),
         wfo_train_hours=float(scalp_raw.get("wfo_train_hours", 6.0)),
-        wfo_holdout_hours=float(scalp_raw.get("wfo_holdout_hours", 2.0)),
-        wfo_step_hours=float(scalp_raw.get("wfo_step_hours", 2.0)),
         wfo_min_trades=int(scalp_raw.get("wfo_min_trades", 20)),
-        wfo_min_holdout_trades=int(scalp_raw.get("wfo_min_holdout_trades", 0)),
-        wfo_top_k=int(scalp_raw.get("wfo_top_k", 50)),
         wfo_objective=str(scalp_raw.get("wfo_objective", "expectancy_sqrt_n")),
         strategy_lookback_hours=float(scalp_raw.get("strategy_lookback_hours", 24.0)),
         backtest_fill_model=str(scalp_raw.get("backtest_fill_model", "close_slip")),
@@ -663,7 +651,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         warmup_require_champion=bool(scalp_raw.get("warmup_require_champion", True)),
         warmup_max_hours=float(scalp_raw.get("warmup_max_hours", 0.0)),
         require_manual_go_live=bool(scalp_raw.get("require_manual_go_live", False)),
-        require_champion_to_trade=bool(scalp_raw.get("require_champion_to_trade", False)),
+        require_champion_to_trade=bool(scalp_raw.get("require_champion_to_trade", True)),
         tick_entries_enabled=bool(scalp_raw.get("tick_entries_enabled", False)),
         tick_signal_cooldown_sec=float(scalp_raw.get("tick_signal_cooldown_sec", 300.0)),
         regime_risk_on_enabled=bool(scalp_raw.get("regime_risk_on_enabled", True)),
@@ -796,28 +784,18 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_require_positive_holdout=bool(scalp_raw.get("wfo_require_positive_holdout", False)),
         wfo_min_holdout_pf=float(scalp_raw.get("wfo_min_holdout_pf", 0.5)),
         wfo_max_avg_dd_pct=float(scalp_raw.get("wfo_max_avg_dd_pct", 999.0)),
-        wfo_min_window_fraction=float(scalp_raw.get("wfo_min_window_fraction", 0.48)),
         wfo_min_profit_factor=float(scalp_raw.get("wfo_min_profit_factor", 0.8)),
         wfo_min_win_rate=float(scalp_raw.get("wfo_min_win_rate", 0.20)),
         wfo_max_train_drawdown_pct=float(scalp_raw.get("wfo_max_train_drawdown_pct", 30.0)),
-        wfo_max_roll_windows=int(scalp_raw.get("wfo_max_roll_windows", 12)),
         wfo_backfill_buffer_hours=float(scalp_raw.get("wfo_backfill_buffer_hours", 24.0)),
-        wfo_allow_promotion_relaxation=bool(scalp_raw.get("wfo_allow_promotion_relaxation", False)),
-        wfo_train_same_calendar_day_boost=float(
-            scalp_raw.get("wfo_train_same_calendar_day_boost", 0.0)
-        ),
         wfo_champion_cooldown_sec=float(scalp_raw.get("wfo_champion_cooldown_sec", 0.0)),
         wfo_require_holdout_beat_prior=bool(scalp_raw.get("wfo_require_holdout_beat_prior", False)),
         wfo_prior_beat_epsilon=float(scalp_raw.get("wfo_prior_beat_epsilon", 1e-6)),
         wfo_min_champion_score_delta=float(scalp_raw.get("wfo_min_champion_score_delta", 0.0)),
-        wfo_pnl_first_promotion=bool(scalp_raw.get("wfo_pnl_first_promotion", False)),
-        wfo_min_period_holdout_trades=int(scalp_raw.get("wfo_min_period_holdout_trades", 3)),
-        wfo_exhaustive_grid_holdout=bool(scalp_raw.get("wfo_exhaustive_grid_holdout", True)),
+        wfo_period_rank_metric=str(scalp_raw.get("wfo_period_rank_metric", "total_pnl") or "total_pnl"),
+        wfo_pick_best_per_mode=bool(scalp_raw.get("wfo_pick_best_per_mode", True)),
         risk_on_wfo_min_base_interval_frac=float(
             scalp_raw.get("risk_on_wfo_min_base_interval_frac", 0.5),
-        ),
-        wfo_vol_armed_min_window_fraction=float(
-            scalp_raw.get("wfo_vol_armed_min_window_fraction", 0.0),
         ),
         wfo_vol_armed_min_latest_holdout_pf=float(
             scalp_raw.get("wfo_vol_armed_min_latest_holdout_pf", 0.0),
@@ -838,4 +816,7 @@ def load_scalp_config(raw: dict) -> ScalpBotConfig:
         wfo_max_param_delta_tp=float(scalp_raw.get("wfo_max_param_delta_tp", 1.5)),
         wfo_holdout_tiebreakers=_holdout_tb,
         wfo_holdout_score_epsilon=float(scalp_raw.get("wfo_holdout_score_epsilon", 0.0) or 0.0),
+        wfo_continuous_eval_hours=float(scalp_raw.get("wfo_continuous_eval_hours", 672.0) or 672.0),
+        wfo_continuous_warmup_hours=float(scalp_raw.get("wfo_continuous_warmup_hours", 168.0) or 168.0),
+        wfo_continuous_min_trades=int(scalp_raw.get("wfo_continuous_min_trades", 20) or 20),
     )

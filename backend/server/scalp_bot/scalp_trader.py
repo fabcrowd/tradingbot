@@ -2330,6 +2330,7 @@ class ScalpTrader:
             "strategy_trade_index": int(trade_idx),
             "cumulative_pnl_after": round(cum_after, 6),
             "entry_notional_usd": round(entry_notional, 6),
+            "exit_notional_usd": round(exit_notional, 6),
             "mfe_usd": round(mfe_usd, 6),
             "mfe_pct": round(mfe_pct, 4),
             "mae_usd": round(mae_usd, 6),

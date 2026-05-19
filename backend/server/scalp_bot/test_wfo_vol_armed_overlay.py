@@ -11,23 +11,21 @@ from scalp_bot.scalp_runtime import ScalpRuntime, _apply_vol_armed_wfo_overlay, 
 from scalp_bot.scalp_wfo import WFOConfig
 
 
-def test_apply_vol_armed_wfo_overlay_tightens() -> None:
+def test_apply_vol_armed_wfo_overlay_is_noop() -> None:
+    """In continuous evaluation mode the overlay always returns base unchanged."""
     base = WFOConfig(
-        min_window_fraction=0.48,
+        continuous_eval_hours=672.0,
+        continuous_warmup_hours=168.0,
         min_latest_holdout_pf=1.0,
-        allow_promotion_relaxation=True,
     )
     cfg = ScalpBotConfig(
         enabled=True,
         pairs={"p1": ScalpPairConfig(symbol="X", interval=5)},
-        wfo_vol_armed_min_window_fraction=0.62,
         wfo_vol_armed_min_latest_holdout_pf=1.15,
         wfo_vol_armed_disallow_promotion_relaxation=True,
     )
     out = _apply_vol_armed_wfo_overlay(base, cfg)
-    assert out.min_window_fraction == 0.62
-    assert out.min_latest_holdout_pf == 1.15
-    assert out.allow_promotion_relaxation is False
+    assert out is base
 
 
 def test_risk_on_wfo_sleep_uses_base_frac() -> None:
@@ -49,23 +47,22 @@ def test_risk_on_wfo_sleep_uses_base_frac() -> None:
     assert rt._effective_wfo_sleep_sec() == pytest.approx(100.0)
 
 
-def test_wfo_pass_config_applies_overlay_when_vol_armed() -> None:
+def test_wfo_pass_config_returns_base_when_vol_armed() -> None:
+    """Vol-armed overlay is a no-op in continuous mode; _wfo_pass_config returns base unchanged."""
     from state import BotState
 
     cfg = ScalpBotConfig(
         enabled=True,
         pairs={"p1": ScalpPairConfig(symbol="X", interval=5)},
         volatility_filter_enabled=True,
-        wfo_min_window_fraction=0.48,
-        wfo_vol_armed_min_window_fraction=0.55,
+        wfo_continuous_min_trades=20,
         wfo_vol_armed_disallow_promotion_relaxation=True,
     )
     st = BotState()
     rt = ScalpRuntime(st, cfg, live_mgr=None, session_logger=None)
     base_only = _wfo_config_from_scalp_cfg(cfg)
-    assert base_only.min_window_fraction == 0.48
+    assert base_only.continuous_min_trades == 20
 
     rt._vol_filt_armed_until["p1"] = time.time() + 60.0
     wpass = rt._wfo_pass_config()
-    assert wpass.min_window_fraction == 0.55
-    assert wpass.allow_promotion_relaxation is False
+    assert wpass.continuous_min_trades == 20

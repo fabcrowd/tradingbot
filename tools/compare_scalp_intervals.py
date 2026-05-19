@@ -19,7 +19,7 @@ sys.path.insert(0, str(SERVER))
 import tomllib  # py3.11+
 
 from scalp_bot import bar_store
-from scalp_bot.scalp_config import load_scalp_config
+from scalp_bot.scalp_config import load_scalp_config, wfo_continuous_span_hours
 from scalp_bot.scalp_vec_backtest import evaluate_params
 from scalp_bot.scalp_wfo import _params_from_config
 from scalp_bot.strategy_lookback import STRATEGY_MODES, _slice_bars_to_hours
@@ -28,10 +28,10 @@ from scalp_bot.strategy_lookback import STRATEGY_MODES, _slice_bars_to_hours
 def main() -> None:
     raw = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     bot_cfg = load_scalp_config(raw)
-    look_h = float(bot_cfg.wfo_train_hours) + float(bot_cfg.wfo_holdout_hours)
+    look_h = wfo_continuous_span_hours(bot_cfg)
     load_days = look_h / 24.0 + 0.25
 
-    print(f"lookback_hours={look_h} (train+holdout) fee_bps_per_leg={bot_cfg.fee_bps_per_leg}")
+    print(f"lookback_hours={look_h} (continuous eval+warmup) fee_bps_per_leg={bot_cfg.fee_bps_per_leg}")
     print()
 
     for pk, pc in bot_cfg.pairs.items():

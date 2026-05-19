@@ -53,7 +53,7 @@ from .scalp_wfo import (
     WFOConfig,
     load_champion,
     remove_champion_for_symbol,
-    wfo_roll_span_hours,
+    wfo_effective_roll_span_hours,
     wfo_verify_stored_roll_coverage,
 )
 from .strategy_lookback import (
@@ -63,6 +63,7 @@ from .strategy_lookback import (
     champion_row_matches_pair_interval,
     nemesis_advisory_champion_vs_bootstrap,
     nemesis_resolve_bootstrap_vs_tuner,
+    live_entry_allowed_champion_gate,
     pair_has_wfo_champion,
 )
 from .param_tuner import (
@@ -135,28 +136,16 @@ def _parse_coinbase_summary_fee_bps(data: dict) -> tuple[float, float] | None:
 
 def _wfo_config_from_scalp_cfg(cfg: ScalpBotConfig) -> WFOConfig:
     """Build ``WFOConfig`` from live bot config (dashboard patches keep this in sync)."""
-    wfo = WFOConfig(
+    return WFOConfig(
         enabled=cfg.wfo_enabled,
         interval_sec=cfg.wfo_interval_sec,
-        train_hours=cfg.wfo_train_hours,
-        holdout_hours=cfg.wfo_holdout_hours,
-        step_hours=cfg.wfo_step_hours,
         min_trades=cfg.wfo_min_trades,
-        min_holdout_trades=(
-            int(cfg.wfo_min_holdout_trades)
-            if int(getattr(cfg, "wfo_min_holdout_trades", 0) or 0) > 0
-            else None
-        ),
-        top_k=max(1, int(cfg.wfo_top_k)),
         objective=cfg.wfo_objective,
         min_mean_score=cfg.wfo_min_mean_score,
         min_stability_ratio=cfg.wfo_min_stability_ratio,
         require_positive_latest_holdout=cfg.wfo_require_positive_holdout,
         min_latest_holdout_pf=cfg.wfo_min_holdout_pf,
         max_avg_dd_pct=cfg.wfo_max_avg_dd_pct,
-        max_roll_windows=max(1, int(cfg.wfo_max_roll_windows)),
-        train_same_calendar_day_boost=float(cfg.wfo_train_same_calendar_day_boost),
-        min_window_fraction=float(getattr(cfg, "wfo_min_window_fraction", 0.48) or 0.48),
         min_profit_factor=float(getattr(cfg, "wfo_min_profit_factor", 0.8) or 0.8),
         min_win_rate=float(getattr(cfg, "wfo_min_win_rate", 0.20) or 0.20),
         max_drawdown_pct=float(getattr(cfg, "wfo_max_train_drawdown_pct", 30.0) or 30.0),
@@ -165,7 +154,6 @@ def _wfo_config_from_scalp_cfg(cfg: ScalpBotConfig) -> WFOConfig:
         prior_beat_epsilon=float(getattr(cfg, "wfo_prior_beat_epsilon", 1e-6) or 1e-6),
         max_param_delta_stop=float(getattr(cfg, "wfo_max_param_delta_stop", 1.0) or 1.0),
         max_param_delta_tp=float(getattr(cfg, "wfo_max_param_delta_tp", 1.5) or 1.5),
-        allow_promotion_relaxation=bool(getattr(cfg, "wfo_allow_promotion_relaxation", False)),
         holdout_tiebreakers=(
             tuple(
                 str(x).strip()
@@ -175,50 +163,18 @@ def _wfo_config_from_scalp_cfg(cfg: ScalpBotConfig) -> WFOConfig:
             or ("stability", "neg_mean_max_dd_pct", "min_holdout_trade_count")
         ),
         holdout_score_epsilon=float(getattr(cfg, "wfo_holdout_score_epsilon", 0.0) or 0.0),
+        pick_best_per_mode=bool(getattr(cfg, "wfo_pick_best_per_mode", True)),
+        continuous_eval_hours=float(getattr(cfg, "wfo_continuous_eval_hours", 672.0) or 672.0),
+        continuous_warmup_hours=float(getattr(cfg, "wfo_continuous_warmup_hours", 168.0) or 168.0),
+        continuous_min_trades=int(getattr(cfg, "wfo_continuous_min_trades", 20) or 20),
+        holdout_rank_by_period=True,
+        period_rank_metric=str(getattr(cfg, "wfo_period_rank_metric", "total_pnl") or "total_pnl"),
     )
-    if bool(getattr(cfg, "wfo_pnl_first_promotion", False)):
-        # Maximize simulated USD on rolling holdouts; rank by period total OOS $ (not fold-count bar).
-        wfo = dataclasses.replace(
-            wfo,
-            objective="total_pnl",
-            require_positive_latest_holdout=False,
-            min_latest_holdout_pf=0.0,
-            min_mean_score=-999.0,
-            min_stability_ratio=-999.0,
-            max_avg_dd_pct=999.0,
-            require_holdout_beat_prior=False,
-            max_param_delta_hold=10_000,
-            max_param_delta_stop=1_000.0,
-            max_param_delta_tp=1_000.0,
-            holdout_rank_by_period=True,
-            exhaustive_grid_holdout=bool(
-                getattr(cfg, "wfo_exhaustive_grid_holdout", True),
-            ),
-            min_window_fraction=0.0,
-            min_period_holdout_trades=max(
-                0, int(getattr(cfg, "wfo_min_period_holdout_trades", 3) or 0),
-            ),
-        )
-    return wfo
 
 
 def _apply_vol_armed_wfo_overlay(base: WFOConfig, cfg: ScalpBotConfig) -> WFOConfig:
-    """Tighten a one-pass WFO config while the volatility filter is armed (copy only)."""
-    if bool(getattr(cfg, "wfo_pnl_first_promotion", False)):
-        return base
-    wf = float(getattr(cfg, "wfo_vol_armed_min_window_fraction", 0.0) or 0.0)
-    pf = float(getattr(cfg, "wfo_vol_armed_min_latest_holdout_pf", 0.0) or 0.0)
-    disallow = bool(getattr(cfg, "wfo_vol_armed_disallow_promotion_relaxation", True))
-    if not disallow and wf <= 0 and pf <= 0:
-        return base
-    kw: dict[str, Any] = {}
-    if disallow:
-        kw["allow_promotion_relaxation"] = False
-    if wf > 0:
-        kw["min_window_fraction"] = max(float(base.min_window_fraction), wf)
-    if pf > 0:
-        kw["min_latest_holdout_pf"] = max(float(base.min_latest_holdout_pf), pf)
-    return dataclasses.replace(base, **kw)
+    """No-op in continuous evaluation mode — vol-armed overlay is not applicable."""
+    return base
 
 
 _NEMESIS_ADVISORY_SEC = 300.0  # champion vs bootstrap comparison (bar loads) — throttled
@@ -703,14 +659,11 @@ class ScalpRuntime:
             "param_tuner_cooldown_sec_after_apply",
             "param_tuner_warn_interval_below_bar_mult",
             "wfo_holdout_score_epsilon",
-            "wfo_max_roll_windows",
-            "wfo_top_k",
-            "wfo_train_same_calendar_day_boost",
             "wfo_train_hours",
-            "wfo_holdout_hours",
-            "wfo_step_hours",
+            "wfo_continuous_eval_hours",
+            "wfo_continuous_warmup_hours",
+            "wfo_continuous_min_trades",
             "wfo_min_trades",
-            "wfo_min_holdout_trades",
             "backtest_funding_enabled",
             "backtest_funding_bps_per_hour",
             "scalp_fee_assumption_revision",
@@ -736,7 +689,6 @@ class ScalpRuntime:
             "wfo_assume_taker_fee",
             "funding_warn_bps_per_hour",
             "daily_loss_set_scalp_halt",
-            "wfo_pnl_first_promotion",
         }
         incoming = {k: v for k, v in patch.items() if k in allowed}
         if not incoming:
@@ -792,24 +744,22 @@ class ScalpRuntime:
                 self._cfg.wfo_holdout_score_epsilon = _f(
                     "wfo_holdout_score_epsilon", 0.0, 1_000.0,
                 )
-            if "wfo_max_roll_windows" in incoming:
-                self._cfg.wfo_max_roll_windows = _i("wfo_max_roll_windows", 1, 200)
-            if "wfo_top_k" in incoming:
-                self._cfg.wfo_top_k = _i("wfo_top_k", 1, 300)
-            if "wfo_train_same_calendar_day_boost" in incoming:
-                self._cfg.wfo_train_same_calendar_day_boost = _f(
-                    "wfo_train_same_calendar_day_boost", 0.0, 3.0,
-                )
             if "wfo_train_hours" in incoming:
                 self._cfg.wfo_train_hours = _f("wfo_train_hours", 0.5, 2000.0)
-            if "wfo_holdout_hours" in incoming:
-                self._cfg.wfo_holdout_hours = _f("wfo_holdout_hours", 0.5, 500.0)
-            if "wfo_step_hours" in incoming:
-                self._cfg.wfo_step_hours = _f("wfo_step_hours", 0.25, 10000.0)
+            if "wfo_continuous_eval_hours" in incoming:
+                self._cfg.wfo_continuous_eval_hours = _f(
+                    "wfo_continuous_eval_hours", 1.0, 20_000.0,
+                )
+            if "wfo_continuous_warmup_hours" in incoming:
+                self._cfg.wfo_continuous_warmup_hours = _f(
+                    "wfo_continuous_warmup_hours", 0.0, 20_000.0,
+                )
+            if "wfo_continuous_min_trades" in incoming:
+                self._cfg.wfo_continuous_min_trades = _i(
+                    "wfo_continuous_min_trades", 1, 500,
+                )
             if "wfo_min_trades" in incoming:
                 self._cfg.wfo_min_trades = _i("wfo_min_trades", 1, 500)
-            if "wfo_min_holdout_trades" in incoming:
-                self._cfg.wfo_min_holdout_trades = _i("wfo_min_holdout_trades", 0, 500)
             if "backtest_funding_enabled" in incoming:
                 self._cfg.backtest_funding_enabled = _bool("backtest_funding_enabled")
             if "backtest_funding_bps_per_hour" in incoming:
@@ -900,8 +850,6 @@ class ScalpRuntime:
                 )
             if "wfo_assume_taker_fee" in incoming:
                 self._cfg.wfo_assume_taker_fee = _bool("wfo_assume_taker_fee")
-            if "wfo_pnl_first_promotion" in incoming:
-                self._cfg.wfo_pnl_first_promotion = _bool("wfo_pnl_first_promotion")
             if "funding_warn_bps_per_hour" in incoming:
                 self._cfg.funding_warn_bps_per_hour = _f(
                     "funding_warn_bps_per_hour", 0.0, 500.0,
@@ -1732,19 +1680,22 @@ class ScalpRuntime:
                 else 5,
                 "warmup_min_bars": int(self._cfg.warmup_min_bars),
                 "warmup_require_champion": bool(self._cfg.warmup_require_champion),
+                "require_champion_to_trade": bool(
+                    getattr(self._cfg, "require_champion_to_trade", True),
+                ),
                 "warmup_max_hours": float(self._cfg.warmup_max_hours),
                 "wfo_enabled": bool(self._cfg.wfo_enabled),
                 "wfo_interval_sec": float(self._cfg.wfo_interval_sec),
                 "wfo_train_hours": float(self._cfg.wfo_train_hours),
-                "wfo_holdout_hours": float(self._cfg.wfo_holdout_hours),
-                "wfo_step_hours": float(self._cfg.wfo_step_hours),
-                "wfo_top_k": max(1, int(self._cfg.wfo_top_k)),
                 "wfo_objective": str(self._cfg.wfo_objective),
-                "wfo_pnl_first_promotion": bool(
-                    getattr(self._cfg, "wfo_pnl_first_promotion", False),
+                "wfo_continuous_eval_hours": float(self._cfg.wfo_continuous_eval_hours),
+                "wfo_continuous_warmup_hours": float(self._cfg.wfo_continuous_warmup_hours),
+                "wfo_continuous_min_trades": int(self._cfg.wfo_continuous_min_trades),
+                "wfo_period_rank_metric": str(
+                    getattr(self._cfg, "wfo_period_rank_metric", "total_pnl") or "total_pnl",
                 ),
+                "wfo_pick_best_per_mode": bool(getattr(self._cfg, "wfo_pick_best_per_mode", True)),
                 "wfo_min_trades": int(self._cfg.wfo_min_trades),
-                "wfo_min_holdout_trades": int(getattr(self._cfg, "wfo_min_holdout_trades", 0) or 0),
                 "scalp_fee_assumption_revision": int(
                     getattr(self._cfg, "scalp_fee_assumption_revision", 0) or 0
                 ),
@@ -1833,17 +1784,8 @@ class ScalpRuntime:
                 "empirical_market_ttl_cancel_promotion_entries": int(
                     getattr(self._cfg, "empirical_market_ttl_cancel_promotion_entries", 1)
                 ),
-                "wfo_max_roll_windows": max(1, int(self._cfg.wfo_max_roll_windows)),
-                "wfo_train_same_calendar_day_boost": float(
-                    self._cfg.wfo_train_same_calendar_day_boost
-                ),
                 "wfo_roll_span_hours": float(
-                    wfo_roll_span_hours(
-                        self._cfg.wfo_train_hours,
-                        self._cfg.wfo_holdout_hours,
-                        self._cfg.wfo_step_hours,
-                        max(1, int(self._cfg.wfo_max_roll_windows)),
-                    )
+                    wfo_effective_roll_span_hours(_wfo_config_from_scalp_cfg(self._cfg)),
                 ),
                 "wfo_min_profit_factor": float(
                     getattr(self._cfg, "wfo_min_profit_factor", 0.8) or 0.8,
@@ -2028,8 +1970,8 @@ class ScalpRuntime:
                 sim_mode=self._cfg.sim_mode,
                 warmup_enabled=self._cfg.warmup_enabled,
                 wfo_train_hours=self._cfg.wfo_train_hours,
-                wfo_holdout_hours=self._cfg.wfo_holdout_hours,
-                wfo_step_hours=self._cfg.wfo_step_hours,
+                wfo_continuous_eval_hours=self._cfg.wfo_continuous_eval_hours,
+                wfo_continuous_warmup_hours=self._cfg.wfo_continuous_warmup_hours,
             )
         try:
             from .scalp_fee_assumptions import reconcile_fee_assumptions_on_startup
@@ -2535,10 +2477,18 @@ class ScalpRuntime:
         elif not iv.ready or not iv.mode_ready:
             return
 
-        if bool(getattr(self._cfg, "require_champion_to_trade", False)):
-            if self._mode_source.get(pair_key) not in ("wfo_champion", "forward_demotion", "param_tuner_override", "nemesis_tuner"):
-                LOG.debug("ScalpRuntime %s: tick entry blocked — no WFO champion yet (source=%s)", pair_key, self._mode_source.get(pair_key))
-                return
+        if not live_entry_allowed_champion_gate(
+            self._cfg, self._champion_data, pair_cfg, self._mode_source.get(pair_key, ""),
+        ):
+            LOG.debug(
+                "ScalpRuntime %s: tick entry blocked — champion gate (source=%s, has_row=%s)",
+                pair_key,
+                self._mode_source.get(pair_key),
+                pair_has_wfo_champion(
+                    self._champion_data, pair_cfg.symbol, pair_cfg.interval,
+                ),
+            )
+            return
 
         pair_cfg = self._cfg.pairs[pair_key]
         symbol = pair_cfg.symbol
@@ -2749,10 +2699,18 @@ class ScalpRuntime:
         if self._operator_standby:
             return
 
-        if bool(getattr(self._cfg, "require_champion_to_trade", False)):
-            if self._mode_source.get(pair_key) not in ("wfo_champion", "forward_demotion", "param_tuner_override", "nemesis_tuner"):
-                LOG.debug("ScalpRuntime %s: bar entry blocked — no WFO champion yet (source=%s)", pair_key, self._mode_source.get(pair_key))
-                return
+        if not live_entry_allowed_champion_gate(
+            self._cfg, self._champion_data, pair_cfg, self._mode_source.get(pair_key, ""),
+        ):
+            LOG.debug(
+                "ScalpRuntime %s: bar entry blocked — champion gate (source=%s, has_row=%s)",
+                pair_key,
+                self._mode_source.get(pair_key),
+                pair_has_wfo_champion(
+                    self._champion_data, pair_cfg.symbol, pair_cfg.interval,
+                ),
+            )
+            return
 
         if self._trader.has_position(pair_key):
             return  # pending or open position already exists — skip bar-close entry
@@ -3052,6 +3010,26 @@ class ScalpRuntime:
             )
             return
 
+        pair_key = str(getattr(signal, "pair_key", "") or "")
+        if pair_key and pair_key in self._cfg.pairs:
+            if not live_entry_allowed_champion_gate(
+                self._cfg,
+                self._champion_data,
+                self._cfg.pairs[pair_key],
+                self._mode_source.get(pair_key, ""),
+            ):
+                LOG.info(
+                    "ScalpRuntime: entry suppressed — champion gate (%s source=%s has_row=%s)",
+                    pair_key,
+                    self._mode_source.get(pair_key),
+                    pair_has_wfo_champion(
+                        self._champion_data,
+                        self._cfg.pairs[pair_key].symbol,
+                        self._cfg.pairs[pair_key].interval,
+                    ),
+                )
+                return
+
         # CDE expiry guard
         days = self._days_to_expiry(pair_cfg.symbol)
         if days is not None:
@@ -3084,12 +3062,12 @@ class ScalpRuntime:
         _erm = self._volatility_exec_risk_mult(counter_signal.pair_key)
         # NM-012: reversal entries must pass the same champion gate as bar/tick entries
         pair_key = counter_signal.pair_key
-        allow_reversal = True
-        if bool(getattr(self._cfg, "require_champion_to_trade", False)):
-            if self._mode_source.get(pair_key) not in (
-                "wfo_champion", "forward_demotion", "param_tuner_override", "nemesis_tuner"
-            ):
-                allow_reversal = False
+        allow_reversal = live_entry_allowed_champion_gate(
+            self._cfg,
+            self._champion_data,
+            pair_cfg,
+            self._mode_source.get(pair_key, ""),
+        )
         await self._trader.check_counter_signal(
             pair_key,
             pair_cfg,
@@ -3372,13 +3350,13 @@ class ScalpRuntime:
             return False
 
         if self._cfg.warmup_require_champion and not self._warmup_champion_found:
-            # Deadlock fix: require_champion means "wait for WFO to validate the tape", not
-            # "block forever if no mode passes gates". After a successful startup WFO with
-            # zero champions, bootstrap is already applied — allow READY. If WFO is off,
-            # bars + defaults are the validation surface. Only keep blocking when WFO is on
-            # but the startup grid run failed (exceptions / retries exhausted).
             if self._cfg.wfo_enabled and not self._startup_wfo_succeeded:
                 return False
+            # When entries require a WFO champion, do not graduate warm-up on bootstrap alone.
+            if bool(getattr(self._cfg, "require_champion_to_trade", False)):
+                return False
+            # Legacy: allow READY after successful WFO with zero champions (bootstrap only).
+            # Entries stay blocked separately when require_champion_to_trade is true.
 
         # All conditions met
         self._warmup_phase = WarmupPhase.READY
@@ -3456,12 +3434,8 @@ class ScalpRuntime:
                 )
 
     def _scalp_wfo_roll_hours(self) -> float:
-        return wfo_roll_span_hours(
-            self._cfg.wfo_train_hours,
-            self._cfg.wfo_holdout_hours,
-            self._cfg.wfo_step_hours,
-            max(1, int(self._cfg.wfo_max_roll_windows)),
-        )
+        """Bar history span for backfill / coverage checks (continuous eval + warmup)."""
+        return wfo_effective_roll_span_hours(_wfo_config_from_scalp_cfg(self._cfg))
 
     def _scalp_wfo_backfill_hours(self) -> float:
         buf = float(getattr(self._cfg, "wfo_backfill_buffer_hours", 24.0) or 0.0)
@@ -4300,6 +4274,9 @@ class ScalpRuntime:
                 )
                 self._champion_data = {}
                 self._champion_apply_sig.clear()
+                self._pending_champion.clear()
+                self._warmup_champion_found = False
+                self._apply_no_champion_bootstrap(champ={})
             return False
 
         self._champion_mtime = mt
@@ -4446,12 +4423,19 @@ class ScalpRuntime:
         for pk, pc in self._cfg.pairs.items():
             if pair_has_wfo_champion(champ, pc.symbol, pc.interval):
                 continue
+            prior_source = self._mode_source.get(pk, "")
+            if prior_source in ("wfo_champion", "forward_demotion", "param_tuner_override", "nemesis_tuner"):
+                LOG.warning(
+                    "ScalpRuntime %s: no champion row on disk — demoting mode_source %s -> bootstrap",
+                    pk, prior_source,
+                )
             try:
                 mode = best_mode_bootstrap_no_champion(
                     pc, self._cfg, lookback_hours=self._effective_bootstrap_hours(),
                 )
             except Exception:
                 LOG.warning("ScalpRuntime: bootstrap mode failed for %s", pk, exc_info=True)
+                self._mode_source[pk] = "bootstrap"
                 continue
             old = self._active_mode.get(pk)
             if mode != old:
@@ -4460,9 +4444,7 @@ class ScalpRuntime:
                     pk, old, mode,
                 )
                 self._active_mode[pk] = mode
-                self._mode_source[pk] = "bootstrap"
-            elif self._mode_source.get(pk) == "config":
-                self._mode_source[pk] = "bootstrap"
+            self._mode_source[pk] = "bootstrap"
 
     def _on_wfo_loop_results(self, results: "dict[str, dict | None]") -> None:
         """Callback fired by ScalpWFO._loop after each live pass (initial and scheduled).

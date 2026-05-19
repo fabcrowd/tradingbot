@@ -40,7 +40,7 @@ from scalp_bot.param_tuner import (
     run_tuner_cycle,
     _params_from_pair_config,
 )
-from scalp_bot.scalp_config import load_scalp_config
+from scalp_bot.scalp_config import load_scalp_config, wfo_tuner_lookback_hours
 from scalp_bot.scalp_vec_backtest import (
     BacktestMetrics,
     ParamSet,
@@ -132,7 +132,7 @@ def main() -> None:
         "--lookback-hours",
         type=float,
         default=None,
-        help="Hours of history (default: wfo_train_hours + wfo_holdout_hours — same window as run_tuner_cycle in scalp_runtime)",
+        help="Hours of history (default: wfo_train_hours — param-tuner lookback in scalp_runtime)",
     )
     ap.add_argument(
         "--window-trades-only",
@@ -172,7 +172,7 @@ def main() -> None:
     look_h = (
         float(args.lookback_hours)
         if args.lookback_hours is not None
-        else float(bot_cfg.wfo_train_hours) + float(bot_cfg.wfo_holdout_hours)
+        else wfo_tuner_lookback_hours(bot_cfg)
     )
 
     load_days = look_h / 24.0 + 0.5

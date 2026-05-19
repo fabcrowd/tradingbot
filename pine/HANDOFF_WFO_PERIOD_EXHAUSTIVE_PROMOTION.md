@@ -1,8 +1,36 @@
 # Handoff: WFO period ranking + exhaustive grid holdout (2026-05-18)
 
+> **Superseded for production (2026-05-19):** `optimize_pair()` now uses **continuous full-grid** evaluation
+> (`wfo_continuous_eval_hours` + `wfo_continuous_warmup_hours`), not rolling 21-fold holdout.
+> See §3b below and `config.toml` `wfo_continuous_*` keys. Sections on fold-count promotion describe
+> the intermediate implementation retained in git history for review.
+
 **Audience:** LLM or engineer cross-checking recent WFO promotion changes  
 **Repo:** `tradingbot-main`  
 **Primary scope:** Walk-forward optimizer champion selection — **not** live indicator wiring, protective orders, or Coinbase margin fixes (those are separate; see §8).
+
+---
+
+## 3b. Continuous full-grid WFO (current production path)
+
+| Setting | Default | Role |
+|---------|---------|------|
+| `wfo_continuous_eval_hours` | 672 (28d) | Trades counted only in this window |
+| `wfo_continuous_warmup_hours` | 168 (7d) | Indicator prefix; `min_entry_bar` boundary |
+| `wfo_continuous_min_trades` | 20 | Min closed trades to qualify a grid row |
+| `wfo_period_rank_metric` | `total_pnl` | Rank key: `total_pnl` \| `calmar` \| `sharpe_like` |
+| `wfo_pick_best_per_mode` | true | Best row per mode, then best overall |
+| `wfo_require_positive_holdout` | true | Rejects winner if eval PnL < 0 |
+
+**Flow:** `build_default_grid()` → parallel `evaluate_params` on full bar slice for every row → filter by `continuous_min_trades` → `_pick_holdout_champion_per_mode_first` → `safety_gate` → champion JSON with `evaluation_mode: "continuous"`, `wfo_promotion_tier: "continuous"`, populated `wfo_mode_scoreboard`.
+
+**Backfill:** `ScalpRuntime._scalp_wfo_roll_hours()` = `wfo_effective_roll_span_hours()` = eval + warmup (**840h** default) + `wfo_backfill_buffer_hours`.
+
+**Code:** `scalp_wfo.optimize_pair` (~L937+), `_mp_continuous_eval_one`, `_wfo_continuous_mode_scoreboard_rows`, `_continuous_rank_score`.
+
+**Tests:** `test_wfo_continuous.py`, `test_wfo_continuous_integration.py`, `test_wfo_continuous_regression.py` (skip paths, adverse gate, per-mode diag).
+
+**Offline tools:** use `wfo_continuous_span_hours()` / `wfo_tuner_lookback_hours()` in `scalp_config.py` — not removed `wfo_holdout_hours`.
 
 ---
 

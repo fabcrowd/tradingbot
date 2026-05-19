@@ -230,6 +230,7 @@ export type ScalpTrade = {
   strategy_trade_index?: number;
   cumulative_pnl_after?: number;
   entry_notional_usd?: number;
+  exit_notional_usd?: number;
   mfe_usd?: number;
   mfe_pct?: number;
   mae_usd?: number;
@@ -306,30 +307,31 @@ export type ScalpSessionPolicy = {
   default_candle_interval_minutes?: number;
   warmup_min_bars: number;
   warmup_require_champion: boolean;
+  /** Block new entries until WFO has crowned a champion (not bootstrap). */
+  require_champion_to_trade?: boolean;
   warmup_max_hours: number;
   wfo_enabled: boolean;
   /** Seconds between scheduled WFO passes (server floor 60s; risk-on can shorten further). */
   wfo_interval_sec?: number;
+  /** Param tuner / dashboard backtest lookback (hours); not the WFO eval window. */
   wfo_train_hours: number;
-  wfo_holdout_hours: number;
-  wfo_step_hours: number;
-  /** Holdout phase: how many top train-scoring grid combos to validate per rolling window. */
-  wfo_top_k?: number;
   wfo_objective?: string;
-  /** When true, server forces mean holdout ``total_pnl`` and relaxes strict WFO promotion gates. */
-  wfo_pnl_first_promotion?: boolean;
+  /** Continuous WFO: scored evaluation window (hours). */
+  wfo_continuous_eval_hours?: number;
+  /** Indicator warmup prefix before eval window (hours, not scored). */
+  wfo_continuous_warmup_hours?: number;
+  /** Min closed trades in the eval window for a grid row to qualify. */
+  wfo_continuous_min_trades?: number;
+  /** Rank key: total_pnl | calmar | sharpe_like */
+  wfo_period_rank_metric?: string;
+  /** Best row per mode, then best overall. */
+  wfo_pick_best_per_mode?: boolean;
   /** Seconds between param-tuner cycles (server floor 30s). */
   param_tuner_interval_sec?: number;
-  /** Rolling WFO: number of train→holdout folds in the sliding band. */
-  wfo_max_roll_windows?: number;
-  /** Extra train-score weight for trades on the UTC day of the train window end (0 = off). */
-  wfo_train_same_calendar_day_boost?: number;
-  /** Hours of bar history used for rolling WFO (derived). */
+  /** Hours of bar history for WFO backfill (eval + warmup, derived). */
   wfo_roll_span_hours?: number;
-  /** Minimum closed trades on each training slice for a grid point to score. */
+  /** Legacy train gate floor (continuous WFO uses wfo_continuous_min_trades). */
   wfo_min_trades?: number;
-  /** Holdout-only minimum trades (0 = use wfo_min_trades). */
-  wfo_min_holdout_trades?: number;
   /** Minimum train-slice profit factor to score a grid point (WFO IS hard gate). */
   wfo_min_profit_factor?: number;
   /** Minimum train-slice win rate (0–1) to score. */
@@ -423,7 +425,7 @@ export type ChampionSummary = {
   expectancy: number;
 };
 
-/** Vector backtest per strategy mode over bar_store lookback (train+holdout hours). */
+/** Vector backtest per strategy mode over bar_store lookback (tuner hours). */
 export type StrategyLookbackModeRow = {
   win_rate: number;
   trades: number;
@@ -446,14 +448,15 @@ export type StrategyLookbackSnapshot = {
 export type WfoPairReadiness = {
   span_hours: number;
   bar_count: number;
-  windows: number;
   progress_pct: number;
+  windows_skipped_insufficient_bars?: number;
 };
 
-/** Per-strategy mode row from the last WFO holdout aggregation (best grid row per ``mode``). */
+/** Per-strategy mode row from the last continuous WFO pass (best grid row per ``mode``). */
 export type WfoModeScoreboardRow = {
   mode: string;
   pi?: number;
+  /** Legacy field name: always 1 in continuous mode. */
   holdout_windows?: number;
   mean_holdout_score?: number;
   stability?: number | null;
@@ -476,7 +479,7 @@ export type WfoLastPassPairSummary = {
   n_windows?: number | null;
   span_hours?: number | null;
   bar_count?: number | null;
-  /** Holdout scoreboard: one best row per strategy mode (``optimize_pair`` diagnostics). */
+  /** Per-mode scoreboard from ``optimize_pair`` (continuous eval window). */
   wfo_mode_scoreboard?: WfoModeScoreboardRow[];
 };
 
@@ -503,13 +506,13 @@ export type WfoUi = {
   data_progress_pct: number;
   ui_progress_pct: number;
   champion_active: boolean;
+  /** Scored eval window (hours). */
   required_span_hours: number;
+  /** Eval + warmup hours loaded for backfill. */
   total_load_hours: number;
-  train_hours: number;
-  holdout_hours: number;
-  step_hours: number;
+  eval_hours?: number;
+  warmup_hours?: number;
   pairs: Record<string, WfoPairReadiness>;
-  max_roll_windows?: number;
   /** Latest ``run_once`` summary (null until first pass completes). */
   last_wfo_pass?: WfoLastPass | null;
   /** Newest-last lines from the in-process WFO deque (read-only). */

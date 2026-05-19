@@ -366,31 +366,21 @@ tick_entries_enabled = false
 tick_signal_cooldown_sec = 45.0
 
 # Walk-forward optimizer — Coinbase CDE perps (BTC, SOL, XRP); bar size = pair ``interval`` (5m here)
-# Rolling band: only the last (train + holdout + (max_roll_windows-1)*step) hours of tape
-# are used; folds step back from the latest bar. Set wfo_step_hours >= (train+holdout)
-# for a single train/holdout pair only (e.g. 999).
+# Continuous full-grid: one eval window + warmup prefix (see wfo_continuous_* below).
+# wfo_train_hours = param-tuner / dashboard lookback only (not the WFO eval window).
 wfo_enabled = true
 # Shorter interval = more WFO passes (CPU); still floored at 60s in the WFO loop.
 wfo_interval_sec = 300.0              # 5min — faster champion refresh when machine can take it
-wfo_train_hours = 168.0               # 1 week (~2016 bars at 5m) — flat weighting = more data is better
-wfo_holdout_hours = 24.0              # 1-day out-of-sample window — reduced from 48h; 48h windows were entirely signal-free on choppy days (sar_chop default chop_threshold lets CHOP veto whole windows when index stays above cutoff)
-wfo_step_hours = 24.0                 # roll folds by 24h (set very large for one-window WFO)
-wfo_max_roll_windows = 21             # more folds = stabler $ ranking (span grows ~linearly; more CPU)
-# REST backfill requests WFO roll span + this many hours (gaps/pagination slack; 0 = exact span only).
+wfo_train_hours = 168.0               # param-tuner lookback (~2016 bars at 5m)
+# REST backfill requests eval+warmup span + this many hours (gaps/pagination slack; 0 = exact span only).
 wfo_backfill_buffer_hours = 24
-# false = strict primary min-window count only (no quarter-fold / min_windows=1 WFO promotion fallback).
-wfo_allow_promotion_relaxation = false  # no fallback tiers — must meet primary window fraction or stay flat
-# Post 11-mode grid (~5k rows): keep 80 until first WFO refresh; bump only if per-mode holdout pool is thin — see pine/HANDOFF_RESTORE_OFF_GRID_WFO_MODES.md § wfo_top_k
-wfo_top_k = 80                        # train top-K re-tested on each holdout fold (was 50; 95–100 ≈ old selection rate, ~110 ≈ ~10 slots/mode)
 # P0: alert when |1 - forward_pnl/(holdout_exp*trades)| exceeds this (see forward_reconciliation_report.py)
 wfo_forward_reconciliation_alert_pct = 0.30
 # P3: pure live loss circuit breaker (default off — enable after reviewing forward reconciliation)
 wfo_live_circuit_breaker_enabled = false
 wfo_live_circuit_breaker_dd_mult = 2.0
 wfo_live_circuit_breaker_hours = 24.0
-wfo_train_same_calendar_day_boost = 0.0  # disabled — rolling windows already capture recency; boost distorts total_pnl
-wfo_min_trades = 3                    # minimum closed trades per train slice to score a grid point
-wfo_min_holdout_trades = 1            # minimum closed trades on holdout — lowered from 3; current market too choppy for 3 trades/day threshold
+wfo_min_trades = 3                    # legacy train gate (continuous WFO uses wfo_continuous_min_trades)
 # Fine layer: perturb params within WFO mode. Min 30s enforced in runtime; higher = less knob drift vs bar cadence.
 param_tuner_interval_sec = 900.0
 # Optional throttles (0 = off): min closed bars between tuner passes per pair; cooldown after a successful apply.
@@ -408,12 +398,12 @@ param_tuner_require_wfo_champion = true
 param_tuner_allow_mode_override_champion = false
 # WFO champion ranking: holdout metric to maximize (see backend/server/scalp_bot/scalp_wfo.py _OBJECTIVES).
 # total_pnl = sum of simulated USD P&L on holdout (1 contract, pair contract_size, maker/taker + flat/leg).
-# When true: rank by **sum** of holdout USD across OOS slices where top-K tested (period performance),
-# not ``wfo_min_window_fraction`` fold-count bar; skips heavy promotion gates (stability, etc.).
-wfo_pnl_first_promotion = true
-wfo_exhaustive_grid_holdout = true  # holdout every grid row each fold; best total OOS $ wins
-wfo_min_period_holdout_trades = 3   # min total OOS closed trades summed across tested folds
-# wfo_top_k ignored when wfo_exhaustive_grid_holdout = true
+# Continuous full-grid WFO (replaces rolling 21-fold walk-forward).
+wfo_continuous_eval_hours   = 672.0    # 28 days: trades counted in this window only
+wfo_continuous_warmup_hours = 168.0    # 7 days: indicator warmup prefix (not scored)
+wfo_continuous_min_trades   = 20       # min closed trades in eval window to qualify
+wfo_period_rank_metric = "total_pnl"        # "total_pnl" | "calmar" | "sharpe_like"
+wfo_pick_best_per_mode = true               # best per mode, then best overall (fair vs sar_chop grid size)
 wfo_objective = "total_pnl"
 wfo_forward_min_trades = 10          # live trades required before demotion check activates
 wfo_forward_demotion_threshold = -0.5 # Gate 1: live PnL ratio floor (forward_pnl / holdout_expectancy×trades)
@@ -432,14 +422,6 @@ wfo_champion_cooldown_sec = 3600.0      # 1h min gap between champion replacemen
 # Safety gate deltas: raise from hardcoded 1.0/1.5 — grid explores TP 1.5→6.0 so ±1.5 blocked 31% of passes
 wfo_max_param_delta_stop = 2.0          # was 1.0 — allow stop_mult swings up to ±2.0 between champions
 wfo_max_param_delta_tp = 3.0            # was 1.5 — allow tp_mult swings up to ±3.0 between champions
-# Holdout participation (only when wfo_pnl_first_promotion = false): min folds a param must score OOS.
-# With pnl-first, champion = best total holdout $ over the roll; this fraction is ignored.
-wfo_min_window_fraction = 0.35
-# Train IS hard gates (per rolling train slice, before a grid point scores). Defaults match WFOConfig.
-wfo_min_profit_factor = 0.0              # disabled — with min_trades=2, single-window PF is noise; holdout aggregation is the real filter
-wfo_min_win_rate = 0.0                   # disabled — same reason; WR at 2 trades is 0/50/100%
-wfo_max_train_drawdown_pct = 100.0       # disabled — wider stops (atr_stop_mult=2) cause legitimate 30%+ drawdowns; aggregate holdout handles quality
-
 # Regime risk-on: volume spike and/or large vol-scaled bar moves extend a global window where
 # WFO sleeps shorter, no-champion bootstrap uses a shorter lookback, and Nemesis dual-gate can
 # relax slightly (see risk_on_nemesis_*). Live ticks turn this on quickly; calm release turns it off
@@ -526,14 +508,12 @@ backtest_funding_bps_per_hour = 0.0
 
 warmup_enabled = true
 warmup_min_bars = 300              # 300 × 5m = 25h — indicators fully warmed, WFO has real windows
-warmup_require_champion = false    # trade immediately on restart; WFO runs in background and promotes champion when ready
+warmup_require_champion = true     # warm-up does not finish until WFO crowns ≥1 champion (or WFO fails / time cap)
 warmup_max_hours = 0.5             # safety valve: 30 min max wait (WFO normally finishes in <1 min)
 # When true, process starts in operator STANDBY — no new entries until Settings → Go live.
 require_manual_go_live = false
-# When false (recommended), bootstrap trades while WFO searches for a champion.
-# Bootstrap selects the best mode from the last 2h by return_pct; daily loss limit ($25)
-# provides the downside safety net. Set true only for complete silence until WFO promotes.
-require_champion_to_trade = false
+# When true, no new entries on bootstrap — only after WFO champion (or forward demotion / tuner override).
+require_champion_to_trade = true
 
 # CDE nano BTC perpetual (FCM): BIP — Dec 2030 expiry name; contract_size from get_product future_product_details.
 # contract_size=0.01: each contract = 0.01 BTC (~$730 notional @ $73k/BTC for 1 contract).

@@ -1,9 +1,8 @@
 """Offline WFO parity (stage 2) + analytical knob sweeps.
 
-**Stage 2** uses production ``optimize_pair`` unchanged in algorithm: full
-``build_default_grid``, rolling train/holdout windows, top-K holdout scoring,
-stability / mean-score filters, latest-holdout PnL+PF gate, baseline beat test,
-and safety gate.
+**Stage 2** uses production ``optimize_pair``: full ``build_default_grid`` on one
+continuous eval window (``wfo_continuous_eval_hours`` + warmup prefix), per-mode
+champion pick, safety gate, and optional positive-PnL gate.
 
 **P&L metrics (every JSON row):**
 
@@ -54,6 +53,7 @@ import numpy as np
 from backend.server.scalp_bot import bar_store
 from backend.server.scalp_bot.param_tuner import STRATEGY_MODES, _params_from_pair_config
 from backend.server.scalp_bot.scalp_config import effective_scalp_fee_bps_per_leg, load_scalp_config
+from backend.server.scalp_bot.scalp_runtime import _wfo_config_from_scalp_cfg
 from backend.server.scalp_bot.scalp_vec_backtest import evaluate_params
 from backend.server.scalp_bot.scalp_wfo import WFOConfig, optimize_pair, _params_from_config, score_strategy
 from backend.server.scalp_bot.strategy_lookback import (
@@ -134,18 +134,14 @@ def _load_bot_cfg():
 
 
 def wfo_from_bot_cfg(bot_cfg, *, fast: bool = False) -> WFOConfig:
-    w = WFOConfig(
-        enabled=bot_cfg.wfo_enabled,
-        interval_sec=bot_cfg.wfo_interval_sec,
-        train_hours=bot_cfg.wfo_train_hours,
-        holdout_hours=bot_cfg.wfo_holdout_hours,
-        step_hours=bot_cfg.wfo_step_hours,
-        min_trades=bot_cfg.wfo_min_trades,
-        objective=bot_cfg.wfo_objective,
-    )
+    w = _wfo_config_from_scalp_cfg(bot_cfg)
     if fast:
-        # Fewer rolling windows so capped-grid smoke finishes in minutes, not hours.
-        w = replace(w, step_hours=max(float(w.step_hours), 8.0))
+        w = replace(
+            w,
+            continuous_eval_hours=min(float(w.continuous_eval_hours), 48.0),
+            continuous_warmup_hours=min(float(w.continuous_warmup_hours), 24.0),
+            continuous_min_trades=min(int(w.continuous_min_trades), 5),
+        )
     return w
 
 

@@ -22,15 +22,16 @@ def _minimal_champion(symbol: str, score: float) -> dict:
         "symbol": symbol,
         "interval": 1,
         "timestamp": 0.0,
-        "objective": "expectancy_sqrt_n",
+        "objective": "total_pnl",
         "score": score,
-        "stability": 0.1,
+        "stability": 1.0,
         "baseline_score": None,
         "mode": "ema_momentum",
-        "windows_evaluated": 2,
-        "windows_passed": 2,
-        "wfo_promotion_tier": "primary",
-        "wfo_min_windows_used": 2,
+        "evaluation_mode": "continuous",
+        "windows_evaluated": 1,
+        "windows_passed": 1,
+        "wfo_promotion_tier": "continuous",
+        "wfo_min_windows_used": 1,
         "params": {
             "mode": "ema_momentum",
             "max_hold_bars": 15,
@@ -50,10 +51,10 @@ def _minimal_champion(symbol: str, score: float) -> dict:
 def _diag() -> dict:
     return {
         "grid_size": 3,
-        "n_windows": 2,
         "n_bars": 50,
         "span_hours": 12.0,
-        "train_gate_diag": {},
+        "eval_hours": 48.0,
+        "warmup_hours": 24.0,
     }
 
 

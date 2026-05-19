@@ -29,7 +29,7 @@ sys.path.insert(0, str(ROOT / "backend" / "server"))
 
 import tomllib
 from scalp_bot import bar_store
-from scalp_bot.scalp_config import load_scalp_config
+from scalp_bot.scalp_config import load_scalp_config, wfo_continuous_span_hours
 from scalp_bot.scalp_vec_backtest import (
     TradeResult, BacktestMetrics, ParamSet,
     ema, rsi, atr, session_vwap, volume_ma,
@@ -659,7 +659,7 @@ def run_at_fee(bot_cfg, look_h, load_days, fee_bps_label: str, fee_pct: float, s
 def main() -> None:
     raw = tomllib.loads((ROOT / "config.toml").read_text(encoding="utf-8"))
     bot_cfg = load_scalp_config(raw)
-    look_h = float(bot_cfg.wfo_train_hours) + float(bot_cfg.wfo_holdout_hours)
+    look_h = wfo_continuous_span_hours(bot_cfg)
     load_days = look_h / 24.0 + 0.25
     slip_pct = bot_cfg.slippage_bps / 10_000.0
 

@@ -1,65 +1,75 @@
 {
   "BTC_USD": {
     "best_mode": "sar_chop",
-    "best_win_rate": 0.4,
-    "best_pnl": -10.574650368061207,
+    "best_win_rate": 0.36,
+    "best_pnl": -16.209625294577158,
     "best_trades": 25,
     "frozen": false,
     "aggressiveness": "aggressive",
     "adjustments": [],
     "all_modes": {
       "sar_chop": {
-        "win_rate": 0.4,
-        "pnl": -10.57465,
-        "expectancy": -0.422986,
+        "win_rate": 0.36,
+        "pnl": -16.209625,
+        "expectancy": -0.648385,
         "trades": 25,
-        "profit_factor": 0.6649,
+        "profit_factor": 0.5549,
         "aggressiveness": "aggressive",
         "adjustments": []
       }
     },
-    "timestamp": 1779141840.8844483
+    "timestamp": 1779157245.4534428
   },
   "SOL_USD": {
     "best_mode": "squeeze_momentum",
-    "best_win_rate": 0.6,
-    "best_pnl": 6.936964639260026,
-    "best_trades": 5,
+    "best_win_rate": 0.5,
+    "best_pnl": 0.7132655162482469,
+    "best_trades": 4,
     "frozen": false,
-    "aggressiveness": "slow",
+    "aggressiveness": "moderate",
     "adjustments": [],
     "all_modes": {
       "squeeze_momentum": {
-        "win_rate": 0.6,
-        "pnl": 6.936965,
-        "expectancy": 1.387393,
-        "trades": 5,
-        "profit_factor": 2.4949,
-        "aggressiveness": "slow",
+        "win_rate": 0.5,
+        "pnl": 0.713266,
+        "expectancy": 0.178316,
+        "trades": 4,
+        "profit_factor": 1.1537,
+        "aggressiveness": "moderate",
         "adjustments": []
       }
     },
-    "timestamp": 1779141841.3054852
+    "timestamp": 1779157246.0631936
   },
   "XRP_USD": {
     "best_mode": "squeeze_momentum",
-    "best_win_rate": 1.0,
-    "best_pnl": 0.04880948415461006,
-    "best_trades": 1,
+    "best_win_rate": 0.5,
+    "best_pnl": -1.679112369137245,
+    "best_trades": 2,
     "frozen": false,
-    "aggressiveness": "slow",
-    "adjustments": [],
+    "aggressiveness": "aggressive",
+    "adjustments": [
+      "[squeeze_momentum] atr_stop_mult: 0.75 -> 0.5 (pnl -3.1626 -> -2.9367)",
+      "[squeeze_momentum] atr_tp_mult: 4.0 -> 1.5 (pnl -2.9367 -> -1.6791)"
+    ],
     "all_modes": {
       "squeeze_momentum": {
-        "win_rate": 1.0,
-        "pnl": 0.048809,
-        "expectancy": 0.048809,
-        "trades": 1,
-        "profit_factor": 999.0,
-        "aggressiveness": "slow",
-        "adjustments": []
+        "win_rate": 0.5,
+        "pnl": -1.679112,
+        "expectancy": -0.839556,
+        "trades": 2,
+        "profit_factor": 0.0282,
+        "aggressiveness": "aggressive",
+        "adjustments": [
+          "atr_stop_mult: 0.75 -> 0.5 (pnl -3.1626 -> -2.9367)",
+          "atr_tp_mult: 4.0 -> 1.5 (pnl -2.9367 -> -1.6791)"
+        ],
+        "params_changed": {
+          "atr_stop_mult": 0.5,
+          "atr_tp_mult": 1.5
+        }
       }
     },
-    "timestamp": 1779141841.8526413
+    "timestamp": 1779157247.5311863
   }
 }

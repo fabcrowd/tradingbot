@@ -618,14 +618,11 @@ function wfoPolicySignature(pol: ScalpSessionPolicy | undefined): string {
   return [
     pol.wfo_interval_sec ?? "",
     pol.param_tuner_interval_sec ?? "",
-    pol.wfo_max_roll_windows ?? "",
-    pol.wfo_top_k ?? "",
-    pol.wfo_train_same_calendar_day_boost ?? "",
+    pol.wfo_continuous_eval_hours ?? "",
+    pol.wfo_continuous_warmup_hours ?? "",
+    pol.wfo_continuous_min_trades ?? "",
     pol.wfo_train_hours,
-    pol.wfo_holdout_hours,
-    pol.wfo_step_hours,
     pol.wfo_min_trades ?? "",
-    pol.wfo_min_holdout_trades ?? "",
     pol.backtest_funding_enabled === true ? "1" : "0",
     pol.backtest_funding_bps_per_hour ?? "",
     pol.scalp_fee_assumption_revision ?? "",
@@ -666,14 +663,11 @@ function WfoTunerRuntimeSection({
   const ft = scalp?.fee_tier;
   const [wfo_interval_sec, setWfoIntervalSec] = useState("");
   const [param_tuner_interval_sec, setTunerIntervalSec] = useState("");
-  const [wfo_max_roll_windows, setMaxRollWindows] = useState("");
-  const [wfo_top_k, setTopK] = useState("");
-  const [wfo_train_same_calendar_day_boost, setDayBoost] = useState("");
+  const [wfo_continuous_eval_hours, setContinuousEvalH] = useState("");
+  const [wfo_continuous_warmup_hours, setContinuousWarmupH] = useState("");
+  const [wfo_continuous_min_trades, setContinuousMinTrades] = useState("");
   const [wfo_train_hours, setTrainH] = useState("");
-  const [wfo_holdout_hours, setHoldoutH] = useState("");
-  const [wfo_step_hours, setStepH] = useState("");
   const [wfo_min_trades, setWfoMinTrades] = useState("");
-  const [wfo_min_holdout_trades, setWfoMinHoldoutTrades] = useState("");
   const [backtest_funding_enabled, setBacktestFundingEnabled] = useState(false);
   const [backtest_funding_bps_per_hour, setBacktestFundingBps] = useState("");
   const [scalp_fee_assumption_revision, setFeeRevision] = useState("");
@@ -698,16 +692,13 @@ function WfoTunerRuntimeSection({
   useEffect(() => {
     if (!pol) return;
     const id = requestAnimationFrame(() => {
-      setWfoIntervalSec(String(pol.wfo_interval_sec ?? 900));
-      setTunerIntervalSec(String(pol.param_tuner_interval_sec ?? 120));
-      setMaxRollWindows(String(pol.wfo_max_roll_windows ?? 12));
-      setTopK(String(pol.wfo_top_k ?? 50));
-      setDayBoost(String(pol.wfo_train_same_calendar_day_boost ?? 0));
-      setTrainH(String(pol.wfo_train_hours));
-      setHoldoutH(String(pol.wfo_holdout_hours));
-      setStepH(String(pol.wfo_step_hours));
+      setWfoIntervalSec(String(pol.wfo_interval_sec ?? 3600));
+      setTunerIntervalSec(String(pol.param_tuner_interval_sec ?? 900));
+      setContinuousEvalH(String(pol.wfo_continuous_eval_hours ?? 672));
+      setContinuousWarmupH(String(pol.wfo_continuous_warmup_hours ?? 168));
+      setContinuousMinTrades(String(pol.wfo_continuous_min_trades ?? 20));
+      setTrainH(String(pol.wfo_train_hours ?? 6));
       setWfoMinTrades(String(pol.wfo_min_trades ?? 20));
-      setWfoMinHoldoutTrades(String(pol.wfo_min_holdout_trades ?? 0));
       setBacktestFundingEnabled(pol.backtest_funding_enabled === true);
       setBacktestFundingBps(String(pol.backtest_funding_bps_per_hour ?? 0));
       setFeeRevision(String(pol.scalp_fee_assumption_revision ?? 0));
@@ -757,22 +748,16 @@ function WfoTunerRuntimeSection({
     if (wi == null) return;
     const pt = parseNum(param_tuner_interval_sec, "Tuner interval");
     if (pt == null) return;
-    const mw = parseNum(wfo_max_roll_windows, "Max roll windows");
-    if (mw == null) return;
-    const tk = parseNum(wfo_top_k, "Top-K");
-    if (tk == null) return;
-    const db = parseNum(wfo_train_same_calendar_day_boost, "Same-day boost");
-    if (db == null) return;
-    const tr = parseNum(wfo_train_hours, "Train hours");
+    const evalH = parseNum(wfo_continuous_eval_hours, "Eval window hours");
+    if (evalH == null) return;
+    const warmH = parseNum(wfo_continuous_warmup_hours, "Warmup hours");
+    if (warmH == null) return;
+    const contMin = parseNum(wfo_continuous_min_trades, "Min eval trades");
+    if (contMin == null) return;
+    const tr = parseNum(wfo_train_hours, "Tuner lookback hours");
     if (tr == null) return;
-    const ho = parseNum(wfo_holdout_hours, "Holdout hours");
-    if (ho == null) return;
-    const st = parseNum(wfo_step_hours, "Step hours");
-    if (st == null) return;
-    const minTr = parseNum(wfo_min_trades, "Min train trades");
+    const minTr = parseNum(wfo_min_trades, "Min trades (legacy)");
     if (minTr == null) return;
-    const minHo = parseNum(wfo_min_holdout_trades, "Min holdout trades (0 = same as train)");
-    if (minHo == null) return;
     const fundBps = parseNum(backtest_funding_bps_per_hour, "Funding bps/hour");
     if (fundBps == null) return;
     const feeRev = parseNum(scalp_fee_assumption_revision, "Fee assumption revision");
@@ -796,21 +781,22 @@ function WfoTunerRuntimeSection({
       patch: {
         wfo_interval_sec: wi,
         param_tuner_interval_sec: pt,
-        wfo_max_roll_windows: Math.round(mw),
-        wfo_top_k: Math.round(tk),
-        wfo_train_same_calendar_day_boost: db,
+        wfo_continuous_eval_hours: evalH,
+        wfo_continuous_warmup_hours: warmH,
+        wfo_continuous_min_trades: Math.round(contMin),
         wfo_train_hours: tr,
-        wfo_holdout_hours: ho,
-        wfo_step_hours: st,
         wfo_min_trades: Math.round(minTr),
-        wfo_min_holdout_trades: Math.round(minHo),
         backtest_funding_enabled: backtest_funding_enabled,
         backtest_funding_bps_per_hour: fundBps,
         scalp_fee_assumption_revision: Math.round(feeRev),
         fee_tier_volume_source: fee_tier_volume_source,
         fee_tier_poll_interval_sec: ftPoll,
-        fee_tier_30d_volume_usd:
-          fee_tier_30d_volume_usd.trim() === "" ? null : Number(fee_tier_30d_volume_usd.trim()),
+        fee_tier_30d_volume_usd: (() => {
+          const t = fee_tier_30d_volume_usd.trim();
+          if (t === "") return null;
+          const n = Number(t);
+          return Number.isFinite(n) ? n : null;
+        })(),
         fee_tier_add_bot_fill_notional: fee_tier_add_bot_fill_notional,
         fee_tier_auto_apply_exchange_fee_rates: fee_tier_auto_apply_exchange_fee_rates,
         scalp_auto_invalidate_champion_on_fee_change: scalp_auto_invalidate_champion_on_fee_change,
@@ -857,9 +843,10 @@ function WfoTunerRuntimeSection({
     <section className="settings-card">
       <h2>WFO &amp; param tuner (runtime)</h2>
       <p className="settings-prose">
-        These values drive walk-forward optimization and the fine param tuner. Changes apply{" "}
+        WFO uses <strong>continuous full-grid</strong> evaluation: every grid row is backtested on one
+        eval window (plus a warmup prefix for indicators). Changes apply{" "}
         <strong>in memory only</strong> — restart reloads <code className="settings-code">config.toml</code>.
-        Larger windows / higher Top-K / more folds use more CPU per pass.{" "}
+        Longer eval/warmup spans and shorter WFO intervals use more CPU per pass.{" "}
         <span title="Hover labels and inputs for RECOMMENDED ranges, benefits, and risks.">
           Hover controls for full guidance.
         </span>
@@ -906,73 +893,73 @@ function WfoTunerRuntimeSection({
       </div>
 
       <div className="settings-form-field">
-        <label htmlFor="wfo_max_roll_windows" title={SCALP_WFO_TT.wfo_max_roll_windows}>
-          Max rolling windows
+        <label htmlFor="wfo_continuous_eval_hours" title={SCALP_WFO_TT.wfo_continuous_eval_hours}>
+          Eval window (hours)
         </label>
         <p className="settings-explainer">
-          Number of overlapping train→holdout folds kept in the sliding band behind the latest bar.
-          More folds = stabler scoring across regimes; longer bar backfill span (see derived hours below).
+          Scored period for continuous WFO (default 672h = 28d). Only trades inside this window count toward
+          champion ranking.
         </p>
         <input
-          id="wfo_max_roll_windows"
+          id="wfo_continuous_eval_hours"
           type="number"
           min={1}
-          max={200}
           step={1}
-          value={wfo_max_roll_windows}
-          onChange={(e) => setMaxRollWindows(e.target.value)}
+          value={wfo_continuous_eval_hours}
+          onChange={(e) => setContinuousEvalH(e.target.value)}
           disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_max_roll_windows}
+          title={SCALP_WFO_TT.wfo_continuous_eval_hours}
         />
       </div>
 
       <div className="settings-form-field">
-        <label htmlFor="wfo_top_k" title={SCALP_WFO_TT.wfo_top_k}>
-          Holdout Top-K
+        <label htmlFor="wfo_continuous_warmup_hours" title={SCALP_WFO_TT.wfo_continuous_warmup_hours}>
+          Indicator warmup (hours)
         </label>
         <p className="settings-explainer">
-          After scoring the full grid on each training slice, only the top K candidates are simulated on
-          holdout. Higher K = more CPU but less chance a good mode is dropped before OOS validation.
+          Bars before the eval window warm indicators only (default 168h = 7d). Not scored for PnL or trade
+          gates.
         </p>
         <input
-          id="wfo_top_k"
-          type="number"
-          min={1}
-          max={300}
-          step={1}
-          value={wfo_top_k}
-          onChange={(e) => setTopK(e.target.value)}
-          disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_top_k}
-        />
-      </div>
-
-      <div className="settings-form-field">
-        <label htmlFor="wfo_train_same_calendar_day_boost" title={SCALP_WFO_TT.wfo_train_same_calendar_day_boost}>
-          Train same-day boost
-        </label>
-        <p className="settings-explainer">
-          Extra weight (0 = off) on training trades whose entry falls on the same UTC calendar day as the
-          end of the train window—nudges the grid toward very recent tape when ranking train scores.
-        </p>
-        <input
-          id="wfo_train_same_calendar_day_boost"
+          id="wfo_continuous_warmup_hours"
           type="number"
           min={0}
-          max={3}
-          step={0.05}
-          value={wfo_train_same_calendar_day_boost}
-          onChange={(e) => setDayBoost(e.target.value)}
+          step={1}
+          value={wfo_continuous_warmup_hours}
+          onChange={(e) => setContinuousWarmupH(e.target.value)}
           disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_train_same_calendar_day_boost}
+          title={SCALP_WFO_TT.wfo_continuous_warmup_hours}
+        />
+      </div>
+
+      <div className="settings-form-field">
+        <label htmlFor="wfo_continuous_min_trades" title={SCALP_WFO_TT.wfo_continuous_min_trades}>
+          Min trades (eval window)
+        </label>
+        <p className="settings-explainer">
+          Grid rows need at least this many closed trades in the eval window to qualify for champion
+          selection.
+        </p>
+        <input
+          id="wfo_continuous_min_trades"
+          type="number"
+          min={1}
+          max={500}
+          step={1}
+          value={wfo_continuous_min_trades}
+          onChange={(e) => setContinuousMinTrades(e.target.value)}
+          disabled={!canEdit}
+          title={SCALP_WFO_TT.wfo_continuous_min_trades}
         />
       </div>
 
       <div className="settings-form-field">
         <label htmlFor="wfo_train_hours" title={SCALP_WFO_TT.wfo_train_hours}>
-          Train window (hours)
+          Tuner lookback (hours)
         </label>
-        <p className="settings-explainer">In-sample length for each fold (wall-clock hours of bars, not bar count).</p>
+        <p className="settings-explainer">
+          Param-tuner / dashboard history — not the WFO eval window above.
+        </p>
         <input
           id="wfo_train_hours"
           type="number"
@@ -986,87 +973,45 @@ function WfoTunerRuntimeSection({
       </div>
 
       <div className="settings-form-field">
-        <label htmlFor="wfo_holdout_hours" title={SCALP_WFO_TT.wfo_holdout_hours}>
-          Holdout window (hours)
-        </label>
-        <p className="settings-explainer">
-          Out-of-sample segment after each train slice used to score and gate champions.
-        </p>
-        <input
-          id="wfo_holdout_hours"
-          type="number"
-          min={0.5}
-          step={0.5}
-          value={wfo_holdout_hours}
-          onChange={(e) => setHoldoutH(e.target.value)}
-          disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_holdout_hours}
-        />
-      </div>
-
-      <div className="settings-form-field">
-        <label htmlFor="wfo_step_hours" title={SCALP_WFO_TT.wfo_step_hours}>
-          Roll step (hours)
-        </label>
-        <p className="settings-explainer">
-          How far each fold slides back in time. Set very large (≥ train+holdout) for a single fold only.
-        </p>
-        <input
-          id="wfo_step_hours"
-          type="number"
-          min={0.25}
-          step={0.25}
-          value={wfo_step_hours}
-          onChange={(e) => setStepH(e.target.value)}
-          disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_step_hours}
-        />
-      </div>
-
-      <div className="settings-form-field">
         <span className="settings-k" title={SCALP_WFO_TT.wfo_objective}>
           WFO objective (read-only)
         </span>
         <div className="settings-readonly" title={SCALP_WFO_TT.wfo_objective}>
           {pol.wfo_objective ?? "—"}
-          {pol.wfo_pnl_first_promotion ? (
-            <span className="settings-muted" title={SCALP_WFO_TT.wfo_pnl_first_promotion}>
-              {" "}
-              (PnL-first promotion)
-            </span>
-          ) : null}
         </div>
         <p className="settings-explainer" style={{ marginTop: 6 }}>
-          Champion ranking metric. Change in <code className="settings-code">config.toml</code>{" "}
-          (<code className="settings-code">wfo_objective</code>) and restart to switch.
+          Legacy label. Continuous ranking uses <code className="settings-code">wfo_period_rank_metric</code> in config.toml.
         </p>
       </div>
 
       <div className="settings-form-field">
         <span className="settings-k" title={SCALP_WFO_TT.wfo_roll_span}>
-          Rolling bar span (read-only)
+          Bar backfill span (read-only)
         </span>
         <div className="settings-readonly" title={SCALP_WFO_TT.wfo_roll_span}>
           {pol.wfo_roll_span_hours != null ? `${pol.wfo_roll_span_hours.toFixed(1)}h` : "—"}
         </div>
         <p className="settings-explainer" style={{ marginTop: 6 }}>
-          Approximate hours of tape loaded for rolling WFO: train + holdout + (windows−1)×step (+ margin).
+          Eval + warmup hours loaded before each full-grid pass (default ~840h).
         </p>
       </div>
 
       <div className="settings-form-field">
-        <span className="settings-k">Train IS gates (read-only)</span>
-        <div className="settings-readonly">
-          PF≥{pol.wfo_min_profit_factor ?? 0.8} · WR≥{((pol.wfo_min_win_rate ?? 0.2) * 100).toFixed(0)}% · max
-          DD≤{pol.wfo_max_train_drawdown_pct ?? 30}%
+        <span className="settings-k" title={SCALP_WFO_TT.wfo_period_rank_metric}>
+          Period rank metric (read-only)
+        </span>
+        <div className="settings-readonly" title={SCALP_WFO_TT.wfo_period_rank_metric}>
+          {pol.wfo_period_rank_metric ?? "total_pnl"}
         </div>
-        <p className="settings-explainer" style={{ marginTop: 6 }}>
-          In-sample hard gates on each train slice. Set{" "}
-          <code className="settings-code">wfo_min_profit_factor</code>,{" "}
-          <code className="settings-code">wfo_min_win_rate</code>,{" "}
-          <code className="settings-code">wfo_max_train_drawdown_pct</code> in{" "}
-          <code className="settings-code">config.toml</code> and restart (not a runtime patch).
-        </p>
+      </div>
+
+      <div className="settings-form-field">
+        <span className="settings-k" title={SCALP_WFO_TT.wfo_pick_best_per_mode}>
+          Per-mode then overall (read-only)
+        </span>
+        <div className="settings-readonly" title={SCALP_WFO_TT.wfo_pick_best_per_mode}>
+          {pol.wfo_pick_best_per_mode !== false ? "enabled" : "disabled"}
+        </div>
       </div>
 
       <div className="settings-form-field">
@@ -1090,20 +1035,16 @@ function WfoTunerRuntimeSection({
         ) : null}
       </div>
 
-      <h3 className="settings-subh">Train / holdout trade gates</h3>
+      <h3 className="settings-subh">Legacy trade gate (config.toml)</h3>
 
       <div className="settings-form-field">
         <label htmlFor="wfo_min_trades" title={SCALP_WFO_TT.wfo_min_trades}>
-          Min trades (train slice)
+          Min trades (legacy config key)
         </label>
         <p className="settings-explainer">
-          Each rolling <strong>train</strong> window must contain at least this many closed trades for a grid
-          candidate to score. Higher = less noise, but sparse strategies may never qualify.
+          Continuous WFO uses <strong>Min trades (eval window)</strong> above. This key is still patched for
+          offline tools and config parity.
         </p>
-        <BenefitRisk
-          benefit="Fewer spurious grid winners on thin sample sizes."
-          risk="Can reject all modes in quiet tape; WFO finds no champion until you lower this or widen train hours."
-        />
         <input
           id="wfo_min_trades"
           type="number"
@@ -1114,31 +1055,6 @@ function WfoTunerRuntimeSection({
           onChange={(e) => setWfoMinTrades(e.target.value)}
           disabled={!canEdit}
           title={SCALP_WFO_TT.wfo_min_trades}
-        />
-      </div>
-
-      <div className="settings-form-field">
-        <label htmlFor="wfo_min_holdout_trades" title={SCALP_WFO_TT.wfo_min_holdout_trades}>
-          Min trades (holdout slice)
-        </label>
-        <p className="settings-explainer">
-          <strong>0</strong> = use the same floor as train. Set <strong>lower</strong> than train so short holdout
-          windows are not discarded just because the clock window is small.
-        </p>
-        <BenefitRisk
-          benefit="More Top-K candidates survive OOS validation when holdout hours are tight (less 'frequency pressure')."
-          risk="Holdout evidence is thinner; easier for a lucky window to pass gates—pair with stricter PF / PnL gates if needed."
-        />
-        <input
-          id="wfo_min_holdout_trades"
-          type="number"
-          min={0}
-          max={500}
-          step={1}
-          value={wfo_min_holdout_trades}
-          onChange={(e) => setWfoMinHoldoutTrades(e.target.value)}
-          disabled={!canEdit}
-          title={SCALP_WFO_TT.wfo_min_holdout_trades}
         />
       </div>
 
@@ -1638,7 +1554,7 @@ function SystemHealthTile({ scalp }: { scalp: ScalpSnapshot | null; snapshot: Sn
           wfoChampion
             ? stepDetail("wfo", "Champion active")
             : steps.find((x) => x.key === "wfo")?.status === "running"
-              ? "Grid search running…"
+              ? "Continuous grid running…"
               : "Waiting for warmup"
         }
       />
@@ -1720,17 +1636,23 @@ export function SettingsTab({ scalp, send, connected, snapshot, focusPairKey = "
           </li>
           <li>
             <strong>Walk-forward (WFO)</strong> — on each session start (and when you run{" "}
-            <em>Begin prep</em>), a grid search replays recent bars. Training / holdout / step widths are{" "}
-            <code className="settings-code">{pol?.wfo_train_hours ?? "—"}h</code> /{" "}
-            <code className="settings-code">{pol?.wfo_holdout_hours ?? "—"}h</code> /{" "}
-            <code className="settings-code">{pol?.wfo_step_hours ?? "—"}h</code> when WFO is enabled. Use{" "}
-            <strong>WFO &amp; param tuner (runtime)</strong> below to adjust intervals, folds, and Top-K
-            without restarting (in-memory until you edit <code className="settings-code">config.toml</code>).
+            <em>Begin prep</em>), a continuous full-grid pass replays recent bars. Eval + warmup are{" "}
+            <code className="settings-code">{pol?.wfo_continuous_eval_hours ?? 672}h</code> +{" "}
+            <code className="settings-code">{pol?.wfo_continuous_warmup_hours ?? 168}h</code> when WFO is enabled.
+            Use <strong>WFO &amp; param tuner (runtime)</strong> below to adjust eval window, warmup, and
+            intervals without restarting (in-memory until you edit{" "}
+            <code className="settings-code">config.toml</code>).
           </li>
           <li>
-            <strong>Champion required</strong> —{" "}
+            <strong>Champion required to trade</strong> —{" "}
+            {pol?.require_champion_to_trade !== false
+              ? "yes: new entries only after WFO crowns a champion for that symbol (bootstrap cannot open positions)."
+              : "no: bootstrap may trade while WFO runs in the background."}
+          </li>
+          <li>
+            <strong>Champion required for warm-up</strong> —{" "}
             {pol?.warmup_require_champion !== false
-              ? "yes: at least one WFO champion must be found (or warm-up times out)."
+              ? "yes: warm-up waits for at least one WFO champion (or time cap / failed WFO per config)."
               : "no: bar count alone can graduate warm-up."}
           </li>
           <li>
@@ -1755,7 +1677,7 @@ export function SettingsTab({ scalp, send, connected, snapshot, focusPairKey = "
       <details className="settings-accordion">
         <summary className="settings-accordion-summary">
           <span className="settings-accordion-title">WFO &amp; param tuner (runtime)</span>
-          <span className="settings-accordion-hint">Intervals, folds, fees, empirical — expand to edit</span>
+          <span className="settings-accordion-hint">Eval window, warmup, fees, empirical — expand to edit</span>
         </summary>
         <div className="settings-accordion-body">
           <WfoTunerRuntimeSection

@@ -16,8 +16,8 @@ type NodeDef = {
 
 const NODES: NodeDef[] = [
   { id: "config", title: "CONFIG", sub: "[scalp.pairs.*].strategy_mode — manual pin vs auto" },
-  { id: "wfo", title: "WFO", sub: "Rolling train / holdout grid on bar store → writes champion JSON" },
-  { id: "champion", title: "CHAMPION ROW", sub: "WFO holdout winner for this symbol → resolves auto" },
+  { id: "wfo", title: "WFO", sub: "Continuous full-grid eval on bar store → writes champion JSON" },
+  { id: "champion", title: "CHAMPION ROW", sub: "WFO eval-window winner for this symbol → resolves auto" },
   { id: "bootstrap", title: "NO-CHAMPION BOOTSTRAP", sub: "2h return-% ranking until a champion exists" },
   { id: "nemesis", title: "NEMESIS GATE", sub: "Tuner vs bootstrap expectancy / PF dual-lens (no champion)" },
   { id: "tuner", title: "PARAM TUNER", sub: "Perturbs tunables for the current execution mode" },

@@ -5,8 +5,8 @@ five strategy modes on both intervals, backfills 5m bars via Coinbase REST if
 needed, and prints a ranked table + per-pair recommendation.
 
 **Lab contract:** to match live WFO bar coverage, any script that replays WFO-style logic must
-load or backfill at least ``wfo_roll_span_hours(train, holdout, step, max_roll_windows)`` for the
-same ``[scalp]`` settings (see ``scalp_wfo.wfo_roll_span_hours`` / runtime backfill).
+load or backfill at least ``wfo_effective_roll_span_hours(WFOConfig)`` for the
+same ``[scalp]`` settings (see ``scalp_wfo.wfo_effective_roll_span_hours`` / runtime backfill).
 
 Run from repo root (requires coinbase-advanced-py for REST backfill):
 

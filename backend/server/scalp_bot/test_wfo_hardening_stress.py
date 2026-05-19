@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from scalp_bot.scalp_config import ScalpBotConfig, ScalpPairConfig, load_scalp_config
 from scalp_bot.scalp_runtime import _wfo_config_from_scalp_cfg
@@ -55,75 +56,60 @@ def test_wfo_verify_stored_roll_coverage_fails_short_tape(monkeypatch) -> None:
     assert span_h < roll_h * 0.92
 
 
-def test_wfo_config_maps_allow_promotion_relaxation_from_scalp_cfg() -> None:
+def test_wfo_config_maps_continuous_min_trades_from_scalp_cfg() -> None:
     cfg = ScalpBotConfig(
         enabled=True,
         pairs={"a": ScalpPairConfig(symbol="S", interval=5)},
-        wfo_allow_promotion_relaxation=True,
+        wfo_continuous_min_trades=12,
     )
     wfo = _wfo_config_from_scalp_cfg(cfg)
-    assert wfo.allow_promotion_relaxation is True
-    cfg2 = ScalpBotConfig(
-        enabled=True,
-        pairs={"a": ScalpPairConfig(symbol="S", interval=5)},
-        wfo_allow_promotion_relaxation=False,
-    )
-    assert _wfo_config_from_scalp_cfg(cfg2).allow_promotion_relaxation is False
+    assert wfo.continuous_min_trades == 12
 
 
-def test_wfo_data_readiness_pair_shape_includes_skip_count(monkeypatch) -> None:
-    """Readiness pairs must expose windows_skipped_insufficient_bars (UI / ops)."""
+def test_wfo_data_readiness_pair_shape_continuous(monkeypatch) -> None:
+    """Readiness output uses continuous eval/warmup hours and span-based progress."""
     bot = ScalpBotConfig(
         enabled=True,
         pairs={"p1": ScalpPairConfig(symbol="LAB-TEST", interval=5)},
     )
-    wfo = WFOConfig(
-        train_hours=6.0,
-        holdout_hours=2.0,
-        step_hours=2.0,
-        max_roll_windows=3,
-    )
-    # Minimal bar set: enough timestamps that rolling_windows runs
+    wfo = WFOConfig(continuous_eval_hours=672.0, continuous_warmup_hours=168.0)
+    # Provide enough bars to register non-zero span
     ts = np.array([1_700_000_000 + i * 300 for i in range(400)], dtype=np.int64)
     o = np.ones(400, dtype=np.float64)
     z = np.zeros(400, dtype=np.int64)
     stub = {
         "timestamp": ts,
-        "open": o,
-        "high": o,
-        "low": o,
-        "close": o,
-        "volume": o,
-        "vwap": o,
-        "trades": z,
+        "open": o, "high": o, "low": o, "close": o,
+        "volume": o, "vwap": o, "trades": z,
     }
 
     monkeypatch.setattr("scalp_bot.scalp_wfo.bar_store.load_bars", lambda *_a, **_k: stub)
 
     out = wfo_data_readiness(bot, wfo)
     assert "pairs" in out
+    assert "eval_hours" in out
+    assert "warmup_hours" in out
     p1 = out["pairs"]["p1"]
+    assert "span_hours" in p1
+    assert "bar_count" in p1
+    assert "progress_pct" in p1
     assert "windows_skipped_insufficient_bars" in p1
     assert isinstance(p1["windows_skipped_insufficient_bars"], int)
-    assert p1["windows_skipped_insufficient_bars"] >= 0
 
 
-def test_load_scalp_config_backfill_buffer_and_relaxation_roundtrip() -> None:
+def test_load_scalp_config_backfill_buffer_roundtrip() -> None:
     raw = {
         "scalp": {
             "enabled": True,
             "pairs": {"x": {"symbol": "Z", "interval": 5}},
             "wfo_backfill_buffer_hours": 12.5,
-            "wfo_allow_promotion_relaxation": True,
         }
     }
     cfg = load_scalp_config(raw)
     assert cfg.wfo_backfill_buffer_hours == 12.5
-    assert cfg.wfo_allow_promotion_relaxation is True
 
 
 def test_effective_roll_span_positive() -> None:
-    w = WFOConfig(train_hours=168.0, holdout_hours=48.0, step_hours=24.0, max_roll_windows=21)
+    w = WFOConfig(continuous_eval_hours=672.0, continuous_warmup_hours=168.0)
     h = wfo_effective_roll_span_hours(w)
-    assert h > w.train_hours + w.holdout_hours
-    assert h < 10_000.0
+    assert h == pytest.approx(840.0)

@@ -41,25 +41,3 @@ def test_latest_bar_anchor_retains_stale_tape_when_wall_trims_all(monkeypatch) -
     lb_ts = lb_bars["timestamp"]
     assert int(lb_ts[0]) >= int(latest - 5 * 86400)
 
-
-def test_rolling_windows_counts_skipped_positions() -> None:
-    from scalp_bot.scalp_wfo import rolling_windows
-
-    t0 = 1_000_000
-    # Sparse bars: many window positions fail the 50/20 bar floors
-    ts = np.array([t0 + i * 3600 for i in range(80)], dtype=np.int64)
-    o = np.ones(80, dtype=np.float64)
-    bars = {
-        "timestamp": ts,
-        "open": o,
-        "high": o,
-        "low": o,
-        "close": o,
-        "volume": o,
-        "vwap": o,
-        "trades": np.zeros(80, dtype=np.int64),
-    }
-    wins, skipped = rolling_windows(bars, train_hours=500.0, holdout_hours=200.0, step_hours=50.0)
-    assert isinstance(skipped, int)
-    assert skipped >= 0
-    assert isinstance(wins, list)

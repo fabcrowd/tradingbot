@@ -108,7 +108,7 @@ export function TerminalBrainPanel({
   } else if (!wfoEnabled) {
     wfoLine = "WFO disabled in session policy.";
   } else if (wfoChampionLit) {
-    wfoLine = `${championRow!.mode} · holdout WR ${formatWinRate(championRow!.win_rate)} · ${championRow!.trade_count ?? 0} trades`;
+    wfoLine = `${championRow!.mode} · eval WR ${formatWinRate(championRow!.win_rate)} · ${championRow!.trade_count ?? 0} trades`;
   } else {
     const bc = wfoPair?.bar_count ?? 0;
     const need = wfo?.required_span_hours != null ? `≥${wfo.required_span_hours}h data` : "building data";

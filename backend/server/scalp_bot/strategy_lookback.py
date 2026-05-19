@@ -91,6 +91,34 @@ def pair_has_wfo_champion(
     return True
 
 
+# Mode sources that may open new legs when ``require_champion_to_trade`` is on and a
+# champion row exists on disk for this pair's symbol/interval.
+CHAMPION_GATED_ENTRY_SOURCES: frozenset[str] = frozenset({
+    "wfo_champion",
+    "forward_demotion",
+    "param_tuner_override",
+})
+
+
+def live_entry_allowed_champion_gate(
+    bot_cfg: "ScalpBotConfig",
+    champion: dict | None,
+    pair_cfg: "ScalpPairConfig",
+    mode_source: str,
+) -> bool:
+    """True when a new live entry is allowed under ``require_champion_to_trade``.
+
+  Requires a persisted WFO champion row for the pair *and* a WFO-backed
+  ``mode_source`` label. Bootstrap/tuner/config never qualify even if a stale
+  in-memory label still says ``wfo_champion``.
+    """
+    if not bool(getattr(bot_cfg, "require_champion_to_trade", False)):
+        return True
+    if not pair_has_wfo_champion(champion, pair_cfg.symbol, pair_cfg.interval):
+        return False
+    return str(mode_source or "") in CHAMPION_GATED_ENTRY_SOURCES
+
+
 def _slice_bars_to_hours(
     bars: dict[str, np.ndarray],
     lookback_hours: float,

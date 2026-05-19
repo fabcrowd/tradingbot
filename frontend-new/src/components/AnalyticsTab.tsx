@@ -41,7 +41,7 @@ function fmtExTime(epoch: number): string {
   });
 }
 
-/** Map ``mean_holdout_score`` into 0–100 for a horizontal bar within one pair's scoreboard. */
+/** Map per-mode eval score into 0–100 for a horizontal bar within one pair's scoreboard. */
 function wfoMeanScoreBarPct(score: number, vmin: number, vmax: number): number {
   if (!Number.isFinite(score)) return 0;
   if (!Number.isFinite(vmin) || !Number.isFinite(vmax) || vmax <= vmin) {
@@ -61,7 +61,7 @@ function WfoLastPassScoreboardSection({ lastPass }: { lastPass: WfoLastPass | nu
       <section className="panel" style={{ marginTop: 12 }}>
         <div className="panel-hdr">
           <span className="ph-title">WFO_MODE_SCOREBOARD</span>
-          <span className="strat-mode">last walk-forward pass · per strategy mode</span>
+          <span className="strat-mode">last continuous WFO pass · per strategy mode</span>
         </div>
         <div className="no-data" style={{ padding: 20 }}>
           WFO snapshot not loaded (enable scalp / wait for first pass).
@@ -82,8 +82,8 @@ function WfoLastPassScoreboardSection({ lastPass }: { lastPass: WfoLastPass | nu
           </span>
         </div>
         <div className="no-data" style={{ padding: 20 }}>
-          No per-mode holdout scoreboard for this pass (insufficient holdout windows or no grid hits). After the next
-          WFO run completes, mean holdout scores per strategy appear here.
+          No per-mode scoreboard for this pass (insufficient bar span or no grid rows met min trades). After the next
+          WFO run completes, eval-window scores per strategy appear here.
         </div>
       </section>
     );
@@ -94,8 +94,8 @@ function WfoLastPassScoreboardSection({ lastPass }: { lastPass: WfoLastPass | nu
       <div className="panel-hdr">
         <span className="ph-title">WFO_MODE_SCOREBOARD</span>
         <span className="strat-mode">
-          last pass {fmtExTime(lastPass.ts)} · bars = mean holdout <span className="mono">{objective}</span> (best row
-          per mode, min windows gate)
+          last pass {fmtExTime(lastPass.ts)} · bars = eval score <span className="mono">{objective}</span> (best row
+          per mode, continuous window)
         </span>
       </div>
       <div className="analytics-table-wrap" style={{ padding: "0 12px 12px" }}>
@@ -120,7 +120,7 @@ function WfoLastPassScoreboardSection({ lastPass }: { lastPass: WfoLastPass | nu
                     <th style={{ width: 22 }} />
                     <th>MODE</th>
                     <th>POOL</th>
-                    <th>OOS #</th>
+                    <th>EVAL</th>
                     <th>MEAN SCORE</th>
                     <th style={{ minWidth: 120 }}>VS PASS</th>
                     <th>MEAN $ PnL</th>
@@ -195,9 +195,9 @@ function WfoLastPassScoreboardSection({ lastPass }: { lastPass: WfoLastPass | nu
           );
         })}
         <p className="analytics-footnote" style={{ marginTop: 4 }}>
-          ★ = holdout champion mode for that pair (after tie-breakers). <span className="mono">POOL qualified</span> means
-          the row passed stability / mean-score / drawdown gates for promotion. One row per mode shows the strongest grid
-          variant for that pass.
+          ★ = WFO champion mode for that pair (after tie-breakers). <span className="mono">POOL qualified</span> means
+          the row met min trades and ranking gates for that pass. One row per mode shows the strongest grid variant on
+          the continuous eval window.
         </p>
       </div>
     </section>
@@ -289,6 +289,21 @@ function tradeStrategyLabel(t: ScalpTrade): string {
   return t.strategy_mode && t.strategy_mode !== "unknown" ? t.strategy_mode : "legacy_unknown";
 }
 
+/** USD notional for strategy-report Size column (matches JSONL ``entry_row`` / ``exit_row``). */
+function legNotionalUsd(t: ScalpTrade, leg: "entry" | "exit"): number {
+  const qty = t.qty ?? 0;
+  if (leg === "entry") {
+    if (t.entry_notional_usd != null) return Math.abs(t.entry_notional_usd);
+    return Math.abs((t.entry_price ?? 0) * qty);
+  }
+  if (t.exit_notional_usd != null) return Math.abs(t.exit_notional_usd);
+  const ep = t.entry_price ?? 0;
+  if (t.entry_notional_usd != null && ep > 0) {
+    return Math.abs(t.entry_notional_usd * ((t.exit_price ?? 0) / ep));
+  }
+  return Math.abs((t.exit_price ?? 0) * qty);
+}
+
 function StrategyReportSection({ trades }: { trades: ScalpTrade[] }) {
   const modes = useMemo(() => {
     const s = new Set<string>();
@@ -344,9 +359,8 @@ function StrategyReportSection({ trades }: { trades: ScalpTrade[] }) {
       const dir = (t.direction ?? "").toLowerCase();
       const entrySig = dir === "long" ? "Long" : "Short";
       const exitSig = dir === "long" ? "Long Exit" : "Short Exit";
-      const mult = (t.entry_price ?? 0) * (t.qty ?? 0); // fallback if no notional
-      const entryN = t.entry_notional_usd ?? mult;
-      const exitN = (t.exit_price ?? 0) * (t.qty ?? 0);
+      const entryN = legNotionalUsd(t, "entry");
+      const exitN = legNotionalUsd(t, "exit");
       const row = [
         tradeStrategyLabel(t),
         String(t.strategy_trade_index ?? ""),
@@ -464,8 +478,8 @@ function StrategyReportSection({ trades }: { trades: ScalpTrade[] }) {
                 const entrySig = long ? "Long" : "Short";
                 const exitSig = long ? "Long Exit" : "Short Exit";
                 const tn = t.strategy_trade_index ?? "—";
-                const entryN = t.entry_notional_usd ?? Math.abs((t.entry_price ?? 0) * (t.qty ?? 0));
-                const exitN = Math.abs((t.exit_price ?? 0) * (t.qty ?? 0));
+                const entryN = legNotionalUsd(t, "entry");
+                const exitN = legNotionalUsd(t, "exit");
                 const netPct = t.net_pnl_pct;
                 const cumPct = t.cumulative_pnl_pct;
                 const mfeU = t.mfe_usd;

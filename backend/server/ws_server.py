@@ -22,7 +22,11 @@ from .scalp_bot.scalp_config import (
 )
 from .scalp_bot.scalp_mode_resolution import resolve_auto_mode
 from .scalp_bot.strategy_lookback import champion_row_matches_pair_interval
-from .scalp_bot.scalp_wfo import load_champion_for_symbol, wfo_roll_span_hours
+from .scalp_bot.scalp_wfo import (
+    WFOConfig,
+    load_champion_for_symbol,
+    wfo_effective_roll_span_hours,
+)
 from .ui_event_log import UiEventLog
 
 if TYPE_CHECKING:
@@ -1407,36 +1411,34 @@ class DashboardServer:
             "warmup_require_champion": True,
             "warmup_max_hours": 0.0,
             "wfo_enabled": True,
-            "wfo_train_hours": 6.0,
-            "wfo_holdout_hours": 2.0,
-            "wfo_step_hours": 2.0,
         }
         warmup_enabled = False
         if c is not None:
+            _wfo = WFOConfig(
+                continuous_eval_hours=float(
+                    getattr(c, "wfo_continuous_eval_hours", 672.0) or 672.0,
+                ),
+                continuous_warmup_hours=float(
+                    getattr(c, "wfo_continuous_warmup_hours", 168.0) or 168.0,
+                ),
+            )
             session_policy.update({
                 "warmup_enabled": bool(c.warmup_enabled),
                 "warmup_min_bars": int(c.warmup_min_bars),
                 "warmup_require_champion": bool(c.warmup_require_champion),
+                "require_champion_to_trade": bool(
+                    getattr(c, "require_champion_to_trade", True),
+                ),
                 "warmup_max_hours": float(c.warmup_max_hours),
                 "wfo_enabled": bool(c.wfo_enabled),
                 "wfo_interval_sec": float(c.wfo_interval_sec),
                 "wfo_train_hours": float(c.wfo_train_hours),
-                "wfo_holdout_hours": float(c.wfo_holdout_hours),
-                "wfo_step_hours": float(c.wfo_step_hours),
-                "wfo_top_k": max(1, int(c.wfo_top_k)),
                 "wfo_objective": str(c.wfo_objective),
-                "wfo_pnl_first_promotion": bool(getattr(c, "wfo_pnl_first_promotion", False)),
+                "wfo_continuous_eval_hours": float(c.wfo_continuous_eval_hours),
+                "wfo_continuous_warmup_hours": float(c.wfo_continuous_warmup_hours),
+                "wfo_continuous_min_trades": int(c.wfo_continuous_min_trades),
                 "param_tuner_interval_sec": float(c.param_tuner_interval_sec),
-                "wfo_max_roll_windows": max(1, int(c.wfo_max_roll_windows)),
-                "wfo_train_same_calendar_day_boost": float(c.wfo_train_same_calendar_day_boost),
-                "wfo_roll_span_hours": float(
-                    wfo_roll_span_hours(
-                        c.wfo_train_hours,
-                        c.wfo_holdout_hours,
-                        c.wfo_step_hours,
-                        max(1, int(c.wfo_max_roll_windows)),
-                    )
-                ),
+                "wfo_roll_span_hours": float(wfo_effective_roll_span_hours(_wfo)),
                 "wfo_min_trades": int(c.wfo_min_trades),
                 "wfo_min_holdout_trades": int(getattr(c, "wfo_min_holdout_trades", 0) or 0),
                 "wfo_min_profit_factor": float(getattr(c, "wfo_min_profit_factor", 0.8) or 0.8),

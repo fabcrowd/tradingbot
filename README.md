@@ -374,7 +374,7 @@ tracked barriers and wallet balance are automatically reconciled with a blended-
 
 ## Backtesting and simulation *(what matches nano perps + indicators)*
 
-**Coinbase CDE nano perps (active path):** “Backtest” truth for signals vs PnL is the **same bar tape** the live bot uses: **`coinbase_candle_feed.py`** → **`bar_store`** (per `pair_key`) → **`IndicatorSet`** (`indicators.py`, one set per **`[scalp.pairs.<pair_key>]`**) → **`signal_engine.py`** (mode from WFO champion / `strategy_mode`) → **`scalp_vec_backtest.py`** + **`scalp_wfo.py`** (holdout scoring, `contract_size`, `[scalp]` fee model). Use **`.optimization/pnl-feedback-lab/`** for structured harnesses around that stack.
+**Coinbase CDE nano perps (active path):** “Backtest” truth for signals vs PnL is the **same bar tape** the live bot uses: **`coinbase_candle_feed.py`** → **`bar_store`** (per `pair_key`) → **`IndicatorSet`** (`indicators.py`, one set per **`[scalp.pairs.<pair_key>]`**) → **`signal_engine.py`** (mode from WFO champion / `strategy_mode`) → **`scalp_vec_backtest.py`** + **`scalp_wfo.py`** (continuous eval-window scoring, `contract_size`, `[scalp]` fee model). Use **`.optimization/pnl-feedback-lab/`** for structured harnesses around that stack.
 
 **Legacy Kraken MM fill replay (not TEL / not your perps path):** `backend/server/backtest.py` + `python -m backend.server.sim_runner` re-score **`data/trades_{paper|live}.jsonl`** (old spot-MM JSONL). That CLI does **not** load CDE products or `IndicatorSet`; do not use it to validate nano perp indicators.
 
@@ -518,36 +518,39 @@ The bot seeds indicators from 100 historical candles before placing any trades.
 
 ### Walk-forward optimization (WFO) and LOOKBACK progress
 
-When `wfo_enabled` is true, the scalp runtime runs `ScalpWalkForwardOptimizer`: periodic rolling train/holdout grid search over stored bars, writing a **champion** parameter set for live trading.
+When `wfo_enabled` is true, the scalp runtime runs `ScalpWalkForwardOptimizer`: periodic **continuous full-grid** evaluation over stored bars (one eval window + warmup prefix), writing a **champion** parameter set for live trading.
 
-**WFO vs param tuner:** WFO chooses **which strategy mode** (and coarse params) and writes **`data/scalp_champion.json`**. The **param tuner** refines tunables for the **active** mode. While the champion store has a row for a pair’s **exchange symbol**, the tuner does not switch mode away from WFO’s pick for that symbol. If there is **no** champion row for a pair’s symbol, the runtime picks a mode from the last **2 hours** of simulated trades ranked by **return %** until WFO saves a matching row.
+**WFO vs param tuner:** WFO chooses **which strategy mode** (and coarse params) and writes **`data/scalp_champion.json`**. The **param tuner** refines tunables for the **active** mode using **`wfo_train_hours`** lookback only. While the champion store has a row for a pair’s **exchange symbol**, the tuner does not switch mode away from WFO’s pick for that symbol. If there is **no** champion row for a pair’s symbol, the runtime picks a mode from the last **2 hours** of simulated trades ranked by **return %** until WFO saves a matching row.
 
-**Champion file shape:** JSON is a **map of exchange symbol → champion object** (e.g. `SLP-20DEC30-CDE` → `{ mode, params, holdout_metrics, objective, ... }`). Older single-object champion files are still read; the next successful **`save_champion`** merges into the multi-symbol format. This avoids “last pair wins” overwrites when running several CDE products.
+**Champion file shape:** JSON is a **map of exchange symbol → champion object** (e.g. `SLP-20DEC30-CDE` → `{ mode, params, holdout_metrics, objective, evaluation_mode: "continuous", ... }`). Older single-object champion files are still read; the next successful **`save_champion`** merges into the multi-symbol format. This avoids “last pair wins” overwrites when running several CDE products.
 
-**Scoring:** `wfo_objective` in `[scalp]` selects the WFO metric (`sharpe`, `expectancy`, `expectancy_sqrt_n`, `sortino`, `calmar`, `profit_factor`, `total_pnl`). Holdout slices require **`wfo_min_trades`** trades per window (same threshold as training gates), not a single trade.
+**Scoring:** `wfo_period_rank_metric` ranks grid rows on the eval window (`total_pnl`, `calmar`, `sharpe_like`). Rows need at least **`wfo_continuous_min_trades`** closed trades in the eval window. `wfo_pick_best_per_mode` (default on) picks the best row per mode, then the best overall.
 
-**Telemetry:** Session JSONL includes richer WFO rows (`holdout_metrics`, `objective`), **`champion_period_start` / `champion_period_end`** (with forward realized PnL since the period start), and **`strategy_mode` + `direction`** on **`position_closed`**. The dashboard snapshot exposes **`pair_symbols`**, **`champions`** (per symbol), and a backward-compatible **`champion`** summary.
+**Telemetry:** Session JSONL includes WFO rows (`holdout_metrics` naming is legacy; values are from the continuous eval window), **`champion_period_start` / `champion_period_end`**, and **`strategy_mode` + `direction`** on **`position_closed`**. The dashboard exposes **`pair_symbols`**, **`champions`**, and **`scalp.wfo`** readiness (`eval_hours`, `warmup_hours`, `total_load_hours`).
 
-**Strategy lookback (dashboard):** loads several days of bars for indicator warmup; snapshot lists `strategy_lookback_hours` as a label and includes **expectancy** and **return_pct** per mode. Ranking for `best_mode_from_lookback` (when used) prefers **expectancy** with a minimum trade count.
+**Strategy lookback (dashboard):** loads bars for indicator warmup; snapshot includes **expectancy** and **return_pct** per mode. Ranking for `best_mode_from_lookback` (when used) prefers **expectancy** with a minimum trade count.
 
 **Config (`[scalp]` in `config.toml`):**
 
 | Key | Default | Role |
 |-----|---------|------|
 | `wfo_enabled` | `true` | Master switch for the WFO task and UI block |
-| `wfo_interval_sec` | `1800` | Seconds between scheduled passes; loop sleeps first, then runs |
-| `wfo_train_hours` | `6.0` | Rolling window training period (hours) |
-| `wfo_holdout_hours` | `2.0` | Rolling window holdout/validation period (hours) |
-| `wfo_step_hours` | `2.0` | Rolling window step size (hours) |
-| `wfo_min_trades` | (see `config.toml` / `scalp_config.py`) | Minimum trades on **train and holdout** slices; higher = stricter, fewer spurious champions |
-| `wfo_objective` | `expectancy_sqrt_n` | Scoring objective (actually used by WFO; see list above) |
+| `wfo_interval_sec` | `300` | Seconds between scheduled passes (60s floor in loop) |
+| `wfo_continuous_eval_hours` | `672` | Scored evaluation window (hours) |
+| `wfo_continuous_warmup_hours` | `168` | Indicator warmup prefix before eval (not scored) |
+| `wfo_continuous_min_trades` | `20` | Min closed trades in eval window to qualify a grid row |
+| `wfo_train_hours` | `168` | Param-tuner / dashboard lookback (not WFO eval window) |
+| `wfo_period_rank_metric` | `total_pnl` | Rank key for champion selection |
+| `wfo_pick_best_per_mode` | `true` | Best per mode, then best overall |
+| `wfo_objective` | `total_pnl` | Legacy label; align with period rank metric |
 
-Windows are **hours-based** — for 1-minute scalping, yesterday's data is already a different
-regime. Default total data needed: 6 + 2 + 6 + 1 = 15 hours (~900 bars at 1m).
+Default bar backfill span ≈ **eval + warmup** (840h with defaults) plus `wfo_backfill_buffer_hours`.
 
 **REST backfill:** On startup, `ScalpRuntime` calls `bar_store.backfill_from_rest()` per pair. **Venue routing:** Coinbase products use Coinbase public candle pagination; Kraken-style symbols use Kraken `/0/public/OHLC` (see `bar_store.py`). The WFO window is filled from REST — no need to wait for candles to trickle in before the first pass.
 
-**Data readiness:** The server computes `overall_progress_pct` as the **worst** pair's readiness: calendar span must cover train+holdout hours, and there must be at least **two** rolling windows. When a champion is already active, the LOOKBACK bar shows 100%.
+**Data readiness:** `overall_progress_pct` is the **worst** pair's fraction of required span (`eval_hours + warmup_hours`). When a champion is already active, the LOOKBACK bar shows 100%.
+
+**Champion required to trade:** With `require_champion_to_trade = true` (default), new entries are blocked until `mode_source` is `wfo_champion` (or forward demotion / approved tuner paths). Bootstrap lookback does not open positions. Pair with `warmup_require_champion = true` so warm-up also waits for at least one WFO champion before READY.
 
 **Dashboard (`frontend-new`):** A **LOOKBACK** strip below the header shows progress, short status text, and countdown to the next scheduled WFO pass when `scalp.wfo` is present in snapshots. Restart the backend process after enabling WFO so the snapshot includes the field.
 
