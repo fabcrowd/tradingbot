@@ -38,6 +38,41 @@ One-page orientation for the next agent or chat: product, where code lives, what
 
 ---
 
+## Recent session (2026-09-19) — GitHub sync + June 5 no-champion WFO notes
+
+Local `main` is synced to GitHub (`0fbaad3` on `origin/main`, then this notes commit). There was **no pending code diff** beyond the June 5 runtime artifacts already pushed. Origin was 3 commits ahead of the old local HEAD (WFO continuous refactor / champion gates, 2026-05-18–19); those were kept via rebase, not overwritten.
+
+### What is on GitHub now
+
+- June 5 session log `data/session_20260605_160437.jsonl`
+- Fee snapshot still `6.5` / `7.0` bps, `$0.15`/contract, `order_type=hybrid` (timestamp refreshed)
+- 10 new `wfo_champion_promotions.jsonl` rows: all `no_champion` / `insufficient_windows`
+- CDE 5m parquet **unioned** with origin (kept denser May history, added ~100 newer bars through June 5)
+- `data/scalp_champion.json` is `{}` (already empty on origin before this sync)
+
+### Left local-only on purpose (gitignore)
+
+Do **not** dump these without an explicit ask: `data/sessions/` (old MM logs), `*.log`, `frontend-new/dist/`, `.pytest_cache/`, `data/session_observer.jsonl` (~716MB), `data/learner_state_*.json`, `data/trades_paper.jsonl`, `data/sim_report.json`, `data/cost_basis.json`, `data/fill_barriers.json`.
+
+### Findings (session `20260605_160437`, live, operator standby)
+
+1. **Warmup cleared champions, WFO did not replace them.** `operator_begin_warmup` unlinks `scalp_champion.json`. With `scalp_auto_invalidate_champion_on_fee_change = true`, fee drift (0→6.5 maker bps, $0→$0.15/contract, `limit`→`hybrid`) also wipes rows. Result: **0/3 champions**. Runtime falls through to no-champion bootstrap / `auto_mode_fallback`. Session ended `startup_phase=primed`, `standby=true`, `can_go_live=true`.
+
+2. **WFO loaded ~100 bars while backfill reported thousands.** Same session: `bar_backfill` `total_in_store` BTC **9986→10086**, SOL **8151→8251**, XRP **7953→8053**. First WFO pass (13s later) BTC `n_bars=1`. Later passes all three pairs `n_bars=100`, `span_h≈9–10.6`, `roll_hours=673`, `n_windows=0`, `grid_size=0`. **100 × 5m ≈ 8.3h**, which matches the old `rest_seed_candles` default (**100**; `config.toml` is now **200**). Skip: `insufficient_windows`. Do not treat this as “not enough parquet on disk” — 5m files had 8k–10k rows.
+
+3. **That session ran windowed WFO on the May 14 local tree**, not the May 19 **continuous** WFO now on `main`. Re-check `n_bars` vs `bar_count` / parquet on the current build before changing production WFO.
+
+4. **Parquet is gappy.** BIP 5m: ~10k–18k rows over ~1500–1900h (dense 5m would be far more). Local-only 5m files were **sparser** than origin’s May copy; rebase merge kept origin density and appended newer timestamps.
+
+5. **Old champions (pre-wipe) were weak / relaxed-tier.** XPP/SLP negative holdout PnL, `relaxed_quarter`; BIP one-window `any_window`. `wfo_allow_promotion_relaxation = false` now, so those would not re-promote.
+
+### Open follow-up (not done this session)
+
+- Trace why warmup WFO `n_bars` matched REST seed instead of parquet `total_in_store` (load path, trim, or race).
+- Confirm current continuous WFO on a live warmup logs `bar_count` ≈ parquet rows before trusting “Champion found 0/3”.
+
+---
+
 ## Recent session (2026-04-28) — Scoring windows, regime risk-on overhaul, news calendar, news AI trading plan
 
 ### 1. Scoring windows aligned to 7-day flat
@@ -257,5 +292,7 @@ python -m scalp_bot.sar_chop_signal_dump --help
 ---
 
 ## Last updated
+
+**2026-09-19** — Pushed June 5 session telemetry to GitHub; documented no-champion warmup / WFO `n_bars=100` vs 8k–10k parquet backfill (see Recent session above).
 
 **2026-04-28** — 7-day flat scoring windows; regime risk-on RSI triggers + 1-hour hold + calm-relax; risk-on position sizing (1.5×) + cooldown halving; news calendar infrastructure live; full news AI trading plan documented (build next session).

@@ -37,6 +37,14 @@ and post-mortem fixes. If this conflicts with older sections below, prefer this 
 Several items below record **bugs that were later fixed**; those are kept for history
 but are marked **superseded** or **obsolete** so they are not mistaken for current behavior.
 
+### Warmup WFO `n_bars` vs parquet backfill (session 2026-06-05; noted 2026-09-19)
+
+- **Symptom:** Live session `data/session_20260605_160437.jsonl` finished warmup with **Champion found for 0/3 pair(s)**. WFO `skip_reason` was `insufficient_windows` with `roll_hours=673`, `n_windows=0`.
+- **Bar-store vs WFO mismatch:** `bar_backfill` reported `total_in_store` BTC **10086** / SOL **8251** / XRP **8053**. WFO diagnostics on the same process used **`n_bars=1`** on the first pass, then **`n_bars=100`** (`span_h` 9.00 / 10.58 / 10.42). 100 five-minute bars ≈ 8–10 hours — the same size as the historical **`rest_seed_candles` default (100)**. That is not “empty parquet.”
+- **Champion file:** Warmup **unlinks** `data/scalp_champion.json` (`operator_begin_warmup`). `scalp_auto_invalidate_champion_on_fee_change = true` also clears rows when fee snapshot drifts (this session: maker **0→6.5** bps, **$0→$0.15**/contract, `limit`→`hybrid`). File on disk after the run is `{}`. Entries then use **no-champion bootstrap / `auto_mode_fallback`** until a real promotion.
+- **Do not overwrite GitHub parquet blindly:** the June 5 local 5m files were **newer but sparser** than origin’s May copies. Union-by-timestamp when syncing.
+- **Code caveat:** that JSONL was produced on the **May 14 windowed-WFO** tree. `main` since 2026-05-19 is **continuous WFO**. Re-verify `n_bars` vs `bar_store.bar_count` on the current build before changing `scalp_wfo.py`. Details: `nextsession.md` → “GitHub sync + June 5 no-champion WFO notes”.
+
 ### Dashboard WS, Vite dev, CDE resting strip, operator manual controls (Apr 2026)
 
 - **`SERVER OFFLINE` / no snapshot:** WebSocket URL is `ws://<page-host>/ws` (`frontend-new/src/lib/wsClient.ts`). With **`npm run dev`**, Vite must proxy `/ws` to the Python server. **`vite.config.ts`** must target **`http://127.0.0.1:8080`** (match `[server].host` in `config.toml`), not **`http://localhost:8080`**, or Windows can resolve `localhost` to **::1** while aiohttp listens on **IPv4 only** and the UI stays offline. Optional: **`VITE_WS_URL`** / **`VITE_DASHBOARD_TOKEN`** when using LAN + `DASHBOARD_TOKEN` (see `ws_server.py` NM-008).
