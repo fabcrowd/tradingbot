@@ -1,0 +1,3 @@
+{"ts": 1775313015.7132852, "event": "start"}
+{"ts": 1775313016.034073, "event": "risk", "reason": "max_concurrent_positions (10)", "pnl": 0.0}
+{"ts": 1775313037.11001, "event": "stop"}

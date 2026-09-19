@@ -1,0 +1,2 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775222306.541}
+{"event": "snapshot", "session_sec": 314.0, "total_pnl": -31.010689, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 155.4, "last_fill_age_sec": 307.0}}, "ts": 1775222616.472}

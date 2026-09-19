@@ -1,0 +1,179 @@
+2026-04-05T04:05:33.664260+00:00 | backend_watchdog starting | port=8080 interval=900.0s dry_run=False
+2026-04-05T04:05:33.664975+00:00 | health URL: http://127.0.0.1:8080/health
+2026-04-05T04:06:05.741874+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T04:06:06.899642+00:00 | listeners on 8080: []
+2026-04-05T04:08:11.316836+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T04:23:13.350674+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T04:23:14.007657+00:00 | listeners on 8080: []
+2026-04-05T04:25:18.298103+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T04:40:20.342830+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T04:40:20.965172+00:00 | listeners on 8080: []
+2026-04-05T04:42:25.163688+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T04:57:27.203549+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T04:57:27.847374+00:00 | listeners on 8080: []
+2026-04-05T04:59:32.077765+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T05:14:34.116782+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T05:14:34.744570+00:00 | listeners on 8080: []
+2026-04-05T05:16:38.988547+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T05:31:41.040195+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T05:31:41.929906+00:00 | listeners on 8080: []
+2026-04-05T05:33:46.124603+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T05:48:48.158998+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T05:48:48.762794+00:00 | listeners on 8080: []
+2026-04-05T05:50:52.966111+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T06:05:55.005877+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T06:05:55.604579+00:00 | listeners on 8080: []
+2026-04-05T06:07:59.821952+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T06:23:01.860776+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T06:23:03.091497+00:00 | listeners on 8080: []
+2026-04-05T06:25:07.245535+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T06:40:09.284344+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T06:40:09.886360+00:00 | listeners on 8080: []
+2026-04-05T06:42:14.087328+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T06:57:16.122736+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T06:57:16.731588+00:00 | listeners on 8080: []
+2026-04-05T06:59:21.031027+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T07:14:23.068865+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T07:14:23.653454+00:00 | listeners on 8080: []
+2026-04-05T07:16:27.862141+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T07:31:29.895420+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T07:31:30.805233+00:00 | listeners on 8080: []
+2026-04-05T07:33:35.011180+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T07:48:37.043098+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T07:48:37.652171+00:00 | listeners on 8080: []
+2026-04-05T07:50:41.887087+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T08:05:43.927798+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T08:05:44.542702+00:00 | listeners on 8080: []
+2026-04-05T08:07:48.766242+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T08:22:50.816583+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T08:22:51.422330+00:00 | listeners on 8080: []
+2026-04-05T08:24:55.700099+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T08:39:57.742258+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T08:39:58.349263+00:00 | listeners on 8080: []
+2026-04-05T08:42:02.564976+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T08:57:04.606506+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T08:57:05.529966+00:00 | listeners on 8080: []
+2026-04-05T08:59:09.748156+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T09:14:11.788473+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T09:14:12.385614+00:00 | listeners on 8080: []
+2026-04-05T09:16:16.566780+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T09:31:18.604514+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T09:31:19.213876+00:00 | listeners on 8080: []
+2026-04-05T09:33:23.452304+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T09:48:25.495952+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T09:48:26.093216+00:00 | listeners on 8080: []
+2026-04-05T09:50:30.276789+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T10:05:32.311267+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T10:05:33.220744+00:00 | listeners on 8080: []
+2026-04-05T10:07:37.449314+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T10:22:39.484436+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T10:22:40.079844+00:00 | listeners on 8080: []
+2026-04-05T10:24:44.302659+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T10:39:46.333279+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T10:39:46.927161+00:00 | listeners on 8080: []
+2026-04-05T10:41:51.068225+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T10:56:53.102733+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T10:56:53.717395+00:00 | listeners on 8080: []
+2026-04-05T10:58:57.857190+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T11:13:59.895089+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T11:14:01.021296+00:00 | listeners on 8080: []
+2026-04-05T11:16:05.251904+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T11:31:07.293826+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T11:31:08.602557+00:00 | listeners on 8080: []
+2026-04-05T11:33:12.772471+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T11:48:14.823285+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T11:48:15.580574+00:00 | listeners on 8080: []
+2026-04-05T11:50:19.866919+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T12:05:21.901243+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T12:05:22.561897+00:00 | listeners on 8080: []
+2026-04-05T12:07:26.932056+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T12:22:28.982353+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T12:22:29.637077+00:00 | listeners on 8080: []
+2026-04-05T12:24:34.018152+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T12:39:36.067967+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T12:39:36.723881+00:00 | listeners on 8080: []
+2026-04-05T12:41:40.868870+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T12:56:42.912398+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T12:56:43.571596+00:00 | listeners on 8080: []
+2026-04-05T12:58:47.817837+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T13:13:49.867793+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T13:13:50.618346+00:00 | listeners on 8080: []
+2026-04-05T13:15:55.024647+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T13:30:57.068147+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T13:30:57.797421+00:00 | listeners on 8080: []
+2026-04-05T13:33:02.057520+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T13:48:04.094772+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T13:48:04.737247+00:00 | listeners on 8080: []
+2026-04-05T13:50:09.002440+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T14:05:11.031018+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T14:05:11.923812+00:00 | listeners on 8080: []
+2026-04-05T14:07:16.131777+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T14:22:18.170102+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T14:22:18.771614+00:00 | listeners on 8080: []
+2026-04-05T14:24:22.959886+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T14:39:25.016436+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T14:39:25.615473+00:00 | listeners on 8080: []
+2026-04-05T14:41:29.815893+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T14:56:31.875415+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T14:56:32.516488+00:00 | listeners on 8080: []
+2026-04-05T14:58:36.683899+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T15:13:38.741892+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T15:13:39.619369+00:00 | listeners on 8080: []
+2026-04-05T15:15:43.847843+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T15:30:45.881319+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T15:30:46.489129+00:00 | listeners on 8080: []
+2026-04-05T15:32:50.659371+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T15:47:52.694630+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T15:47:53.295426+00:00 | listeners on 8080: []
+2026-04-05T15:49:57.475662+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T16:04:59.512496+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T16:05:00.482291+00:00 | listeners on 8080: []
+2026-04-05T16:07:04.706770+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T16:22:06.740830+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T16:22:07.626924+00:00 | listeners on 8080: []
+2026-04-05T16:24:11.863480+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T16:39:13.897252+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T16:39:14.501849+00:00 | listeners on 8080: []
+2026-04-05T16:41:18.681467+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T16:56:20.715556+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T16:56:21.315537+00:00 | listeners on 8080: []
+2026-04-05T16:58:25.556038+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T17:13:27.589840+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T17:13:28.206133+00:00 | listeners on 8080: []
+2026-04-05T17:15:32.417928+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T17:30:34.462141+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T17:30:35.355628+00:00 | listeners on 8080: []
+2026-04-05T17:32:39.587271+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T17:47:41.624734+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T17:47:42.227445+00:00 | listeners on 8080: []
+2026-04-05T17:49:46.416284+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T18:04:48.449058+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T18:04:49.057881+00:00 | listeners on 8080: []
+2026-04-05T18:06:53.261555+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T18:21:55.307808+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T18:21:55.929584+00:00 | listeners on 8080: []
+2026-04-05T18:24:00.127019+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T18:39:02.170151+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T18:39:03.065118+00:00 | listeners on 8080: []
+2026-04-05T18:41:07.316978+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T18:56:09.357069+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T18:56:09.960088+00:00 | listeners on 8080: []
+2026-04-05T18:58:14.230652+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T19:13:14.727739+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T19:13:15.321416+00:00 | listeners on 8080: []
+2026-04-05T19:15:19.560492+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T19:30:21.601952+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T19:30:22.239786+00:00 | listeners on 8080: []
+2026-04-05T19:32:26.448234+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T19:47:28.483452+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T19:47:29.367715+00:00 | listeners on 8080: []
+2026-04-05T19:49:33.554707+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T20:04:35.582940+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T20:04:36.179273+00:00 | listeners on 8080: []
+2026-04-05T20:06:40.388122+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T20:21:42.428951+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T20:21:43.029505+00:00 | listeners on 8080: []
+2026-04-05T20:23:47.241126+00:00 | restart may have failed — still no /health after 120s
+2026-04-05T20:38:49.283286+00:00 | health FAIL — attempting restart (port 8080)
+2026-04-05T20:38:49.990660+00:00 | listeners on 8080: []
+2026-04-05T20:40:54.240907+00:00 | restart may have failed — still no /health after 120s

@@ -1,0 +1,29 @@
+{
+  "TEL_USD": {
+    "spread_bps": 50,
+    "rate_per_min": 0.0,
+    "direction": -1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 1775098200.1124094
+  },
+  "USDG_USDT": {
+    "spread_bps": 4,
+    "rate_per_min": 0.0,
+    "direction": 1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 1775098260.1233628
+  },
+  "USDG_USDC": {
+    "spread_bps": 3,
+    "rate_per_min": 0.007134,
+    "direction": 1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "regime_pain_floors": {},
+    "regime_spreads": {},
+    "current_regime": "clean",
+    "updated": 1775361259.8222992
+  }
+}

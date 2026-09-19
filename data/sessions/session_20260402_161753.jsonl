@@ -1,0 +1,184 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775146677.83}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 100, "spread_new": 99, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 120.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775146800.425}
+{"event": "session_start", "mode": "live", "pairs": {"DRIFT_USD": {"symbol": "DRIFT/USD", "spread_bps": 99, "spread_floor_bps": 30, "fee_schedule": "spot_crypto", "order_size": 1000.0, "max_inventory": 0}}, "decay_start_sec": 90.0, "decay_interval_sec": 60.0, "pain_floor_decay_hours": 4.0, "per_trade_profitability": true, "daily_loss_limit": 5.0, "daily_profit_target": 20.0, "ts": 1775146806.54}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775146833.827}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 99, "spread_new": 98, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 180.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775146860.428}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 98, "spread_new": 97, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 240.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775146920.438}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 97, "spread_new": 96, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 300.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775146980.446}
+{"event": "snapshot", "session_sec": 314.0, "total_pnl": -28.228385, "pairs": {"DRIFT_USD": {"spread_bps": 96, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 45.0, "last_fill_age_sec": 307.0}}, "ts": 1775146986.91}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 96, "spread_new": 95, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 360.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147040.452}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 95, "spread_new": 94, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 420.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147100.457}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 94, "spread_new": 93, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 480.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147160.46}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 93, "spread_new": 92, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 540.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147220.473}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0441, "qty": 1000.0, "fee": 0.10143, "pnl": 0.0, "spread_bps": 92, "market_spread_bps": 45.0, "total_pnl": -28.228385, "ts": 1775147251.959}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147252.134}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147255.191}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147258.239}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147261.278}
+{"event": "snapshot", "session_sec": 614.0, "total_pnl": -28.228385, "pairs": {"DRIFT_USD": {"spread_bps": 92, "fills": 1, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 22.7, "last_fill_age_sec": 35.0}}, "ts": 1775147286.925}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 92, "spread_new": 91, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 149.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147400.493}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 91, "spread_new": 90, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 209.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147460.498}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 90, "spread_new": 89, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 269.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147520.504}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 89, "spread_new": 88, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 329.0, "avg_sell_pnl": 0.0, "ema_rate": 0.0, "fills_interval": 0, "ts": 1775147580.517}
+{"event": "snapshot", "session_sec": 914.0, "total_pnl": -28.228385, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 1, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 22.7, "last_fill_age_sec": 335.0}}, "ts": 1775147586.936}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0444, "qty": 867.98605, "fee": 0.088639, "pnl": -0.182445, "spread_bps": 88, "market_spread_bps": 68.0, "total_pnl": -28.41083, "ts": 1775147593.568}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0444, "qty": 132.01395, "fee": 0.013481, "pnl": -0.027748, "spread_bps": 88, "market_spread_bps": 68.0, "total_pnl": -28.438578, "ts": 1775147593.569}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775147594.139}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775147597.164}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147600.167}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147603.2}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0445, "qty": 741.12929, "fee": 0.075855, "pnl": 0.0, "spread_bps": 120, "market_spread_bps": 133.9, "total_pnl": -28.438578, "ts": 1775147603.343}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147609.242}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147615.31}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147621.344}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0445, "qty": 258.87071, "fee": 0.026495, "pnl": 0.0, "spread_bps": 89, "market_spread_bps": 269.1, "total_pnl": -28.438578, "ts": 1775147624.986}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147627.39}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147633.423}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147636.435}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775147639.446}
+{"event": "learner", "pair": "DRIFT_USD", "action": "loss_widen", "spread_old": 88, "spread_new": 90, "reason": "loss_widen", "pain_floor": 88, "idle_sec": 0.0, "avg_sell_pnl": -0.060587, "ema_rate": -0.013135, "fills_interval": 5, "ts": 1775147640.521}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0456, "qty": 536.83075, "fee": 0.056303, "pnl": 0.523789, "spread_bps": 92, "market_spread_bps": 222.2, "total_pnl": -27.914789, "ts": 1775147645.682}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 90, "spread_new": 89, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 115.0, "avg_sell_pnl": 0.0, "ema_rate": -0.013135, "fills_interval": 0, "ts": 1775147760.547}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 89, "spread_new": 88, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 175.0, "avg_sell_pnl": 0.0, "ema_rate": -0.013135, "fills_interval": 0, "ts": 1775147820.56}
+{"event": "snapshot", "session_sec": 1214.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 6, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 178.2, "last_fill_age_sec": 241.0}}, "ts": 1775147886.947}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148153.898}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148156.919}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148159.923}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148165.983}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0447, "qty": 188.65969, "fee": 0.019396, "pnl": 0.0, "spread_bps": 120, "market_spread_bps": 111.2, "total_pnl": -27.914789, "ts": 1775148170.036}
+{"event": "learner", "pair": "DRIFT_USD", "action": "widen", "spread_old": 88, "spread_new": 90, "reason": "hill_climb", "pain_floor": 88, "idle_sec": 0.0, "avg_sell_pnl": 0.056289, "ema_rate": 0.008262, "fills_interval": 2, "ts": 1775148180.607}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148181.098}
+{"event": "snapshot", "session_sec": 1514.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 90, "fills": 7, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 135.4, "last_fill_age_sec": 17.0}}, "ts": 1775148186.959}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148187.177}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148199.292}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148214.457}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148226.607}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148229.65}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148247.79}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148250.835}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148253.845}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148259.936}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 90, "spread_new": 89, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 131.0, "avg_sell_pnl": 0.0, "ema_rate": 0.008262, "fills_interval": 0, "ts": 1775148300.621}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148305.481}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148308.489}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148311.49}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 89, "spread_new": 88, "reason": "no-fill decay", "pain_floor": 88, "idle_sec": 191.0, "avg_sell_pnl": 0.0, "ema_rate": 0.008262, "fills_interval": 0, "ts": 1775148360.631}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148402.34}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148405.385}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148408.419}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148411.423}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148414.473}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148429.592}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148432.595}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148435.603}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0444, "qty": 1000.0, "fee": 0.10212, "pnl": 0.0, "spread_bps": 89, "market_spread_bps": 133.9, "total_pnl": -27.914789, "ts": 1775148467.499}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148468.883}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148471.93}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148474.979}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148478.011}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148481.04}
+{"event": "snapshot", "session_sec": 1814.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 202.0, "last_fill_age_sec": 19.0}}, "ts": 1775148486.963}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148508.358}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148511.401}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148514.451}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148520.527}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775148523.571}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775148526.62}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148529.644}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148535.713}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148541.785}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148544.838}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148547.868}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148569.024}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148572.048}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148575.047}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148581.128}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148584.183}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148587.233}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148638.666}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148641.67}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775148644.694}
+{"event": "snapshot", "session_sec": 2114.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 133.3, "last_fill_age_sec": 319.0}}, "ts": 1775148786.979}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149026.301}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149029.314}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149032.344}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149035.389}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149041.427}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149044.475}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149047.528}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149050.549}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149053.572}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149056.577}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149059.589}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149068.7}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149071.711}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149074.762}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149086.859}
+{"event": "snapshot", "session_sec": 2414.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 198.5, "last_fill_age_sec": 619.0}}, "ts": 1775149086.981}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149089.88}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149095.952}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149114.172}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149183.913}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149186.913}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149189.949}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149192.966}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149195.968}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149199.01}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149205.06}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149208.083}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149214.116}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149217.125}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149226.242}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149229.277}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149232.294}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149244.37}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149256.51}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149259.544}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149286.827}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149292.881}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149295.894}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149298.95}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149311.052}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149314.09}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149323.242}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149326.248}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149332.295}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149338.362}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149341.389}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149344.448}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149353.554}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149356.584}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149359.634}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149371.736}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149383.836}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149386.874}
+{"event": "snapshot", "session_sec": 2714.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 176.6, "last_fill_age_sec": 919.0}}, "ts": 1775149386.985}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149405.0}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149411.016}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149420.126}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149441.382}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149444.428}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775149447.479}
+{"event": "snapshot", "session_sec": 3014.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 88.7, "last_fill_age_sec": 1219.0}}, "ts": 1775149686.991}
+{"event": "snapshot", "session_sec": 3314.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 111.0, "last_fill_age_sec": 1520.0}}, "ts": 1775149987.002}
+{"event": "snapshot", "session_sec": 3614.0, "total_pnl": -27.914789, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 8, "sells": 3, "win_rate": 33.3, "pnl": 0.313596, "market_spread_bps": 111.0, "last_fill_age_sec": 1820.0}}, "ts": 1775150287.011}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0454, "qty": 1000.0, "fee": 0.10442, "pnl": 0.772132, "spread_bps": 88, "market_spread_bps": 88.5, "total_pnl": -27.142656, "ts": 1775150574.793}
+{"event": "snapshot", "session_sec": 3914.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 9, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 66.3, "last_fill_age_sec": 12.0}}, "ts": 1775150587.025}
+{"event": "snapshot", "session_sec": 4214.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 9, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 155.0, "last_fill_age_sec": 312.0}}, "ts": 1775150887.028}
+{"event": "snapshot", "session_sec": 4514.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 9, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 110.7, "last_fill_age_sec": 612.0}}, "ts": 1775151187.031}
+{"event": "snapshot", "session_sec": 4814.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 9, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 88.5, "last_fill_age_sec": 912.0}}, "ts": 1775151487.038}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775151749.243}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0447, "qty": 1000.0, "fee": 0.10281, "pnl": 0.0, "spread_bps": 120, "market_spread_bps": 111.2, "total_pnl": -27.142656, "ts": 1775151750.898}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775151752.256}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775151755.296}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775151758.297}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0448, "qty": 1000.0, "fee": 0.10304, "pnl": 0.0, "spread_bps": 88, "market_spread_bps": 88.9, "total_pnl": -27.142656, "ts": 1775151785.813}
+{"event": "snapshot", "session_sec": 5114.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 11, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 156.1, "last_fill_age_sec": 1.0}}, "ts": 1775151787.051}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0448, "qty": 1000.0, "fee": 0.10304, "pnl": 0.0, "spread_bps": 89, "market_spread_bps": 88.9, "total_pnl": -27.142656, "ts": 1775151788.761}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0448, "qty": 1000.0, "fee": 0.10304, "pnl": 0.0, "spread_bps": 89, "market_spread_bps": 88.9, "total_pnl": -27.142656, "ts": 1775151791.751}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0447, "qty": 1000.0, "fee": 0.10281, "pnl": 0.0, "spread_bps": 90, "market_spread_bps": 111.2, "total_pnl": -27.142656, "ts": 1775151794.757}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0447, "qty": 1000.0, "fee": 0.10281, "pnl": 0.0, "spread_bps": 90, "market_spread_bps": 111.2, "total_pnl": -27.142656, "ts": 1775151797.764}
+{"event": "snapshot", "session_sec": 5414.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 15, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 178.6, "last_fill_age_sec": 289.0}}, "ts": 1775152087.053}
+{"event": "snapshot", "session_sec": 5714.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 15, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 178.6, "last_fill_age_sec": 589.0}}, "ts": 1775152387.057}
+{"event": "snapshot", "session_sec": 6014.0, "total_pnl": -27.142656, "pairs": {"DRIFT_USD": {"spread_bps": 88, "fills": 15, "sells": 4, "win_rate": 50.0, "pnl": 1.085728, "market_spread_bps": 201.1, "last_fill_age_sec": 889.0}}, "ts": 1775152687.071}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775152932.787}

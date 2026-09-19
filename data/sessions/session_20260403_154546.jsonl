@@ -1,0 +1,69 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775231149.804}
+{"event": "session_start", "mode": "live", "pairs": {"DRIFT_USD": {"symbol": "DRIFT/USD", "spread_bps": 50, "spread_floor_bps": 50, "fee_schedule": "maker_rebate", "order_size": 200.0, "max_inventory": 10000}}, "decay_start_sec": 90.0, "decay_interval_sec": 60.0, "pain_floor_decay_hours": 1.0, "per_trade_profitability": true, "daily_loss_limit": 2.0, "daily_profit_target": 20.0, "ts": 1775231280.89}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231420.2}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231423.217}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.603, "patterns": ["symmetric_quoting(100%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231433.27}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.408, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231435.282}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.593, "patterns": ["symmetric_quoting(95%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231455.341}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.398, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231457.346}
+{"event": "snapshot", "session_sec": 311.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 50, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 53.5, "last_fill_age_sec": 306.0}}, "ts": 1775231457.894}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231474.706}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231477.765}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231480.811}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.587, "patterns": ["symmetric_quoting(95%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231505.527}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.497, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231509.533}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.587, "patterns": ["symmetric_quoting(95%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231517.566}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.496, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231535.639}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231544.437}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.601, "patterns": ["symmetric_quoting(100%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231545.682}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.391, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231551.701}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231565.554}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.602, "patterns": ["symmetric_quoting(100%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231565.749}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.303, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231567.755}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231583.699}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.597, "patterns": ["symmetric_quoting(95%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231591.827}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.317, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231595.844}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.536, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231599.859}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.374, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231607.874}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231613.888}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231616.923}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231638.093}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231641.148}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231659.312}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231662.325}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231674.446}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231680.452}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.529, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231732.349}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.306, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231736.366}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.545, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231746.382}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.406, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231748.382}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.548, "patterns": ["symmetric_quoting(80%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231750.388}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.309, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231752.4}
+{"event": "snapshot", "session_sec": 611.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 50, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 26.5, "last_fill_age_sec": 606.0}}, "ts": 1775231757.895}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231762.223}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231765.241}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775231768.291}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.543, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775231774.479}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.409, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775231778.497}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0375, "qty": 200.0, "fee": 0.01725, "pnl": 0.0, "spread_bps": 58, "market_spread_bps": 26.6, "total_pnl": -34.714162, "ts": 1775231825.637}
+{"event": "fill", "pair": "DRIFT_USD", "side": "buy", "price": 0.0374, "qty": 200.0, "fee": 0.017204, "pnl": 0.0, "spread_bps": 58, "market_spread_bps": 26.6, "total_pnl": -34.714162, "ts": 1775231825.639}
+{"event": "snapshot", "session_sec": 911.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 50, "fills": 2, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 80.3, "last_fill_age_sec": 232.0}}, "ts": 1775232057.907}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775232083.565}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.502, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775232113.668}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.322, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775232115.668}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775232159.264}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.572, "patterns": ["symmetric_quoting(90%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775232193.974}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.452, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775232195.979}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775232216.89}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775232219.894}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0376, "qty": 200.0, "fee": 0.017296, "pnl": -1.379168, "spread_bps": 50, "market_spread_bps": 80.1, "total_pnl": -36.09333, "ts": 1775232310.052}
+{"event": "fill", "pair": "DRIFT_USD", "side": "sell", "price": 0.0377, "qty": 120.0, "fee": 0.010405, "pnl": -0.815529, "spread_bps": 50, "market_spread_bps": 80.1, "total_pnl": -36.908859, "ts": 1775232310.054}
+{"event": "risk_halt", "reason": "daily loss limit reached: session_pnl=-2.1947 limit=2.00", "total_pnl": -36.908859, "peak_pnl": 0.0, "ts": 1775232310.912}
+{"event": "learner", "pair": "DRIFT_USD", "action": "loss_widen", "spread_old": 50, "spread_new": 52, "reason": "loss_widen", "pain_floor": 50, "idle_sec": 0.0, "avg_sell_pnl": -1.097348, "ema_rate": -0.274275, "fills_interval": 2, "ts": 1775232322.641}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.501, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775232346.532}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.441, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775232352.559}
+{"event": "snapshot", "session_sec": 1211.0, "total_pnl": -36.908859, "pairs": {"DRIFT_USD": {"spread_bps": 52, "fills": 4, "sells": 2, "win_rate": 0.0, "pnl": -2.194697, "market_spread_bps": 106.4, "last_fill_age_sec": 48.0}}, "ts": 1775232357.914}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.546, "patterns": ["symmetric_quoting(80%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775232364.603}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.411, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775232366.609}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 52, "spread_new": 51, "reason": "no-fill decay", "pain_floor": 50, "idle_sec": 103.0, "avg_sell_pnl": 0.0, "ema_rate": -0.274275, "fills_interval": 0, "ts": 1775232412.665}
+{"event": "learner", "pair": "DRIFT_USD", "action": "decay", "spread_old": 51, "spread_new": 50, "reason": "no-fill decay", "pain_floor": 50, "idle_sec": 163.0, "avg_sell_pnl": 0.0, "ema_rate": -0.274275, "fills_interval": 0, "ts": 1775232472.683}

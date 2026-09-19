@@ -1,0 +1,42 @@
+13:42:02 backend.server.windows_power     INFO | Windows: preventing system idle sleep while bot runs
+13:42:02 backend.server.session_logger     INFO | Session log: C:\Users\daroo\Desktop\Repos\tradingbot-1\data\session_20260421_174202.jsonl
+2026-04-21 13:42:05 - coinbase.RESTClient - ERROR - HTTP Error: 400 Client Error: Bad Request {"error":"INVALID_ARGUMENT","error_details":"failed to parse Query request does not support querying active status orders","message":"failed to parse Query request does not support querying active status orders"}
+13:42:05 coinbase.RESTClient     ERROR | HTTP Error: 400 Client Error: Bad Request {"error":"INVALID_ARGUMENT","error_details":"failed to parse Query request does not support querying active status orders","message":"failed to parse Query request does not support querying active status orders"}
+13:42:05 backend.server.coinbase_order_manager     INFO | CoinbaseOrderManager: initialized (fill polling started)
+13:42:05 arceus                   INFO | Coinbase Advanced Trade: scalp execution manager initialized
+13:42:05 backend.server.coinbase_order_manager     INFO | CoinbaseOrderManager: scalp registered pair_keys=['BTC_USD', 'SOL_USD', 'XRP_USD'] products=['BIP-20DEC30-CDE', 'SLP-20DEC30-CDE', 'XPP-20DEC30-CDE']
+13:42:05 backend.server.scalp_bot.scalp_runtime     INFO | ScalpRuntime: started for pairs ['BTC_USD', 'SOL_USD', 'XRP_USD']
+13:42:05 backend.server.scalp_bot.scalp_runtime     INFO | ScalpRuntime: seeding candle feed from REST...
+13:42:06 backend.server.scalp_bot.bar_store     INFO | bar_store: Coinbase REST using API credentials from environment
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\main.py", line 149, in <module>
+    main()
+    ~~~~^^
+  File "C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\main.py", line 143, in main
+    asyncio.run(run())
+    ~~~~~~~~~~~^^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 204, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\runners.py", line 127, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Python314\Lib\asyncio\base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\main.py", line 92, in run
+    runner = await dashboard.start()
+             ^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\daroo\Desktop\Repos\tradingbot-1\backend\server\ws_server.py", line 1758, in start
+    await site.start()
+  File "C:\Users\daroo\AppData\Roaming\Python\Python314\site-packages\aiohttp\web_runner.py", line 121, in start
+    self._server = await loop.create_server(
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+    ...<7 lines>...
+    )
+    ^
+  File "C:\Python314\Lib\asyncio\base_events.py", line 1627, in create_server
+    raise OSError(err.errno, msg) from None
+OSError: [Errno 10048] error while attempting to bind on address ('127.0.0.1', 8080): [winerror 10048] only one usage of each socket address (protocol/network address/port) is normally permitted

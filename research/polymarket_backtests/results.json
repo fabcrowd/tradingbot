@@ -1,0 +1,896 @@
+{
+  "data": {
+    "source": "binance",
+    "days": 30,
+    "btc_bars": 43200,
+    "eth_bars": 43200,
+    "aligned_bars": 43200
+  },
+  "oracle_lag_proxy_btc_sweep": [
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2594,
+      "win_rate": 0.6457,
+      "pnl_usdc": 1531.83,
+      "avg_fee": 0.1579
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2841,
+      "win_rate": 0.6635,
+      "pnl_usdc": 1883.26,
+      "avg_fee": 0.155
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2867,
+      "win_rate": 0.6666,
+      "pnl_usdc": 1929.17,
+      "avg_fee": 0.1545
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 1843,
+      "win_rate": 0.7857,
+      "pnl_usdc": 2476.49,
+      "avg_fee": 0.142
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2283,
+      "win_rate": 0.802,
+      "pnl_usdc": 3131.45,
+      "avg_fee": 0.1384
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 296,
+      "win_rate": 0.8885,
+      "pnl_usdc": 484.83,
+      "avg_fee": 0.1235
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3656.95,
+      "avg_fee": 0.1737
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3656.95,
+      "avg_fee": 0.1737
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3656.95,
+      "avg_fee": 0.1737
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 1879,
+      "win_rate": 0.8026,
+      "pnl_usdc": 4039.86,
+      "avg_fee": 0.1623
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee": 0.1593
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee": 0.1593
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 126,
+      "win_rate": 0.8889,
+      "pnl_usdc": 348.56,
+      "avg_fee": 0.1579
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 553,
+      "win_rate": 0.915,
+      "pnl_usdc": 1413.85,
+      "avg_fee": 0.146
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1164,
+      "win_rate": 0.9218,
+      "pnl_usdc": 2719.11,
+      "avg_fee": 0.1377
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3888.55,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3888.55,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3888.55,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 2238,
+      "win_rate": 0.8043,
+      "pnl_usdc": 5472.36,
+      "avg_fee": 0.1696
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 5618.9,
+      "avg_fee": 0.1684
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 5618.9,
+      "avg_fee": 0.1684
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 507,
+      "win_rate": 0.9191,
+      "pnl_usdc": 1660.67,
+      "avg_fee": 0.1635
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 962,
+      "win_rate": 0.921,
+      "pnl_usdc": 2814.32,
+      "avg_fee": 0.1541
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1164,
+      "win_rate": 0.9218,
+      "pnl_usdc": 3236.02,
+      "avg_fee": 0.1498
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3909.19,
+      "avg_fee": 0.1764
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3909.19,
+      "avg_fee": 0.1764
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2870,
+      "win_rate": 0.6669,
+      "pnl_usdc": 3909.19,
+      "avg_fee": 0.1764
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 2302,
+      "win_rate": 0.8058,
+      "pnl_usdc": 5975.55,
+      "avg_fee": 0.173
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 5992.28,
+      "avg_fee": 0.1725
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 5992.28,
+      "avg_fee": 0.1725
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 784,
+      "win_rate": 0.9082,
+      "pnl_usdc": 2614.33,
+      "avg_fee": 0.1674
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 1097,
+      "win_rate": 0.9234,
+      "pnl_usdc": 3500.3,
+      "avg_fee": 0.1604
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1164,
+      "win_rate": 0.9218,
+      "pnl_usdc": 3608.19,
+      "avg_fee": 0.1582
+    }
+  ],
+  "oracle_lag_proxy_eth_sweep": [
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2569,
+      "win_rate": 0.6434,
+      "pnl_usdc": 1463.58,
+      "avg_fee": 0.1579
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2848,
+      "win_rate": 0.6636,
+      "pnl_usdc": 1877.8,
+      "avg_fee": 0.1548
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2871,
+      "win_rate": 0.666,
+      "pnl_usdc": 1909.04,
+      "avg_fee": 0.1543
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 1799,
+      "win_rate": 0.7838,
+      "pnl_usdc": 2383.83,
+      "avg_fee": 0.1419
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2256,
+      "win_rate": 0.7934,
+      "pnl_usdc": 2935.51,
+      "avg_fee": 0.1383
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 0,
+      "win_rate": 0.0,
+      "pnl_usdc": 0.0,
+      "avg_fee": 0.0
+    },
+    {
+      "lag_min": 0,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 341,
+      "win_rate": 0.915,
+      "pnl_usdc": 628.13,
+      "avg_fee": 0.1235
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3654.04,
+      "avg_fee": 0.1738
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3654.04,
+      "avg_fee": 0.1738
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3654.04,
+      "avg_fee": 0.1738
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 1840,
+      "win_rate": 0.7946,
+      "pnl_usdc": 3802.68,
+      "avg_fee": 0.1619
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 4579.12,
+      "avg_fee": 0.159
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 4579.12,
+      "avg_fee": 0.159
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 115,
+      "win_rate": 0.9043,
+      "pnl_usdc": 334.57,
+      "avg_fee": 0.1578
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 560,
+      "win_rate": 0.9304,
+      "pnl_usdc": 1503.19,
+      "avg_fee": 0.1459
+    },
+    {
+      "lag_min": 1,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1174,
+      "win_rate": 0.9225,
+      "pnl_usdc": 2756.32,
+      "avg_fee": 0.1377
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3876.32,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3876.32,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3876.32,
+      "avg_fee": 0.1761
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 2215,
+      "win_rate": 0.795,
+      "pnl_usdc": 5204.69,
+      "avg_fee": 0.1694
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 5370.44,
+      "avg_fee": 0.1684
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 5370.44,
+      "avg_fee": 0.1684
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 498,
+      "win_rate": 0.9237,
+      "pnl_usdc": 1642.32,
+      "avg_fee": 0.1632
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 946,
+      "win_rate": 0.9218,
+      "pnl_usdc": 2770.32,
+      "avg_fee": 0.1541
+    },
+    {
+      "lag_min": 2,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1174,
+      "win_rate": 0.9225,
+      "pnl_usdc": 3245.81,
+      "avg_fee": 0.1493
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.58,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3900.23,
+      "avg_fee": 0.1763
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.62,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3900.23,
+      "avg_fee": 0.1763
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0003,
+      "max_entry": 0.66,
+      "trades": 2874,
+      "win_rate": 0.6663,
+      "pnl_usdc": 3900.23,
+      "avg_fee": 0.1763
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.58,
+      "trades": 2271,
+      "win_rate": 0.7988,
+      "pnl_usdc": 5763.05,
+      "avg_fee": 0.1732
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.62,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 5770.8,
+      "avg_fee": 0.1728
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0007,
+      "max_entry": 0.66,
+      "trades": 2300,
+      "win_rate": 0.7974,
+      "pnl_usdc": 5770.8,
+      "avg_fee": 0.1728
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.58,
+      "trades": 784,
+      "win_rate": 0.9133,
+      "pnl_usdc": 2657.6,
+      "avg_fee": 0.1675
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.62,
+      "trades": 1076,
+      "win_rate": 0.9238,
+      "pnl_usdc": 3456.47,
+      "avg_fee": 0.1607
+    },
+    {
+      "lag_min": 3,
+      "min_delta": 0.0012,
+      "max_entry": 0.66,
+      "trades": 1174,
+      "win_rate": 0.9225,
+      "pnl_usdc": 3634.74,
+      "avg_fee": 0.1578
+    }
+  ],
+  "oracle_lag_fee_entry_curve_btc": [
+    {
+      "max_entry": 0.5,
+      "trades": 43,
+      "win_rate": 0.7674,
+      "pnl_usdc": 117.01,
+      "avg_fee_usdc": 0.18523
+    },
+    {
+      "max_entry": 0.55,
+      "trades": 838,
+      "win_rate": 0.7852,
+      "pnl_usdc": 1917.83,
+      "avg_fee_usdc": 0.17045
+    },
+    {
+      "max_entry": 0.6,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee_usdc": 0.15928
+    },
+    {
+      "max_entry": 0.62,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee_usdc": 0.15928
+    },
+    {
+      "max_entry": 0.65,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee_usdc": 0.15928
+    },
+    {
+      "max_entry": 0.7,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36,
+      "avg_fee_usdc": 0.15928
+    }
+  ],
+  "cross_asset_btc_eth": [
+    {
+      "H_bars": 5,
+      "model": "M1_contemp_same_window",
+      "n": 43185,
+      "accuracy": 0.8307,
+      "baseline": 0.506,
+      "edge_vs_baseline": 0.3247,
+      "precision_pos": 0.8357,
+      "recall_pos": 0.8282
+    },
+    {
+      "H_bars": 5,
+      "model": "M2_btc_leads_eth_next_H",
+      "n": 43185,
+      "accuracy": 0.4981,
+      "baseline": 0.506,
+      "edge_vs_baseline": -0.0079,
+      "precision_pos": 0.5041,
+      "recall_pos": 0.4995
+    },
+    {
+      "H_bars": 5,
+      "model": "M3_btc_old_predicts_eth_same",
+      "n": 43185,
+      "accuracy": 0.4981,
+      "baseline": 0.506,
+      "edge_vs_baseline": -0.0079,
+      "precision_pos": 0.5041,
+      "recall_pos": 0.4996
+    },
+    {
+      "H_bars": 15,
+      "model": "M1_contemp_same_window",
+      "n": 43155,
+      "accuracy": 0.8298,
+      "baseline": 0.5095,
+      "edge_vs_baseline": 0.3203,
+      "precision_pos": 0.8349,
+      "recall_pos": 0.8301
+    },
+    {
+      "H_bars": 15,
+      "model": "M2_btc_leads_eth_next_H",
+      "n": 43155,
+      "accuracy": 0.4972,
+      "baseline": 0.5095,
+      "edge_vs_baseline": -0.0123,
+      "precision_pos": 0.5067,
+      "recall_pos": 0.5038
+    },
+    {
+      "H_bars": 15,
+      "model": "M3_btc_old_predicts_eth_same",
+      "n": 43155,
+      "accuracy": 0.4972,
+      "baseline": 0.5095,
+      "edge_vs_baseline": -0.0124,
+      "precision_pos": 0.5066,
+      "recall_pos": 0.5037
+    },
+    {
+      "H_bars": 60,
+      "model": "M1_contemp_same_window",
+      "n": 43020,
+      "accuracy": 0.8328,
+      "baseline": 0.5186,
+      "edge_vs_baseline": 0.3142,
+      "precision_pos": 0.8403,
+      "recall_pos": 0.8366
+    },
+    {
+      "H_bars": 60,
+      "model": "M2_btc_leads_eth_next_H",
+      "n": 43020,
+      "accuracy": 0.4987,
+      "baseline": 0.5188,
+      "edge_vs_baseline": -0.0201,
+      "precision_pos": 0.517,
+      "recall_pos": 0.5145
+    },
+    {
+      "H_bars": 60,
+      "model": "M3_btc_old_predicts_eth_same",
+      "n": 43020,
+      "accuracy": 0.4979,
+      "baseline": 0.5186,
+      "edge_vs_baseline": -0.0208,
+      "precision_pos": 0.5159,
+      "recall_pos": 0.5144
+    }
+  ],
+  "dump_hedge_toy": {
+    "n_rounds": 100000,
+    "p_hit": 0.24051,
+    "note": "Toy model only \u2014 not calibrated to Polymarket microstructure"
+  },
+  "oracle_lag_walk_forward_btc": {
+    "config": {
+      "lag_min": 1,
+      "min_delta": 0.0007,
+      "max_entry": 0.62
+    },
+    "train_windows": [
+      0,
+      2015
+    ],
+    "test_windows": [
+      2015,
+      2880
+    ],
+    "train": {
+      "trades": 1633,
+      "win_rate": 0.8108,
+      "pnl_usdc": 3473.7
+    },
+    "test": {
+      "trades": 698,
+      "win_rate": 0.7923,
+      "pnl_usdc": 1349.66
+    }
+  },
+  "random_entry_baseline_btc_5seeds": {
+    "avg_pnl_usdc": -2283.42,
+    "avg_win_rate": 0.4963,
+    "per_seed": [
+      {
+        "seed": 0,
+        "trades": 2880,
+        "win_rate": 0.501,
+        "pnl_usdc": -2165.09
+      },
+      {
+        "seed": 1,
+        "trades": 2880,
+        "win_rate": 0.4948,
+        "pnl_usdc": -2312.35
+      },
+      {
+        "seed": 2,
+        "trades": 2880,
+        "win_rate": 0.4962,
+        "pnl_usdc": -2288.65
+      },
+      {
+        "seed": 3,
+        "trades": 2880,
+        "win_rate": 0.4865,
+        "pnl_usdc": -2514.36
+      },
+      {
+        "seed": 4,
+        "trades": 2880,
+        "win_rate": 0.5028,
+        "pnl_usdc": -2136.64
+      }
+    ]
+  },
+  "oracle_lag_multi_synthetic_seed_btc": [
+    {
+      "seed": 11,
+      "trades": 2331,
+      "win_rate": 0.8052,
+      "pnl_usdc": 4823.36
+    },
+    {
+      "seed": 21,
+      "trades": 2325,
+      "win_rate": 0.7953,
+      "pnl_usdc": 4587.47
+    },
+    {
+      "seed": 31,
+      "trades": 2313,
+      "win_rate": 0.8102,
+      "pnl_usdc": 4895.75
+    },
+    {
+      "seed": 41,
+      "trades": 2385,
+      "win_rate": 0.8126,
+      "pnl_usdc": 5113.74
+    },
+    {
+      "seed": 51,
+      "trades": 2315,
+      "win_rate": 0.7909,
+      "pnl_usdc": 4479.85
+    }
+  ],
+  "disclaimer": "Proxy simulations \u2014 synthetic GBM when Binance unavailable; not Polymarket L2/oracle replay."
+}

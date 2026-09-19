@@ -1,0 +1,4 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775223648.943}
+{"event": "snapshot", "session_sec": 313.0, "total_pnl": -33.492939, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 180.2, "last_fill_age_sec": 305.0}}, "ts": 1775223957.096}
+{"event": "snapshot", "session_sec": 613.0, "total_pnl": -33.492939, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 207.8, "last_fill_age_sec": 605.0}}, "ts": 1775224257.106}
+{"event": "snapshot", "session_sec": 913.0, "total_pnl": -33.492939, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 258.4, "last_fill_age_sec": 905.0}}, "ts": 1775224557.109}

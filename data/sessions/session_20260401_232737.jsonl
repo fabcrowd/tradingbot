@@ -1,0 +1,36 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775086063.202}
+{"event": "session_start", "mode": "live", "pairs": {"USDG_USDT": {"symbol": "USDG/USDT", "spread_bps": 2, "spread_floor_bps": 1, "fee_schedule": "usdg", "order_size": 5.0, "max_inventory": 40.0}, "TEL_USD": {"symbol": "TEL/USD", "spread_bps": 25, "spread_floor_bps": 10, "fee_schedule": "maker_rebate", "order_size": 1000.0, "max_inventory": 50000.0}}, "decay_start_sec": 90.0, "decay_interval_sec": 60.0, "pain_floor_decay_hours": 4.0, "per_trade_profitability": true, "daily_loss_limit": 5.0, "daily_profit_target": 20.0, "ts": 1775086069.334}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086105.609}
+{"event": "snapshot", "session_sec": 312.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 306.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 17.4, "last_fill_age_sec": 306.0}}, "ts": 1775086369.348}
+{"event": "snapshot", "session_sec": 612.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 606.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 21.8, "last_fill_age_sec": 606.0}}, "ts": 1775086669.352}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086779.03}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086827.761}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086830.588}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086833.877}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086836.685}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086849.038}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086870.241}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086873.017}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086876.316}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086879.109}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086930.814}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775086933.589}
+{"event": "snapshot", "session_sec": 912.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 906.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 26.1, "last_fill_age_sec": 906.0}}, "ts": 1775086969.361}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087009.446}
+{"event": "snapshot", "session_sec": 1212.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 1206.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 4.4, "last_fill_age_sec": 1206.0}}, "ts": 1775087269.372}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087490.936}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087493.958}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087496.997}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087500.254}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087503.032}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087512.308}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775087515.12}
+{"event": "snapshot", "session_sec": 1512.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 1506.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 52.1, "last_fill_age_sec": 1506.0}}, "ts": 1775087569.382}
+{"event": "snapshot", "session_sec": 1812.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 1806.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 52.1, "last_fill_age_sec": 1806.0}}, "ts": 1775087869.386}
+{"event": "snapshot", "session_sec": 2112.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 2106.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 52.1, "last_fill_age_sec": 2106.0}}, "ts": 1775088169.388}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775088337.516}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775088340.555}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775088343.585}
+{"event": "threat_action", "pair": "TEL_USD", "level": "high", "action": "widen_spread", "ts": 1775088346.843}
+{"event": "snapshot", "session_sec": 2412.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 2406.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 21.8, "last_fill_age_sec": 2406.0}}, "ts": 1775088469.403}
+{"event": "snapshot", "session_sec": 2712.0, "total_pnl": -28.023593, "pairs": {"USDG_USDT": {"spread_bps": 2, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 1.0, "last_fill_age_sec": 2706.0}, "TEL_USD": {"spread_bps": 25, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 21.8, "last_fill_age_sec": 2706.0}}, "ts": 1775088769.41}

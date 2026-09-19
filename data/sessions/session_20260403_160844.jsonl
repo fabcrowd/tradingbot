@@ -1,0 +1,6 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775232529.153}
+{"event": "snapshot", "session_sec": 1068.0, "total_pnl": -36.908859, "pairs": {"DRIFT_USD": {"spread_bps": 50, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 79.9, "last_fill_age_sec": 1061.0}}, "ts": 1775233593.037}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.601, "patterns": ["symmetric_quoting(100%)", "phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775233787.75}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.437, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775233789.753}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "elevated", "score": 0.528, "patterns": ["phantom_liquidity(100%)"], "regime": "competitive", "ts": 1775233809.836}
+{"event": "bot_detection", "pair": "DRIFT_USD", "classification": "clean", "score": 0.438, "patterns": ["phantom_liquidity(100%)"], "regime": "clean", "ts": 1775233811.841}

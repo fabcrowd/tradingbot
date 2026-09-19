@@ -1,0 +1,6 @@
+{"ts": 1775306992.139743, "event": "start"}
+{"ts": 1775307002.1436813, "event": "fill", "side": "buy_yes", "price": 0.49, "size": 5.0, "is_maker": true, "market_id": "1860197"}
+{"ts": 1775307005.5415158, "event": "fill", "side": "sell_yes", "price": 0.5096, "size": 5.0, "is_maker": true, "market_id": "1860197"}
+{"ts": 1775307007.8355727, "event": "fill", "side": "sell_yes", "price": 0.5092, "size": 5.0, "is_maker": true, "market_id": "1860197"}
+{"ts": 1775307008.963988, "event": "risk", "reason": "per_market_limit (3)", "pnl": 0.0}
+{"ts": 1775307077.2399607, "event": "stop"}

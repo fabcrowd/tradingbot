@@ -1,0 +1,156 @@
+{
+  "pairs": {
+    "TEL_USD": {
+      "pair_key": "TEL_USD",
+      "skipped": false,
+      "sell_count": 99,
+      "buy_count": 31,
+      "base_maker_fee_bps": 23,
+      "fee_schedule": "maker_rebate",
+      "best_spread_bps": 200,
+      "best_pnl": 7.877715,
+      "best_win_rate": 25.4,
+      "best_sharpe": 2.323,
+      "plateau": {
+        "start_bps": 192,
+        "end_bps": 200,
+        "width_bps": 8,
+        "peak_pnl": 7.877715,
+        "cutoff_pnl": 6.302172,
+        "count": 9
+      },
+      "quality_score": {
+        "composite": 0.8865,
+        "sample_size": 1.0,
+        "expectancy": 1.0,
+        "risk_management": 1.0,
+        "robustness": 0.4326,
+        "execution_realism": 1.0
+      },
+      "top_5_sweep": [
+        {
+          "spread_bps": 200,
+          "realized_pnl": 7.877715,
+          "win_rate": 25.4,
+          "total_sells": 63,
+          "total_wins": 16,
+          "max_drawdown": 2.043185,
+          "sharpe_ratio": 2.323,
+          "avg_pnl_per_sell": 0.125043,
+          "total_win_dollars": 9.9209
+        },
+        {
+          "spread_bps": 199,
+          "realized_pnl": 7.685739,
+          "win_rate": 25.4,
+          "total_sells": 63,
+          "total_wins": 16,
+          "max_drawdown": 2.144053,
+          "sharpe_ratio": 2.279,
+          "avg_pnl_per_sell": 0.121996,
+          "total_win_dollars": 9.829791
+        },
+        {
+          "spread_bps": 198,
+          "realized_pnl": 7.493763,
+          "win_rate": 25.4,
+          "total_sells": 63,
+          "total_wins": 16,
+          "max_drawdown": 2.244919,
+          "sharpe_ratio": 2.235,
+          "avg_pnl_per_sell": 0.118949,
+          "total_win_dollars": 9.738683
+        },
+        {
+          "spread_bps": 197,
+          "realized_pnl": 7.301788,
+          "win_rate": 25.4,
+          "total_sells": 63,
+          "total_wins": 16,
+          "max_drawdown": 2.345787,
+          "sharpe_ratio": 2.19,
+          "avg_pnl_per_sell": 0.115901,
+          "total_win_dollars": 9.647574
+        },
+        {
+          "spread_bps": 196,
+          "realized_pnl": 7.109812,
+          "win_rate": 25.4,
+          "total_sells": 63,
+          "total_wins": 16,
+          "max_drawdown": 2.446654,
+          "sharpe_ratio": 2.144,
+          "avg_pnl_per_sell": 0.112854,
+          "total_win_dollars": 9.556465
+        }
+      ],
+      "fee_stress": [
+        {
+          "spread_bps": 200,
+          "normal_pnl": 7.877715,
+          "stressed_pnl": 3.407954,
+          "pnl_retention": 0.4326
+        },
+        {
+          "spread_bps": 199,
+          "normal_pnl": 7.685739,
+          "stressed_pnl": 3.215978,
+          "pnl_retention": 0.4184
+        },
+        {
+          "spread_bps": 198,
+          "normal_pnl": 7.493763,
+          "stressed_pnl": 3.024003,
+          "pnl_retention": 0.4035
+        },
+        {
+          "spread_bps": 197,
+          "normal_pnl": 7.301788,
+          "stressed_pnl": 2.832027,
+          "pnl_retention": 0.3879
+        },
+        {
+          "spread_bps": 196,
+          "normal_pnl": 7.109812,
+          "stressed_pnl": 2.640051,
+          "pnl_retention": 0.3713
+        }
+      ],
+      "walk_forward": [
+        {
+          "fold": 1,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 5.516243,
+          "test_pnl_at_overall_best": 5.516243,
+          "test_sells": 27
+        },
+        {
+          "fold": 2,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 1.065656,
+          "test_pnl_at_overall_best": 1.065656,
+          "test_sells": 3
+        },
+        {
+          "fold": 3,
+          "train_best_bps": 200,
+          "test_pnl_at_train_best": 1.065656,
+          "test_pnl_at_overall_best": 1.065656,
+          "test_sells": 3
+        }
+      ]
+    },
+    "USDG_USDT": {
+      "pair_key": "USDG_USDT",
+      "skipped": true,
+      "reason": "Only 4 sells (need >= 20)",
+      "sell_count": 4
+    },
+    "XRP_USDT": {
+      "pair_key": "XRP_USDT",
+      "skipped": true,
+      "reason": "Only 0 sells (need >= 20)",
+      "sell_count": 0
+    }
+  }
+}

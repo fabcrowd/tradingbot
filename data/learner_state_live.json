@@ -1,0 +1,47 @@
+{
+  "TEL_USD": {
+    "spread_bps": 25,
+    "rate_per_min": 0.0,
+    "direction": -1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 1775137469.024077
+  },
+  "USDG_USDT": {
+    "spread_bps": 1,
+    "rate_per_min": 0.0,
+    "direction": 0,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 0.0
+  },
+  "USDE_USDT": {
+    "spread_bps": 1,
+    "rate_per_min": 0.0,
+    "direction": -1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 1775142194.5488982
+  },
+  "USDE_USDC": {
+    "spread_bps": 1,
+    "rate_per_min": 0.0,
+    "direction": -1,
+    "pain_floor": 0,
+    "pain_floor_decay_ts": 0.0,
+    "updated": 1775142194.556625
+  },
+  "DRIFT_USD": {
+    "spread_bps": 50,
+    "rate_per_min": 0.004345,
+    "direction": 1,
+    "pain_floor": 50,
+    "pain_floor_decay_ts": 0.0,
+    "regime_pain_floors": {
+      "clean": 50
+    },
+    "regime_spreads": {},
+    "current_regime": "clean",
+    "updated": 1775263591.9485235
+  }
+}

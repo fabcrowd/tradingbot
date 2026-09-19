@@ -1,0 +1,2 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775302665.219}
+{"event": "session_start", "mode": "live", "pairs": {"USDG_USDC": {"symbol": "USDG/USDC", "spread_bps": 1, "spread_floor_bps": 1, "fee_schedule": "usdg", "order_size": 10.0, "max_inventory": 0}}, "decay_start_sec": 90.0, "decay_interval_sec": 60.0, "pain_floor_decay_hours": 1.0, "per_trade_profitability": false, "daily_loss_limit": 10.0, "daily_profit_target": 20.0, "ts": 1775302676.875}

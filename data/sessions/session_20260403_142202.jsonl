@@ -1,0 +1,14 @@
+{"event": "security", "status": "ok", "message": "withdraw permission check unavailable", "ts": 1775226125.814}
+{"event": "session_start", "mode": "live", "pairs": {"DRIFT_USD": {"symbol": "DRIFT/USD", "spread_bps": 100, "spread_floor_bps": 50, "fee_schedule": "maker_rebate", "order_size": 200.0, "max_inventory": 10000}}, "decay_start_sec": 90.0, "decay_interval_sec": 60.0, "pain_floor_decay_hours": 4.0, "per_trade_profitability": true, "daily_loss_limit": 2.0, "daily_profit_target": 20.0, "ts": 1775226211.006}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775226425.898}
+{"event": "snapshot", "session_sec": 311.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 26.2, "last_fill_age_sec": 305.0}}, "ts": 1775226433.914}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775226495.577}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775226498.613}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775226501.622}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775226504.643}
+{"event": "snapshot", "session_sec": 611.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 26.2, "last_fill_age_sec": 605.0}}, "ts": 1775226733.923}
+{"event": "snapshot", "session_sec": 911.0, "total_pnl": -34.714162, "pairs": {"DRIFT_USD": {"spread_bps": 100, "fills": 0, "sells": 0, "win_rate": 0.0, "pnl": 0.0, "market_spread_bps": 26.2, "last_fill_age_sec": 905.0}}, "ts": 1775227033.932}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "critical", "action": "pause_quoting", "ts": 1775227052.725}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775227164.977}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775227167.983}
+{"event": "threat_action", "pair": "DRIFT_USD", "level": "high", "action": "widen_spread", "ts": 1775227171.027}

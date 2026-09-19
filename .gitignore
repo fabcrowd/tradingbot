@@ -39,32 +39,18 @@ node_modules/
 tasks/
 *.plan.md
 
-# ── Runtime data (main bot) ──
-data/sessions/
-data/trades_live.jsonl
-data/trades_paper.jsonl
-data/trades.jsonl
-data/scalp_trade_history.jsonl
-data/state.json
-data/learner_state_*.json
-data/sim_report.json
-data/cost_basis.json
-data/fill_barriers.json
-data/session_observer.jsonl
-
-# ── Runtime data (polymarket bot) ──
-bots/polymarket_bot/data/trades_*.jsonl
-bots/polymarket_bot/logs/session_*.jsonl
+# Runtime data under data/, bots/, and research/ is tracked (operator archive).
+# Files over GitHub's 100MB blob limit go through Git LFS (.gitattributes).
 
 # ── Debug / Temp ──
 debug-*.log
 *.log
+!data/*.log
+!data/**/*.log
 tmp_*.html
 
 # ── Research generated data ──
-research/polymarket_backtests/data/
 research/polymarket_backtests/__pycache__/
-research/polymarket_backtests/results.json
 
 # ── OS ──
 .DS_Store
